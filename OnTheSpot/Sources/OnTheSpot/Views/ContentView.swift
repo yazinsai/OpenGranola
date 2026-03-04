@@ -61,7 +61,8 @@ struct ContentView: View {
                 isRunning: isRunning,
                 audioLevel: audioLevel,
                 selectedModel: settings.selectedModel,
-                errorMessage: transcriptionEngine?.lastError ?? transcriptionEngine?.micCapture.captureError,
+                statusMessage: transcriptionEngine?.assetStatus,
+                errorMessage: transcriptionEngine?.lastError,
                 onToggle: isRunning ? stopSession : startSession
             )
         }
@@ -88,7 +89,7 @@ struct ContentView: View {
         }
         .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
             if isRunning {
-                audioLevel = transcriptionEngine?.micCapture.audioLevel ?? 0
+                audioLevel = transcriptionEngine?.audioLevel ?? 0
             } else if audioLevel != 0 {
                 audioLevel = 0
             }

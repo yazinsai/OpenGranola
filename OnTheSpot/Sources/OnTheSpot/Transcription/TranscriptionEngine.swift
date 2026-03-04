@@ -55,14 +55,17 @@ final class TranscriptionEngine {
         isRunning = true
 
         // 1. Load FluidAudio models
-        assetStatus = "Downloading models..."
-        diagLog("[ENGINE-1] loading FluidAudio models...")
+        assetStatus = "Loading ASR model (~600MB first run)..."
+        diagLog("[ENGINE-1] loading FluidAudio ASR models...")
         do {
             let models = try await AsrModels.downloadAndLoad(version: .v2)
+            assetStatus = "Initializing ASR..."
             let asr = AsrManager(config: .default)
             try await asr.initialize(models: models)
             self.asrManager = asr
 
+            assetStatus = "Loading VAD model..."
+            diagLog("[ENGINE-1b] loading VAD model...")
             let vad = try await VadManager()
             self.vadManager = vad
 

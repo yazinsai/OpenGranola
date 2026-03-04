@@ -4,6 +4,7 @@ struct ControlBar: View {
     let isRunning: Bool
     let audioLevel: Float
     let selectedModel: String
+    let statusMessage: String?
     let errorMessage: String?
     let onToggle: () -> Void
 
@@ -17,6 +18,20 @@ struct ControlBar: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 4)
+            }
+
+            // Status message (model loading, etc.)
+            if let status = statusMessage, status != "Ready" {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text(status)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 4)
             }
 
             HStack(spacing: 10) {
