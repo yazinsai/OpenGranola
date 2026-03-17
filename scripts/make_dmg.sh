@@ -12,7 +12,56 @@ if [[ ! -d "$APP_PATH" ]]; then
 fi
 
 rm -f "$DMG_PATH"
-hdiutil create -volname "OpenGranola" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_PATH"
+
+# --- Create a styled DMG with "drag to Applications" layout ---
+STAGING_DIR="dist/dmg_staging"
+TEMP_DMG="dist/OpenGranola_temp.dmg"
+
+rm -rf "$STAGING_DIR" "$TEMP_DMG"
+mkdir -p "$STAGING_DIR"
+
+# Copy app and create Applications symlink
+cp -R "$APP_PATH" "$STAGING_DIR/"
+ln -s /Applications "$STAGING_DIR/Applications"
+
+# Create a temporary read-write DMG
+hdiutil create -volname "OpenGranola" -srcfolder "$STAGING_DIR" -ov -format UDRW "$TEMP_DMG"
+
+# Mount it and configure the Finder window via AppleScript
+MOUNT_OUTPUT=$(hdiutil attach "$TEMP_DMG" -readwrite -noverify)
+MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | grep -o '/Volumes/.*' | head -1)
+
+osascript <<APPLESCRIPT
+tell application "Finder"
+  tell disk "OpenGranola"
+    open
+    set current view of container window to icon view
+    set toolbar visible of container window to false
+    set statusbar visible of container window to false
+    set bounds of container window to {100, 100, 640, 400}
+    set viewOptions to the icon view options of container window
+    set arrangement of viewOptions to not arranged
+    set icon size of viewOptions to 80
+    set position of item "OpenGranola.app" of container window to {120, 150}
+    set position of item "Applications" of container window to {420, 150}
+    close
+    open
+    update without registering applications
+    delay 1
+    close
+  end tell
+end tell
+APPLESCRIPT
+
+# Ensure all writes are flushed, then detach
+sync
+hdiutil detach "$MOUNT_POINT" -quiet
+
+# Convert to compressed read-only DMG
+hdiutil convert "$TEMP_DMG" -format UDZO -o "$DMG_PATH"
+
+# Clean up
+rm -rf "$STAGING_DIR" "$TEMP_DMG"
 
 # Sign the DMG if a signing identity is available
 if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
