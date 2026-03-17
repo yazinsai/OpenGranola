@@ -12,6 +12,12 @@ final class SuggestionEngine {
     private let client = OpenRouterClient()
     private var currentTask: Task<Void, Never>?
     private var lastProcessedUtteranceID: UUID?
+    private var lastSuggestionTime: Date?
+
+    /// Minimum seconds between suggestions to avoid overwhelming the user.
+    private let cooldownSeconds: TimeInterval = 60
+    /// Minimum top KB reranking score to trigger a suggestion (0–1 scale).
+    private let minKBRelevanceScore: Double = 0.35
 
     private let transcriptStore: TranscriptStore
     private let knowledgeBase: KnowledgeBase
@@ -28,6 +34,12 @@ final class SuggestionEngine {
         guard utterance.id != lastProcessedUtteranceID else { return }
         lastProcessedUtteranceID = utterance.id
 
+        // Enforce cooldown — skip if a suggestion was shown recently
+        if let last = lastSuggestionTime,
+           Date.now.timeIntervalSince(last) < cooldownSeconds {
+            return
+        }
+
         // Cancel any in-flight request
         currentTask?.cancel()
 
@@ -42,6 +54,13 @@ final class SuggestionEngine {
                 // Search KB (async — uses Voyage AI embeddings + reranking)
                 let kbResults = await knowledgeBase.search(query: utterance.text, topK: 5)
                 guard !kbResults.isEmpty, !Task.isCancelled else {
+                    isGenerating = false
+                    return
+                }
+
+                // Only proceed if the top KB result is relevant enough
+                let topScore = kbResults.first?.score ?? 0
+                guard topScore >= minKBRelevanceScore, !Task.isCancelled else {
                     isGenerating = false
                     return
                 }
@@ -73,6 +92,7 @@ final class SuggestionEngine {
                             kbHits: kbResults
                         )
                         suggestions.insert(suggestion, at: 0)
+                        lastSuggestionTime = .now
                     }
                     currentSuggestion = ""
                 }
@@ -92,6 +112,7 @@ final class SuggestionEngine {
         currentSuggestion = ""
         isGenerating = false
         lastProcessedUtteranceID = nil
+        lastSuggestionTime = nil
     }
 
     // MARK: - Private
