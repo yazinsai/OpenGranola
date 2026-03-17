@@ -28,6 +28,8 @@
     <string>public.app-category.productivity</string>
     <key>SUFeedURL</key>
     <string>https://raw.githubusercontent.com/yazinsai/OpenGranola/gh-pages/appcast.xml</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
     <key>SUPublicEDKey</key>
     <string>RMSxoyjk8gEBvqmECGMvBLYQ7Kl7ptbacDBWSbsdgeI=</string>
 </dict>
