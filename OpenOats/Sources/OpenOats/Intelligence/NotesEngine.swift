@@ -40,9 +40,10 @@ final class NotesEngine {
         }
 
         let transcriptText = formatTranscript(transcript)
+        let langInstruction = Self.notesLanguageInstruction(for: transcript, preference: settings.suggestionLanguage)
         let messages: [OpenRouterClient.Message] = [
             .init(role: "system", content: template.systemPrompt),
-            .init(role: "user", content: "Here is the meeting transcript:\n\n\(transcriptText)\n\nGenerate the meeting notes in markdown:")
+            .init(role: "user", content: "Here is the meeting transcript:\n\n\(transcriptText)\n\n\(langInstruction)Generate the meeting notes in markdown:")
         ]
 
         let task = Task { [weak self] in
@@ -75,6 +76,27 @@ final class NotesEngine {
         currentTask?.cancel()
         currentTask = nil
         isGenerating = false
+    }
+
+    /// Determines language instruction for note generation based on user preference and transcript content.
+    private static func notesLanguageInstruction(for transcript: [SessionRecord], preference: SuggestionLanguage) -> String {
+        switch preference {
+        case .en:
+            return "IMPORTANT: Generate the notes in English, regardless of the conversation language.\n"
+        case .he:
+            return "IMPORTANT: Generate the notes in Hebrew (עברית).\n"
+        case .matchTranscript:
+            let total = transcript.count
+            guard total > 0 else { return "" }
+            let rtlCount = transcript.filter(\.text.isRTL).count
+            let rtlRatio = Double(rtlCount) / Double(total)
+            if rtlRatio > 0.6 {
+                return "IMPORTANT: The conversation is primarily in Hebrew. Generate the notes in Hebrew.\n"
+            } else if rtlRatio > 0.2 {
+                return "IMPORTANT: The conversation is mixed Hebrew and English. Generate the notes in the dominant language of the conversation.\n"
+            }
+            return ""
+        }
     }
 
     private func formatTranscript(_ records: [SessionRecord]) -> String {

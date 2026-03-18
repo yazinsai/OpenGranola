@@ -39,7 +39,10 @@ actor TranscriptLogger {
         guard let fileHandle else { return }
         let timeFmt = DateFormatter()
         timeFmt.dateFormat = "HH:mm:ss"
-        let line = "[\(timeFmt.string(from: timestamp))] \(speaker): \(text)\n"
+        let prefix = "[\(timeFmt.string(from: timestamp))] \(speaker): "
+        // Wrap RTL text with Unicode RLE/PDF so text editors render direction correctly
+        let body = text.isRTL ? "\u{202B}\(text)\u{202C}" : text
+        let line = prefix + body + "\n"
         if let data = line.data(using: .utf8) {
             fileHandle.seekToEndOfFile()
             fileHandle.write(data)

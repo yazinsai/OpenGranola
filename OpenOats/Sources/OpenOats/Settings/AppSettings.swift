@@ -22,6 +22,7 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
     case parakeetV2
     case parakeetV3
     case qwen3ASR06B
+    case whisperLargeV3Turbo
 
     var id: String { rawValue }
 
@@ -30,6 +31,7 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         case .parakeetV2: "Parakeet TDT v2"
         case .parakeetV3: "Parakeet TDT v3"
         case .qwen3ASR06B: "Qwen3 ASR 0.6B"
+        case .whisperLargeV3Turbo: "Whisper large-v3-turbo (Multilingual)"
         }
     }
 
@@ -39,6 +41,57 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
             "Transcription requires a one-time model download."
         case .qwen3ASR06B:
             "Qwen3 ASR requires a one-time model download."
+        case .whisperLargeV3Turbo:
+            "Whisper requires a one-time model download (~1.6 GB)."
+        }
+    }
+
+    /// Whether this model supports multilingual transcription.
+    var isMultilingual: Bool {
+        switch self {
+        case .whisperLargeV3Turbo: true
+        default: false
+        }
+    }
+}
+
+enum TranscriptionLanguage: String, CaseIterable, Identifiable {
+    case auto
+    case en
+    case he
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .auto: "Auto-detect"
+        case .en: "English"
+        case .he: "Hebrew (עברית)"
+        }
+    }
+
+    /// The language code passed to WhisperKit, or nil for auto-detect.
+    var whisperLanguageCode: String? {
+        switch self {
+        case .auto: nil
+        case .en: "en"
+        case .he: "he"
+        }
+    }
+}
+
+enum SuggestionLanguage: String, CaseIterable, Identifiable {
+    case matchTranscript
+    case en
+    case he
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .matchTranscript: "Match transcript"
+        case .en: "Always English"
+        case .he: "Always Hebrew (עברית)"
         }
     }
 }
@@ -80,6 +133,14 @@ final class AppSettings {
 
     var transcriptionModel: TranscriptionModel {
         didSet { UserDefaults.standard.set(transcriptionModel.rawValue, forKey: "transcriptionModel") }
+    }
+
+    var transcriptionLanguage: TranscriptionLanguage {
+        didSet { UserDefaults.standard.set(transcriptionLanguage.rawValue, forKey: "transcriptionLanguage") }
+    }
+
+    var suggestionLanguage: SuggestionLanguage {
+        didSet { UserDefaults.standard.set(suggestionLanguage.rawValue, forKey: "suggestionLanguage") }
     }
 
     /// Stored as the AudioDeviceID integer. 0 means "use system default".
@@ -157,6 +218,8 @@ final class AppSettings {
         self.transcriptionModel = TranscriptionModel(
             rawValue: defaults.string(forKey: "transcriptionModel") ?? ""
         ) ?? .parakeetV2
+        self.transcriptionLanguage = TranscriptionLanguage(rawValue: defaults.string(forKey: "transcriptionLanguage") ?? "") ?? .auto
+        self.suggestionLanguage = SuggestionLanguage(rawValue: defaults.string(forKey: "suggestionLanguage") ?? "") ?? .matchTranscript
         self.inputDeviceID = AudioDeviceID(defaults.integer(forKey: "inputDeviceID"))
         self.openRouterApiKey = KeychainHelper.load(key: "openRouterApiKey") ?? ""
         self.voyageApiKey = KeychainHelper.load(key: "voyageApiKey") ?? ""

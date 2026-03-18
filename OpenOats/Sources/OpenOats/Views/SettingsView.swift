@@ -133,8 +133,34 @@ struct SettingsView: View {
                 }
                 .font(.system(size: 12))
 
-                TextField("Locale (e.g. en-US)", text: $settings.transcriptionLocale)
-                    .font(.system(size: 12, design: .monospaced))
+                if settings.transcriptionModel.isMultilingual {
+                    Picker("Language", selection: $settings.transcriptionLanguage) {
+                        ForEach(TranscriptionLanguage.allCases) { lang in
+                            Text(lang.displayName).tag(lang)
+                        }
+                    }
+                    .font(.system(size: 12))
+
+                    Text("Whisper supports 99 languages including Hebrew. Large v3 Turbo is recommended for the best balance of speed and accuracy.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                } else {
+                    TextField("Locale (e.g. en-US)", text: $settings.transcriptionLocale)
+                        .font(.system(size: 12, design: .monospaced))
+                }
+            }
+
+            Section("Suggestions & Notes Language") {
+                Picker("Output Language", selection: $settings.suggestionLanguage) {
+                    ForEach(SuggestionLanguage.allCases) { lang in
+                        Text(lang.displayName).tag(lang)
+                    }
+                }
+                .font(.system(size: 12))
+
+                Text("Controls the language of real-time suggestions and generated meeting notes. \"Match transcript\" auto-detects from the conversation.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
 
             Section("Privacy") {

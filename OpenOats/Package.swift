@@ -8,6 +8,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.7.9"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.7.0"),
+        .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.9.0"),
     ],
     targets: [
         .executableTarget(
@@ -15,6 +16,7 @@ let package = Package(
             dependencies: [
                 .product(name: "FluidAudio", package: "FluidAudio"),
                 .product(name: "Sparkle", package: "Sparkle"),
+                .product(name: "WhisperKit", package: "WhisperKit"),
             ],
             path: "Sources/OpenOats",
             exclude: ["Info.plist", "OpenOats.entitlements", "Assets"]

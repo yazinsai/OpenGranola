@@ -47,6 +47,8 @@ struct TranscriptView: View {
 private struct UtteranceBubble: View {
     let utterance: Utterance
 
+    private var textIsRTL: Bool { utterance.text.isRTL }
+
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(utterance.speaker == .you ? "You" : "Them")
@@ -58,6 +60,9 @@ private struct UtteranceBubble: View {
                 .font(.system(size: 13))
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
+                .multilineTextAlignment(textIsRTL ? .trailing : .leading)
+                .environment(\.layoutDirection, textIsRTL ? .rightToLeft : .leftToRight)
+                .frame(maxWidth: .infinity, alignment: textIsRTL ? .trailing : .leading)
         }
     }
 }
@@ -65,6 +70,8 @@ private struct UtteranceBubble: View {
 private struct VolatileIndicator: View {
     let text: String
     let speaker: Speaker
+
+    private var textIsRTL: Bool { text.isRTL }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -77,13 +84,42 @@ private struct VolatileIndicator: View {
                 Text(text)
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(textIsRTL ? .trailing : .leading)
+                    .environment(\.layoutDirection, textIsRTL ? .rightToLeft : .leftToRight)
                 Circle()
                     .fill(speaker == .you ? Color.youColor : Color.themColor)
                     .frame(width: 4, height: 4)
                     .opacity(0.6)
             }
+            .frame(maxWidth: .infinity, alignment: textIsRTL ? .trailing : .leading)
         }
         .opacity(0.6)
+    }
+}
+
+// MARK: - RTL Detection
+
+extension String {
+    /// Returns true if the majority of the string's alphabetic characters are in RTL scripts (Hebrew, Arabic, etc.).
+    var isRTL: Bool {
+        var rtlCount = 0
+        var ltrCount = 0
+        for scalar in unicodeScalars {
+            let value = scalar.value
+            let isRTLChar = (0x0590...0x05FF).contains(value) ||
+                            (0xFB1D...0xFB4F).contains(value) ||
+                            (0x0600...0x06FF).contains(value) ||
+                            (0x0750...0x077F).contains(value) ||
+                            (0x08A0...0x08FF).contains(value) ||
+                            (0xFB50...0xFDFF).contains(value) ||
+                            (0xFE70...0xFEFF).contains(value)
+            if isRTLChar {
+                rtlCount += 1
+            } else if scalar.properties.isAlphabetic {
+                ltrCount += 1
+            }
+        }
+        return rtlCount > ltrCount && rtlCount > 0
     }
 }
 

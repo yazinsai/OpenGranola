@@ -1,13 +1,15 @@
 @preconcurrency import AVFoundation
 import FluidAudio
 import os
+import WhisperKit
 
 /// Consumes an audio buffer stream, detects speech via Silero VAD,
-/// and transcribes completed speech segments via Parakeet-TDT.
+/// and transcribes completed speech segments.
 final class StreamingTranscriber: @unchecked Sendable {
     private enum Backend: @unchecked Sendable {
         case parakeet(AsrManager)
         case qwen3(Qwen3AsrManager, Qwen3AsrConfig.Language?)
+        case whisper(WhisperKit, DecodingOptions)
     }
 
     private let backend: Backend
@@ -49,6 +51,22 @@ final class StreamingTranscriber: @unchecked Sendable {
         onFinal: @escaping @Sendable (String) -> Void
     ) {
         self.backend = .qwen3(qwen3Manager, qwenLanguage)
+        self.vadManager = vadManager
+        self.speaker = speaker
+        self.onPartial = onPartial
+        self.onFinal = onFinal
+    }
+
+    init(
+        whisperKit: WhisperKit,
+        language: TranscriptionLanguage,
+        vadManager: VadManager,
+        speaker: Speaker,
+        onPartial: @escaping @Sendable (String) -> Void,
+        onFinal: @escaping @Sendable (String) -> Void
+    ) {
+        let decodingOptions = DecodingOptions(language: language.whisperLanguageCode)
+        self.backend = .whisper(whisperKit, decodingOptions)
         self.vadManager = vadManager
         self.speaker = speaker
         self.onPartial = onPartial
@@ -172,6 +190,13 @@ final class StreamingTranscriber: @unchecked Sendable {
                     language: qwenLanguage,
                     maxNewTokens: 512
                 ).trimmingCharacters(in: .whitespacesAndNewlines)
+            case .whisper(let whisperKit, let decodingOptions):
+                let results = try await whisperKit.transcribe(
+                    audioArray: samples,
+                    decodeOptions: decodingOptions
+                )
+                guard let result = results.first else { return }
+                text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             guard !text.isEmpty else { return }
             log.info("[\(self.speaker.rawValue)] transcribed: \(text.prefix(80))")

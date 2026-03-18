@@ -170,11 +170,13 @@ final class SuggestionEngine {
             return false
         }
 
-        // Filler detection — skip mostly filler utterances
+        // Filler detection — skip mostly filler utterances (English + Hebrew)
         let fillerPatterns: Set<String> = [
             "yeah", "yes", "no", "ok", "okay", "right", "sure", "uh", "um",
             "hmm", "huh", "mhm", "like", "so", "well", "anyway", "basically",
-            "literally", "actually", "honestly", "totally", "exactly"
+            "literally", "actually", "honestly", "totally", "exactly",
+            "כן", "לא", "אוקיי", "בסדר", "נכון", "אה", "אמ", "בדיוק",
+            "אז", "נו", "יאללה", "טוב", "באמת", "ככה", "פשוט"
         ]
         let lowercaseWords = words.map { $0.lowercased().trimmingCharacters(in: .punctuationCharacters) }
         let fillerCount = lowercaseWords.filter { fillerPatterns.contains($0) }.count
@@ -196,10 +198,12 @@ final class SuggestionEngine {
     private func detectTrigger(for utterance: Utterance) -> SuggestionTrigger? {
         let text = utterance.text.lowercased()
 
-        // Question detection
+        // Question detection (English + Hebrew)
         if text.contains("?") || text.hasPrefix("what ") || text.hasPrefix("how ") ||
            text.hasPrefix("why ") || text.hasPrefix("should ") || text.hasPrefix("could ") ||
-           text.hasPrefix("would ") || text.hasPrefix("do you think") {
+           text.hasPrefix("would ") || text.hasPrefix("do you think") ||
+           text.hasPrefix("מה ") || text.hasPrefix("איך ") || text.hasPrefix("למה ") ||
+           text.hasPrefix("האם ") || text.contains("מה דעתך") {
             return SuggestionTrigger(
                 kind: .explicitQuestion,
                 utteranceID: utterance.id,
@@ -208,10 +212,12 @@ final class SuggestionEngine {
             )
         }
 
-        // Decision point
+        // Decision point (English + Hebrew)
         let decisionPhrases = ["should we", "let's go with", "i think we should",
                                "the decision is", "we need to decide", "which one",
-                               "option a or", "option b or", "pick between"]
+                               "option a or", "option b or", "pick between",
+                               "צריך להחליט", "בוא נלך על", "אני חושב שצריך",
+                               "ההחלטה היא", "איזה אופציה"]
         for phrase in decisionPhrases {
             if text.contains(phrase) {
                 return SuggestionTrigger(
@@ -223,9 +229,11 @@ final class SuggestionEngine {
             }
         }
 
-        // Disagreement / tension
+        // Disagreement / tension (English + Hebrew)
         let tensionPhrases = ["but ", "however", "i disagree", "that's not",
-                              "the problem is", "i'm not sure about", "on the other hand"]
+                              "the problem is", "i'm not sure about", "on the other hand",
+                              "אבל ", "לא מסכים", "זה לא", "הבעיה היא",
+                              "אני לא בטוח", "מצד שני"]
         for phrase in tensionPhrases {
             if text.contains(phrase) {
                 return SuggestionTrigger(
@@ -237,9 +245,11 @@ final class SuggestionEngine {
             }
         }
 
-        // Assumption / hypothesis
+        // Assumption / hypothesis (English + Hebrew)
         let assumptionPhrases = ["i think", "i assume", "i believe", "probably",
-                                  "maybe", "what if", "suppose"]
+                                  "maybe", "what if", "suppose",
+                                  "אני חושב", "אני מניח", "כנראה",
+                                  "אולי", "מה אם", "נניח"]
         for phrase in assumptionPhrases {
             if text.contains(phrase) {
                 return SuggestionTrigger(
@@ -469,6 +479,7 @@ final class SuggestionEngine {
             conversationText += "\(label): \(u.text)\n"
         }
 
+        let langNote = languageInstruction()
         let system = """
         You are a conversation state tracker for a real-time meeting assistant. \
         Update the meeting state based on new utterances. Output compact JSON only, no prose.
@@ -479,7 +490,7 @@ final class SuggestionEngine {
         - Prefer what "them" appears to want or optimize for
         - Keep all arrays short (max 3-4 items each)
         - Output only valid JSON matching this schema:
-        {"currentTopic":"string","shortSummary":"string","openQuestions":["string"],"activeTensions":["string"],"recentDecisions":["string"],"themGoals":["string"]}
+        {"currentTopic":"string","shortSummary":"string","openQuestions":["string"],"activeTensions":["string"],"recentDecisions":["string"],"themGoals":["string"]}\(langNote)
         """
 
         let user = """
@@ -521,6 +532,7 @@ final class SuggestionEngine {
 
         let recentAngles = state.suggestedAnglesRecentlyShown.joined(separator: "; ")
 
+        let langNote = languageInstruction()
         let system = """
         You are a surfacing gate for a real-time meeting copilot. Your job is to decide \
         whether to show a suggestion RIGHT NOW. Optimize aggressively for abstention.
@@ -537,7 +549,7 @@ final class SuggestionEngine {
         Output only valid JSON matching this schema:
         {"shouldSurface":bool,"confidence":float,"relevanceScore":float,"helpfulnessScore":float,"timingScore":float,"noveltyScore":float,"reason":"string","trigger":{"kind":"string","excerpt":"string","confidence":float}}
 
-        All scores are 0.0-1.0. Set shouldSurface=true ONLY when ALL scores clear threshold.
+        All scores are 0.0-1.0. Set shouldSurface=true ONLY when ALL scores clear threshold.\(langNote)
         """
 
         let user = """
@@ -580,6 +592,7 @@ final class SuggestionEngine {
             evidenceText += "[\(header)]:\n\(result.text)\n\n"
         }
 
+        let langNote = languageInstruction()
         let system = """
         You are a real-time meeting copilot generating ONE suggestion for the user. \
         The surfacing gate has already approved this moment. Generate a concise, \
@@ -595,7 +608,7 @@ final class SuggestionEngine {
         - Prefer a suggested question, reframing, or caution the user can use immediately
 
         Output only valid JSON:
-        {"headline":"string (≤10 words)","coachingLine":"string (one sentence, actionable)","evidenceLine":"string (source reference or key quote)"}
+        {"headline":"string (≤10 words)","coachingLine":"string (one sentence, actionable)","evidenceLine":"string (source reference or key quote)"}\(langNote)
         """
 
         let user = """
@@ -616,6 +629,32 @@ final class SuggestionEngine {
             .init(role: "system", content: system),
             .init(role: "user", content: user)
         ]
+    }
+
+    // MARK: - Language Awareness
+
+    /// Returns a prompt instruction fragment for the LLM based on the suggestion language setting.
+    /// When set to "Match transcript", auto-detects from recent utterances.
+    private func languageInstruction() -> String {
+        switch settings.suggestionLanguage {
+        case .en:
+            return "\nIMPORTANT: Always respond in English, regardless of the conversation language."
+        case .he:
+            return "\nIMPORTANT: Always respond in Hebrew (עברית)."
+        case .matchTranscript:
+            let recentTexts = transcriptStore.recentUtterances.map(\.text)
+            let rtlCount = recentTexts.filter(\.isRTL).count
+            let total = recentTexts.count
+            guard total > 0 else { return "" }
+
+            let rtlRatio = Double(rtlCount) / Double(total)
+            if rtlRatio > 0.6 {
+                return "\nIMPORTANT: The conversation is primarily in Hebrew. Respond in Hebrew."
+            } else if rtlRatio > 0.2 {
+                return "\nIMPORTANT: The conversation is mixed Hebrew and English. Respond in the dominant language of each exchange — use Hebrew for Hebrew segments and English for English segments."
+            }
+            return ""
+        }
     }
 
     // MARK: - Helpers

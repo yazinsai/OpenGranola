@@ -3,6 +3,7 @@ import CoreAudio
 import FluidAudio
 import Observation
 import os
+import WhisperKit
 
 /// Simple file logger for diagnostics — writes to /tmp/openoats.log
 func diagLog(_ msg: String) {
@@ -47,6 +48,9 @@ final class TranscriptionEngine {
     private var qwen3Manager: Qwen3AsrManager?
     private var vadManager: VadManager?
     private var currentTranscriptionModel: TranscriptionModel?
+
+    /// WhisperKit instance (Whisper backend)
+    private var whisperKit: WhisperKit?
 
     /// Tracks the resolved mic device ID currently in use.
     private var currentMicDeviceID: AudioDeviceID = 0
@@ -116,6 +120,13 @@ final class TranscriptionEngine {
                 try await qwen3.loadModels(from: modelsDirectory)
                 self.qwen3Manager = qwen3
                 self.asrManager = nil
+                self.whisperKit = nil
+            case .whisperLargeV3Turbo:
+                let config = WhisperKitConfig(model: "large-v3-turbo", verbose: false)
+                let wk = try await WhisperKit(config)
+                self.whisperKit = wk
+                self.asrManager = nil
+                self.qwen3Manager = nil
             }
 
             assetStatus = "Loading VAD model..."
@@ -441,6 +452,18 @@ final class TranscriptionEngine {
                 onPartial: onPartial,
                 onFinal: onFinal
             )
+        case .whisperLargeV3Turbo:
+            guard let whisperKit else {
+                fatalError("WhisperKit not initialized for Whisper backend")
+            }
+            return StreamingTranscriber(
+                whisperKit: whisperKit,
+                language: settings.transcriptionLanguage,
+                vadManager: vadManager,
+                speaker: speaker,
+                onPartial: onPartial,
+                onFinal: onFinal
+            )
         }
     }
 
@@ -475,6 +498,10 @@ final class TranscriptionEngine {
             )
         case .qwen3ASR06B:
             return !Qwen3AsrModels.modelsExist(at: Qwen3AsrModels.defaultCacheDirectory())
+        case .whisperLargeV3Turbo:
+            // WhisperKit handles model download internally during init.
+            // Conservatively assume download may be needed on first use.
+            return true
         }
     }
 

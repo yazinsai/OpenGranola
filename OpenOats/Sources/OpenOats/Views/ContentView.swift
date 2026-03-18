@@ -393,7 +393,9 @@ struct ContentView: View {
         let timeFmt = DateFormatter()
         timeFmt.dateFormat = "HH:mm:ss"
         let lines = transcriptStore.utterances.map { u in
-            "[\(timeFmt.string(from: u.timestamp))] \(u.speaker == .you ? "You" : "Them"): \(u.text)"
+            let prefix = "[\(timeFmt.string(from: u.timestamp))] \(u.speaker == .you ? "You" : "Them"): "
+            let body = u.text.isRTL ? "\u{202B}\(u.text)\u{202C}" : u.text
+            return prefix + body
         }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)

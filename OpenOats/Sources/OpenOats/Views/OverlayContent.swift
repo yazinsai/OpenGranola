@@ -22,11 +22,15 @@ struct OverlayContent: View {
 
             // Current "them" speech
             if !volatileThemText.isEmpty {
+                let isRTL = volatileThemText.isRTL
                 Text(volatileThemText)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .opacity(0.7)
                     .lineLimit(2)
+                    .multilineTextAlignment(isRTL ? .trailing : .leading)
+                    .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
+                    .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
             }
 
             // Most recent suggestion
