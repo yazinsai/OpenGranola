@@ -88,6 +88,20 @@ enum EmbeddingProvider: String, CaseIterable, Identifiable {
     }
 }
 
+enum AttendeeAudioSource: String, CaseIterable, Identifiable {
+    case systemAudio
+    case inputDevice
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .systemAudio: "System Audio"
+        case .inputDevice: "Input Device"
+        }
+    }
+}
+
 @Observable
 @MainActor
 final class AppSettings {
@@ -114,6 +128,15 @@ final class AppSettings {
     /// Stored as the AudioDeviceID integer. 0 means "use system default".
     var inputDeviceID: AudioDeviceID {
         didSet { UserDefaults.standard.set(Int(inputDeviceID), forKey: "inputDeviceID") }
+    }
+
+    var attendeeAudioSource: AttendeeAudioSource {
+        didSet { UserDefaults.standard.set(attendeeAudioSource.rawValue, forKey: "attendeeAudioSource") }
+    }
+
+    /// Stored as the AudioDeviceID integer. 0 means "use system default".
+    var attendeeInputDeviceID: AudioDeviceID {
+        didSet { UserDefaults.standard.set(Int(attendeeInputDeviceID), forKey: "attendeeInputDeviceID") }
     }
 
     var openRouterApiKey: String {
@@ -187,6 +210,10 @@ final class AppSettings {
             rawValue: defaults.string(forKey: "transcriptionModel") ?? ""
         ) ?? .parakeetV2
         self.inputDeviceID = AudioDeviceID(defaults.integer(forKey: "inputDeviceID"))
+        self.attendeeAudioSource = AttendeeAudioSource(
+            rawValue: defaults.string(forKey: "attendeeAudioSource") ?? ""
+        ) ?? .systemAudio
+        self.attendeeInputDeviceID = AudioDeviceID(defaults.integer(forKey: "attendeeInputDeviceID"))
         self.openRouterApiKey = KeychainHelper.load(key: "openRouterApiKey") ?? ""
         self.voyageApiKey = KeychainHelper.load(key: "voyageApiKey") ?? ""
         self.llmProvider = LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "") ?? .openRouter
@@ -225,6 +252,7 @@ final class AppSettings {
 
         let keysToMigrate = [
             "kbFolderPath", "selectedModel", "transcriptionLocale", "transcriptionModel", "inputDeviceID",
+            "attendeeAudioSource", "attendeeInputDeviceID",
             "llmProvider", "embeddingProvider", "ollamaBaseURL", "ollamaLLMModel",
             "ollamaEmbedModel", "hideFromScreenShare",
             "isTranscriptExpanded", "hasCompletedOnboarding"
@@ -261,6 +289,7 @@ final class AppSettings {
 
         let keysToMigrate = [
             "kbFolderPath", "selectedModel", "transcriptionLocale", "transcriptionModel", "inputDeviceID",
+            "attendeeAudioSource", "attendeeInputDeviceID",
             "llmProvider", "embeddingProvider", "ollamaBaseURL", "ollamaLLMModel",
             "ollamaEmbedModel", "hideFromScreenShare",
             "isTranscriptExpanded", "hasCompletedOnboarding",

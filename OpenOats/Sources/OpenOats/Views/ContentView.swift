@@ -18,6 +18,62 @@ struct ContentView: View {
     @State private var audioLevel: Float = 0
 
     var body: some View {
+        rootContent
+            .frame(minWidth: 360, maxWidth: 600, minHeight: 400)
+            .background(.ultraThinMaterial)
+            .overlay { overlayContent }
+            .onChange(of: showOnboarding, initial: false) { _, isVisible in
+                if !isVisible {
+                    hasCompletedOnboarding = true
+                }
+            }
+            .onChange(of: showConsentSheet, initial: false) { _, isVisible in
+                // Auto-start session after consent is acknowledged
+                if !isVisible && settings.hasAcknowledgedRecordingConsent && !isRunning {
+                    startSession()
+                }
+            }
+            .task { await initializeIfNeeded() }
+            .onChange(of: settings.kbFolderPath, initial: false) { _, newValue in
+                if newValue.isEmpty {
+                    knowledgeBase?.clear()
+                } else {
+                    indexKBIfNeeded()
+                }
+            }
+            .onChange(of: settings.notesFolderPath, initial: false) { _, newValue in
+                handleNotesFolderChange(newValue)
+            }
+            .onChange(of: settings.voyageApiKey, initial: false) { _, _ in
+                indexKBIfNeeded()
+            }
+            .onChange(of: settings.transcriptionModel, initial: false) { _, _ in
+                transcriptionEngine?.refreshModelAvailability()
+            }
+            .onChange(of: settings.inputDeviceID, initial: false) { _, newValue in
+                if isRunning {
+                    transcriptionEngine?.restartMic(inputDeviceID: newValue)
+                }
+            }
+            .onChange(of: settings.attendeeAudioSource, initial: false) { _, _ in
+                handleAttendeeRoutingChange()
+            }
+            .onChange(of: settings.attendeeInputDeviceID, initial: false) { _, _ in
+                handleAttendeeRoutingChange()
+            }
+            .onChange(of: transcriptStore.utterances.count, initial: false) { _, _ in
+                handleNewUtterance()
+            }
+            .onKeyPress(.escape) {
+                overlayManager.hide()
+                return .handled
+            }
+            .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
+                updateAudioLevel()
+            }
+    }
+
+    private var rootContent: some View {
         VStack(spacing: 0) {
             // Compact header
             topBar
@@ -107,96 +163,20 @@ struct ContentView: View {
                 onConfirmDownload: confirmDownloadAndStart
             )
         }
-        .frame(minWidth: 360, maxWidth: 600, minHeight: 400)
-        .background(.ultraThinMaterial)
-        .overlay {
-            if showOnboarding {
-                OnboardingView(isPresented: $showOnboarding)
-                    .transition(.opacity)
-            }
-            if showConsentSheet {
-                RecordingConsentView(
-                    isPresented: $showConsentSheet,
-                    settings: settings
-                )
+    }
+
+    @ViewBuilder
+    private var overlayContent: some View {
+        if showOnboarding {
+            OnboardingView(isPresented: $showOnboarding)
                 .transition(.opacity)
-            }
         }
-        .onChange(of: showOnboarding) {
-            if !showOnboarding {
-                hasCompletedOnboarding = true
-            }
-        }
-        .onChange(of: showConsentSheet) {
-            // Auto-start session after consent is acknowledged
-            if !showConsentSheet && settings.hasAcknowledgedRecordingConsent && !isRunning {
-                startSession()
-            }
-        }
-        .task {
-            if !hasCompletedOnboarding {
-                showOnboarding = true
-            }
-            if knowledgeBase == nil {
-                let kb = KnowledgeBase(settings: settings)
-                knowledgeBase = kb
-                transcriptionEngine = TranscriptionEngine(
-                    transcriptStore: transcriptStore,
-                    settings: settings
-                )
-                suggestionEngine = SuggestionEngine(
-                    transcriptStore: transcriptStore,
-                    knowledgeBase: kb,
-                    settings: settings
-                )
-                transcriptLogger = TranscriptLogger(
-                    directory: URL(fileURLWithPath: settings.notesFolderPath)
-                )
-            }
-            indexKBIfNeeded()
-        }
-        .onChange(of: settings.kbFolderPath) {
-            if settings.kbFolderPath.isEmpty {
-                knowledgeBase?.clear()
-            } else {
-                indexKBIfNeeded()
-            }
-        }
-        .onChange(of: settings.notesFolderPath) {
-            Task {
-                await transcriptLogger?.updateDirectory(
-                    URL(fileURLWithPath: settings.notesFolderPath)
-                )
-            }
-        }
-        .onChange(of: settings.voyageApiKey) {
-            indexKBIfNeeded()
-        }
-        .onChange(of: settings.transcriptionModel) {
-            transcriptionEngine?.refreshModelAvailability()
-        }
-        .onChange(of: settings.inputDeviceID) {
-            if isRunning {
-                transcriptionEngine?.restartMic(inputDeviceID: settings.inputDeviceID)
-            }
-        }
-        .onChange(of: transcriptStore.utterances.count) {
-            handleNewUtterance()
-        }
-        .onKeyPress(.escape) {
-            overlayManager.hide()
-            return .handled
-        }
-        .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
-            guard let engine = transcriptionEngine else {
-                if audioLevel != 0 { audioLevel = 0 }
-                return
-            }
-            if engine.isRunning {
-                audioLevel = engine.audioLevel
-            } else if audioLevel != 0 {
-                audioLevel = 0
-            }
+        if showConsentSheet {
+            RecordingConsentView(
+                isPresented: $showConsentSheet,
+                settings: settings
+            )
+            .transition(.opacity)
         }
     }
 
@@ -329,6 +309,60 @@ struct ContentView: View {
         startSession()
     }
 
+    private func initializeIfNeeded() async {
+        if !hasCompletedOnboarding {
+            showOnboarding = true
+        }
+        if knowledgeBase == nil {
+            let kb = KnowledgeBase(settings: settings)
+            knowledgeBase = kb
+            transcriptionEngine = TranscriptionEngine(
+                transcriptStore: transcriptStore,
+                settings: settings
+            )
+            suggestionEngine = SuggestionEngine(
+                transcriptStore: transcriptStore,
+                knowledgeBase: kb,
+                settings: settings
+            )
+            transcriptLogger = TranscriptLogger(
+                directory: URL(fileURLWithPath: settings.notesFolderPath)
+            )
+        }
+        indexKBIfNeeded()
+    }
+
+    private func handleNotesFolderChange(_ path: String) {
+        Task {
+            await transcriptLogger?.updateDirectory(
+                URL(fileURLWithPath: path)
+            )
+        }
+    }
+
+    private func handleAttendeeRoutingChange() {
+        guard isRunning else { return }
+        guard settings.attendeeAudioSource == .systemAudio || settings.attendeeAudioSource == .inputDevice else {
+            return
+        }
+        transcriptionEngine?.restartAttendeeCapture(
+            source: settings.attendeeAudioSource,
+            inputDeviceID: settings.attendeeInputDeviceID
+        )
+    }
+
+    private func updateAudioLevel() {
+        guard let engine = transcriptionEngine else {
+            if audioLevel != 0 { audioLevel = 0 }
+            return
+        }
+        if engine.isRunning {
+            audioLevel = engine.audioLevel
+        } else if audioLevel != 0 {
+            audioLevel = 0
+        }
+    }
+
     private func startSession() {
         // Gate recording behind consent acknowledgment
         guard settings.hasAcknowledgedRecordingConsent else {
@@ -345,6 +379,8 @@ struct ContentView: View {
             await transcriptionEngine?.start(
                 locale: settings.locale,
                 inputDeviceID: settings.inputDeviceID,
+                attendeeAudioSource: settings.attendeeAudioSource,
+                attendeeInputDeviceID: settings.attendeeInputDeviceID,
                 transcriptionModel: settings.transcriptionModel
             )
         }

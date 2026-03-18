@@ -120,14 +120,39 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Audio Input") {
-                Picker("Microphone", selection: $settings.inputDeviceID) {
+            Section("Audio Routing") {
+                Text("Choose which source should count as you and which source should count as the rest of the meeting.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                Picker("Your microphone", selection: $settings.inputDeviceID) {
                     Text("System Default").tag(AudioDeviceID(0))
                     ForEach(inputDevices, id: \.id) { device in
                         Text(device.name).tag(device.id)
                     }
                 }
                 .font(.system(size: 12))
+
+                Picker("Meeting attendees", selection: $settings.attendeeAudioSource) {
+                    ForEach(AttendeeAudioSource.allCases) { source in
+                        Text(source.displayName).tag(source)
+                    }
+                }
+                .font(.system(size: 12))
+
+                if settings.attendeeAudioSource == .inputDevice {
+                    Picker("Attendee input", selection: $settings.attendeeInputDeviceID) {
+                        Text("System Default").tag(AudioDeviceID(0))
+                        ForEach(inputDevices, id: \.id) { device in
+                            Text(device.name).tag(device.id)
+                        }
+                    }
+                    .font(.system(size: 12))
+
+                    Text("Use this when the other side of the meeting is coming from a second microphone or headset instead of macOS system audio.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Transcription") {
