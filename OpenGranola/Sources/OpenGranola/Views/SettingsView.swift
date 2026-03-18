@@ -15,6 +15,10 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Knowledge Base") {
+                Text("Point this to a folder of notes, docs, or reference material (.md, .txt). During meetings, OpenGranola searches this folder to surface relevant context and talking points.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
                 HStack {
                     Text(settings.kbFolderPath.isEmpty ? "No folder selected" : settings.kbFolderPath)
                         .font(.system(size: 12))

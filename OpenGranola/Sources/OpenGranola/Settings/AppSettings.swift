@@ -90,10 +90,14 @@ final class AppSettings {
 
     init() {
         let defaults = UserDefaults.standard
+
+        // One-time migration from old "On The Spot" bundle ID
+        Self.migrateFromOldBundleIfNeeded(defaults: defaults)
+
         let defaultKBPath = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Documents/OpenGranola").path
         self.kbFolderPath = defaults.string(forKey: "kbFolderPath") ?? defaultKBPath
-        self.selectedModel = defaults.string(forKey: "selectedModel") ?? "anthropic/claude-sonnet-4"
+        self.selectedModel = defaults.string(forKey: "selectedModel") ?? "google/gemini-3-flash-preview"
         self.transcriptionLocale = defaults.string(forKey: "transcriptionLocale") ?? "en-US"
         self.inputDeviceID = AudioDeviceID(defaults.integer(forKey: "inputDeviceID"))
         self.openRouterApiKey = KeychainHelper.load(key: "openRouterApiKey") ?? ""
@@ -117,6 +121,54 @@ final class AppSettings {
                 withIntermediateDirectories: true
             )
         }
+    }
+
+    /// Migrate settings from the old "On The Spot" (com.onthespot.app) bundle.
+    /// Copies UserDefaults and Keychain entries to the current bundle, then marks migration as done.
+    private static func migrateFromOldBundleIfNeeded(defaults: UserDefaults) {
+        let migrationKey = "didMigrateFromOnTheSpot"
+        guard !defaults.bool(forKey: migrationKey) else { return }
+        defer { defaults.set(true, forKey: migrationKey) }
+
+        // Migrate UserDefaults from old bundle
+        guard let oldDefaults = UserDefaults(suiteName: "com.onthespot.app") else { return }
+
+        let keysToMigrate = [
+            "kbFolderPath", "selectedModel", "transcriptionLocale", "inputDeviceID",
+            "llmProvider", "embeddingProvider", "ollamaBaseURL", "ollamaLLMModel",
+            "ollamaEmbedModel", "hideFromScreenShare",
+            "isTranscriptExpanded", "hasCompletedOnboarding"
+        ]
+        for key in keysToMigrate {
+            if let value = oldDefaults.object(forKey: key), defaults.object(forKey: key) == nil {
+                defaults.set(value, forKey: key)
+            }
+        }
+
+        // Migrate Keychain entries from old service
+        let oldService = "com.onthespot.app"
+        let keychainKeys = ["openRouterApiKey", "voyageApiKey"]
+        for key in keychainKeys {
+            if KeychainHelper.load(key: key) == nil,
+               let oldValue = Self.loadKeychain(service: oldService, key: key) {
+                KeychainHelper.save(key: key, value: oldValue)
+            }
+        }
+    }
+
+    /// Read a keychain entry from a specific service (used for migration only).
+    private static func loadKeychain(service: String, key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     /// Apply current screen-share visibility to all app windows.
