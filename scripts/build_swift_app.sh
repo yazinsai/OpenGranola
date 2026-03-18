@@ -15,9 +15,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT_DIR="$(pwd)"
-SWIFT_DIR="$ROOT_DIR/OpenGranola"
+SWIFT_DIR="$ROOT_DIR/OpenOats"
 APP_NAME="OpenOats"
-BUNDLE_ID="com.openoats.app"
+BUNDLE_ID="com.opengranola.app"
 
 echo "=== Building $APP_NAME (Swift) ==="
 
@@ -52,10 +52,10 @@ if ! otool -l "$APP_BINARY" | grep -Fq "@executable_path/../Frameworks"; then
 fi
 
 # Copy Info.plist
-cp "$SWIFT_DIR/Sources/OpenGranola/Info.plist" "$APP_DIR/Contents/Info.plist"
+cp "$SWIFT_DIR/Sources/OpenOats/Info.plist" "$APP_DIR/Contents/Info.plist"
 
 # Copy app icon
-ICON_PATH="$SWIFT_DIR/Sources/OpenGranola/Assets/AppIcon.icns"
+ICON_PATH="$SWIFT_DIR/Sources/OpenOats/Assets/AppIcon.icns"
 if [[ -f "$ICON_PATH" ]]; then
   cp "$ICON_PATH" "$APP_DIR/Contents/Resources/AppIcon.icns"
   echo "App icon copied"
@@ -86,7 +86,7 @@ fi
 
 # Sign the app
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
-  ENTITLEMENTS="$SWIFT_DIR/Sources/OpenGranola/OpenGranola.entitlements"
+  ENTITLEMENTS="$SWIFT_DIR/Sources/OpenOats/OpenOats.entitlements"
   echo "Signing with: $CODESIGN_IDENTITY"
 
   # Sign Sparkle components inside-out (innermost first)

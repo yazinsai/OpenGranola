@@ -96,7 +96,7 @@ Works well with meeting prep docs, research notes, pitch decks, competitive anal
 ./scripts/build_swift_app.sh
 
 # Dev build only
-cd OpenGranola && swift build -c debug
+cd OpenOats && swift build -c debug
 
 # Package DMG
 ./scripts/make_dmg.sh
@@ -107,7 +107,7 @@ Optional env vars for code signing and notarization: `CODESIGN_IDENTITY`, `APPLE
 ## Repo layout
 
 ```
-OpenGranola/          SwiftUI app (Swift Package)
+OpenOats/             SwiftUI app (Swift Package)
 scripts/              Build, sign, and package scripts
 assets/               Screenshot and app icon source
 ```

@@ -5,7 +5,7 @@ dist/
 *.spec
 .worktrees/
 .beads/
-OpenGranola/.build/
+OpenOats/.build/
 data/
 CLAUDE.md
 AGENTS.md

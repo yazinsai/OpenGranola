@@ -16,8 +16,8 @@ let package = Package(
                 .product(name: "FluidAudio", package: "FluidAudio"),
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
-            path: "Sources/OpenGranola",
-            exclude: ["Info.plist", "OpenGranola.entitlements", "Assets"]
+            path: "Sources/OpenOats",
+            exclude: ["Info.plist", "OpenOats.entitlements", "Assets"]
         ),
     ]
 )

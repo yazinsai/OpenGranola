@@ -7,7 +7,7 @@
     <key>CFBundleDisplayName</key>
     <string>OpenOats</string>
     <key>CFBundleIdentifier</key>
-    <string>com.openoats.app</string>
+    <string>com.opengranola.app</string>
     <key>CFBundleVersion</key>
     <string>2.0.0</string>
     <key>CFBundleShortVersionString</key>
