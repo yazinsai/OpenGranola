@@ -13,6 +13,8 @@
 
 OpenOats sits next to your call, transcribes both sides of the conversation in real time, and searches your own notes to surface talking points right when you need them.
 
+For first-time setup with LM Studio, start here: [LM Studio Setup Guide](docs/lm-studio-setup.md)
+
 <p align="center">
   <img src="assets/screenshot.png" width="360" alt="OpenOats during a call — suggestions drawn from your own notes appear at the top, live transcript below" />
 </p>
@@ -98,6 +100,8 @@ The installers are output to `OpenOatsTauri/src-tauri/target/release/bundle/`.
 ---
 
 ## Quick start
+
+New here? Read the [LM Studio Setup Guide](docs/lm-studio-setup.md) before launching the app if you want a fully local setup.
 
 1. Open the app and grant microphone permissions
 2. Open Settings (`Cmd+,` or `Ctrl+,`) and pick your providers:
