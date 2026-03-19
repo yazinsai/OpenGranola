@@ -199,14 +199,39 @@ final class StreamingTranscriber: @unchecked Sendable {
             }
         }
 
+        // Downmix multi-channel to mono before resampling
+        // (AVAudioConverter mishandles deinterleaved multi-channel input)
+        var inputBuffer = buffer
+        if sourceFormat.channelCount > 1, let src = buffer.floatChannelData {
+            let monoFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: sourceFormat.sampleRate,
+                channels: 1,
+                interleaved: false
+            )!
+            if let monoBuf = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: buffer.frameCapacity),
+               let dst = monoBuf.floatChannelData?[0] {
+                monoBuf.frameLength = buffer.frameLength
+                let channels = Int(sourceFormat.channelCount)
+                let scale = 1.0 / Float(channels)
+                for i in 0..<frameLength {
+                    var sum: Float = 0
+                    for ch in 0..<channels { sum += src[ch][i] }
+                    dst[i] = sum * scale
+                }
+                inputBuffer = monoBuf
+            }
+        }
+
         // Slow path: need to resample via AVAudioConverter
-        if converter == nil || converter?.inputFormat != sourceFormat {
-            converter = AVAudioConverter(from: sourceFormat, to: targetFormat)
+        let inputFormat = inputBuffer.format
+        if converter == nil || converter?.inputFormat != inputFormat {
+            converter = AVAudioConverter(from: inputFormat, to: targetFormat)
         }
         guard let converter else { return nil }
 
-        let ratio = targetFormat.sampleRate / sourceFormat.sampleRate
-        let outputFrames = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+        let ratio = targetFormat.sampleRate / inputFormat.sampleRate
+        let outputFrames = AVAudioFrameCount(Double(inputBuffer.frameLength) * ratio)
         guard outputFrames > 0 else { return nil }
 
         guard let outputBuffer = AVAudioPCMBuffer(
@@ -223,7 +248,7 @@ final class StreamingTranscriber: @unchecked Sendable {
             }
             consumed = true
             outStatus.pointee = .haveData
-            return buffer
+            return inputBuffer
         }
 
         if let error {
