@@ -161,6 +161,11 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(hasAcknowledgedRecordingConsent, forKey: "hasAcknowledgedRecordingConsent") }
     }
 
+    /// When false, the live transcript panel is hidden during recording to save resources.
+    var showLiveTranscript: Bool {
+        didSet { UserDefaults.standard.set(showLiveTranscript, forKey: "showLiveTranscript") }
+    }
+
     /// When true, all app windows are invisible to screen sharing / recording.
     var hideFromScreenShare: Bool {
         didSet {
@@ -198,6 +203,13 @@ final class AppSettings {
         self.openAIEmbedApiKey = KeychainHelper.load(key: "openAIEmbedApiKey") ?? ""
         self.openAIEmbedModel = defaults.string(forKey: "openAIEmbedModel") ?? "text-embedding-3-small"
         self.hasAcknowledgedRecordingConsent = defaults.bool(forKey: "hasAcknowledgedRecordingConsent")
+
+        // Default to true (shown) if key has never been set
+        if defaults.object(forKey: "showLiveTranscript") == nil {
+            self.showLiveTranscript = true
+        } else {
+            self.showLiveTranscript = defaults.bool(forKey: "showLiveTranscript")
+        }
 
         // Default to true (hidden) if key has never been set
         if defaults.object(forKey: "hideFromScreenShare") == nil {

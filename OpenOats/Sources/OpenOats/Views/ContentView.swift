@@ -58,39 +58,41 @@ struct ContentView: View {
 
             Divider()
 
-            // Collapsible transcript
-            DisclosureGroup(isExpanded: $isTranscriptExpanded) {
-                TranscriptView(
-                    utterances: transcriptStore.utterances,
-                    volatileYouText: transcriptStore.volatileYouText,
-                    volatileThemText: transcriptStore.volatileThemText
-                )
-                .frame(height: 150)
-            } label: {
-                HStack(spacing: 6) {
-                    Text("Transcript")
-                        .font(.system(size: 12, weight: .medium))
-                    if !transcriptStore.utterances.isEmpty {
-                        Text("(\(transcriptStore.utterances.count))")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
-                    }
-                    Spacer()
-                    if isTranscriptExpanded && !transcriptStore.utterances.isEmpty {
-                        Button {
-                            copyTranscript()
-                        } label: {
-                            Image(systemName: "doc.on.doc")
+            // Collapsible transcript (hidden when live transcript is disabled)
+            if settings.showLiveTranscript {
+                DisclosureGroup(isExpanded: $isTranscriptExpanded) {
+                    TranscriptView(
+                        utterances: transcriptStore.utterances,
+                        volatileYouText: transcriptStore.volatileYouText,
+                        volatileThemText: transcriptStore.volatileThemText
+                    )
+                    .frame(height: 150)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Transcript")
+                            .font(.system(size: 12, weight: .medium))
+                        if !transcriptStore.utterances.isEmpty {
+                            Text("(\(transcriptStore.utterances.count))")
                                 .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.tertiary)
                         }
-                        .buttonStyle(.plain)
-                        .help("Copy transcript")
+                        Spacer()
+                        if isTranscriptExpanded && !transcriptStore.utterances.isEmpty {
+                            Button {
+                                copyTranscript()
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Copy transcript")
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
 
             Divider()
 
