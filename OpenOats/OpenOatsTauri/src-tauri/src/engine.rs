@@ -13,7 +13,7 @@ use openoats_core::{
     keychain,
     models::{MeetingTemplate, SessionRecord, Speaker},
     settings::AppSettings,
-    storage::{session_store::SessionStore, transcript_logger::TranscriptLogger},
+    storage::{session_store::SessionStore, template_store::TemplateStore, transcript_logger::TranscriptLogger},
     transcription::streaming_transcriber::StreamingTranscriber,
 };
 use serde::Serialize;
@@ -60,6 +60,7 @@ pub struct SuggestionPayload {
 pub struct AppState {
     pub settings: Mutex<AppSettings>,
     pub session_store: Mutex<SessionStore>,
+    pub template_store: Mutex<TemplateStore>,
     pub transcript_logger: Mutex<TranscriptLogger>,
     pub knowledge_base: AsyncMutex<KnowledgeBase>,
     pub suggestion_engine: AsyncMutex<SuggestionEngine>,
@@ -83,6 +84,7 @@ impl AppState {
             knowledge_base: AsyncMutex::new(KnowledgeBase::new(kb_cache, kb_fingerprint)),
             suggestion_engine: AsyncMutex::new(SuggestionEngine::new()),
             session_store: Mutex::new(SessionStore::with_default_path()),
+            template_store: Mutex::new(TemplateStore::load()),
             transcript_logger: Mutex::new(TranscriptLogger::with_default_path()),
             settings: Mutex::new(settings),
             audio_task: Mutex::new(None),
@@ -641,6 +643,35 @@ pub async fn choose_folder(app: AppHandle) -> Option<String> {
     .await
     .ok()
     .flatten()
+}
+
+#[tauri::command]
+pub fn list_templates(state: tauri::State<'_, Arc<AppState>>) -> Vec<MeetingTemplate> {
+    state.template_store.lock().unwrap().templates().to_vec()
+}
+
+#[tauri::command]
+pub fn save_template(
+    template: MeetingTemplate,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let mut store = state.template_store.lock().unwrap();
+    if store.get(template.id).is_some() {
+        store.update(template);
+    } else {
+        store.add(template);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_template(
+    id: String,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let uuid = uuid::Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    state.template_store.lock().unwrap().delete(uuid);
+    Ok(())
 }
 
 #[cfg(test)]

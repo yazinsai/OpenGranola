@@ -30,6 +30,9 @@ pub fn run() {
             engine::hide_overlay,
             engine::set_content_protection,
             engine::choose_folder,
+            engine::list_templates,
+            engine::save_template,
+            engine::delete_template,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
