@@ -127,20 +127,18 @@ export function ControlBar({
     };
   }, [isRunning]);
 
-  // Simulate audio level when running (in real app, this would come from backend)
   useEffect(() => {
-    if (!isRunning) {
-      setAudioLevel(0);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      // Simulate varying audio levels
-      const simulatedLevel = Math.random() * 0.8 + 0.1;
-      setAudioLevel(simulatedLevel);
-    }, 100);
-
-    return () => clearInterval(interval);
+    import("@tauri-apps/api/event").then(({ listen }) => {
+      let unlisten: (() => void) | null = null;
+      if (isRunning) {
+        listen<{ you: number; them: number }>("audio-level", (e) => {
+          setAudioLevel(e.payload.you);
+        }).then((f) => { unlisten = f; });
+      } else {
+        setAudioLevel(0);
+      }
+      return () => { unlisten?.(); };
+    });
   }, [isRunning]);
 
   const handleDeviceChange = async (device: string) => {

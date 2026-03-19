@@ -19,6 +19,7 @@ use openoats_core::{
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU32, Ordering};
 use tokio::sync::Mutex as AsyncMutex;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
@@ -40,6 +41,12 @@ pub struct ApiKeysPayload {
     pub open_ai_embed_api_key: String,
 }
 
+#[derive(Clone, Serialize)]
+pub struct AudioLevelPayload {
+    pub you: f32,
+    pub them: f32,
+}
+
 // ── AppState ────────────────────────────────────────────────────────────────
 
 pub struct AppState {
@@ -50,6 +57,8 @@ pub struct AppState {
     pub suggestion_engine: Mutex<SuggestionEngine>,
     pub audio_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
     pub is_running: Mutex<bool>,
+    pub mic_level: Arc<AtomicU32>,
+    pub sys_level: Arc<AtomicU32>,
 }
 
 impl AppState {
@@ -69,6 +78,8 @@ impl AppState {
             settings: Mutex::new(settings),
             audio_task: Mutex::new(None),
             is_running: Mutex::new(false),
+            mic_level: Arc::new(AtomicU32::new(0)),
+            sys_level: Arc::new(AtomicU32::new(0)),
         }
     }
 
@@ -128,6 +139,12 @@ fn normalize_openai_base_url(base_url: &str) -> String {
     } else {
         format!("{trimmed}/v1")
     }
+}
+
+fn compute_rms(samples: &[f32]) -> f32 {
+    if samples.is_empty() { return 0.0; }
+    let mean_sq = samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32;
+    mean_sq.sqrt().min(1.0)
 }
 
 // ── Tauri commands ───────────────────────────────────────────────────────────
@@ -231,6 +248,22 @@ pub fn start_transcription(
         .split('-').next().unwrap_or("en").to_string();
 
     let handle = tauri::async_runtime::spawn(async move {
+        // Audio level polling task — runs until is_running goes false
+        let app_lvl = app_clone.clone();
+        let ml = Arc::clone(&state_clone.mic_level);
+        let sl = Arc::clone(&state_clone.sys_level);
+        let running_flag = Arc::clone(&state_clone);
+        tauri::async_runtime::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
+            loop {
+                interval.tick().await;
+                if !*running_flag.is_running.lock().unwrap() { break; }
+                let you = f32::from_bits(ml.load(Ordering::Relaxed));
+                let them = f32::from_bits(sl.load(Ordering::Relaxed));
+                app_lvl.emit("audio-level", &AudioLevelPayload { you, them }).ok();
+            }
+        });
+
         // ── "Them" system audio (WASAPI loopback) ──────────────────────────
         let them_app = app_clone.clone();
         let them_state = Arc::clone(&state_clone);
@@ -246,6 +279,13 @@ pub fn start_transcription(
                     return;
                 }
             };
+            use futures::StreamExt;
+            let sys_level_w = Arc::clone(&them_state.sys_level);
+            let them_stream_leveled = them_stream.map(move |chunk: Vec<f32>| {
+                let rms = compute_rms(&chunk);
+                sys_level_w.store(rms.to_bits(), Ordering::Relaxed);
+                chunk
+            });
             let app_t = them_app.clone();
             let state_t = Arc::clone(&them_state);
             let on_them = move |text: String| {
@@ -264,12 +304,19 @@ pub fn start_transcription(
                 state_t.transcript_logger.lock().unwrap().append("Them", &text, chrono::Utc::now());
             };
             let transcriber = StreamingTranscriber::new(them_model, them_lang, Box::new(on_them));
-            transcriber.run(them_stream).await;
+            transcriber.run(them_stream_leveled).await;
         });
 
         // ── "You" mic capture ──────────────────────────────────────────────
         let mic = CpalMicCapture::new();
         let mic_stream = mic.buffer_stream_for_device(device_name.as_deref());
+        use futures::StreamExt;
+        let mic_level_w = Arc::clone(&state_clone.mic_level);
+        let mic_stream_leveled = mic_stream.map(move |chunk: Vec<f32>| {
+            let rms = compute_rms(&chunk);
+            mic_level_w.store(rms.to_bits(), Ordering::Relaxed);
+            chunk
+        });
         let app_y = app_clone.clone();
         let state_y = Arc::clone(&state_clone);
         let on_you = move |text: String| {
@@ -290,7 +337,7 @@ pub fn start_transcription(
 
         app_clone.emit("whisper-ready", ()).ok();
         let transcriber = StreamingTranscriber::new(model_str, language, Box::new(on_you));
-        transcriber.run(mic_stream).await;
+        transcriber.run(mic_stream_leveled).await;
     });
 
     *state.audio_task.lock().unwrap() = Some(handle);
@@ -305,6 +352,8 @@ pub fn stop_transcription(state: tauri::State<'_, Arc<AppState>>) -> Result<(), 
     state.session_store.lock().unwrap().end_session();
     state.transcript_logger.lock().unwrap().end_session();
     *state.is_running.lock().unwrap() = false;
+    state.mic_level.store(0u32, Ordering::Relaxed);
+    state.sys_level.store(0u32, Ordering::Relaxed);
     Ok(())
 }
 
