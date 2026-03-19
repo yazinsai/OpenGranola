@@ -1,172 +1,163 @@
+/* OpenOats Design System */
+
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  /* Colors */
+  --color-background: #111111;
+  --color-surface: #1a1a1a;
+  --color-surface-elevated: #222222;
+  --color-border: #333333;
+  --color-text: #eeeeee;
+  --color-text-secondary: #888888;
+  --color-text-muted: #666666;
+  --color-accent: #2b7a78;
+  --color-accent-light: #3a9a98;
+  --color-success: #27ae60;
+  --color-error: #c0392b;
+  --color-warning: #f39c12;
+  --color-you: #5b8cbf;
+  --color-them: #d2994d;
+  
+  /* Typography */
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
 }
 
-body {
+/* Reset and base styles */
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
   margin: 0;
-  display: flex;
-  min-height: 100vh;
-}
-
-#root {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.container {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  height: 100vh;
-}
-
-.top-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 16px;
-  background-color: #1a1a1a;
-  border-bottom: 1px solid #333;
-}
-
-.top-bar h1 {
-  font-size: 1.2rem;
-  margin: 0;
-  font-weight: 600;
-}
-
-.status {
-  font-size: 0.9rem;
-  color: #888;
-}
-
-.transcript-area {
-  flex: 1;
-  padding: 16px;
-  overflow-y: auto;
-}
-
-.placeholder {
-  color: #666;
-  font-style: italic;
-  text-align: center;
-  margin-top: 40px;
-}
-
-.utterance {
-  margin-bottom: 10px;
-  line-height: 1.5;
-}
-
-.speaker-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-right: 8px;
-  color: #888;
-}
-
-.utterance.you .speaker-label { color: #4fc3f7; }
-.utterance.them .speaker-label { color: #a5d6a7; }
-
-.utterance-text {
-  color: rgba(255, 255, 255, 0.87);
-}
-
-.model-notice {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  text-align: center;
-  width: 100%;
-}
-
-.model-notice p {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #aaa;
-}
-
-.model-notice small {
-  font-size: 0.7rem;
-  color: #666;
-  word-break: break-all;
-}
-
-.download-btn {
-  background-color: #1565c0;
-  color: white;
-}
-
-.download-btn:hover { background-color: #0d47a1; }
-
-.progress-bar {
-  width: 240px;
-  height: 6px;
-  background: #333;
-  border-radius: 3px;
+  padding: 0;
+  height: 100%;
   overflow: hidden;
 }
 
-.progress-fill {
-  height: 100%;
-  background: #1565c0;
-  transition: width 0.3s;
+body {
+  font-family: var(--font-family);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-.control-bar {
-  padding: 12px 16px;
-  background-color: #1a1a1a;
-  border-top: 1px solid #333;
-  display: flex;
-  justify-content: center;
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Selection */
+::selection {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Button base */
 button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 8px 16px;
-  font-size: 1em;
-  font-weight: 500;
   font-family: inherit;
   cursor: pointer;
-  transition: background-color 0.25s;
+  transition: all 0.2s ease;
 }
 
-button.start-btn {
-  background-color: #2e7d32;
-  color: white;
+button:hover:not(:disabled) {
+  filter: brightness(1.1);
 }
 
-button.start-btn:hover {
-  background-color: #1b5e20;
+button:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
-button.stop-btn {
-  background-color: #c62828;
-  color: white;
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
-button.stop-btn:hover {
-  background-color: #b71c1c;
+/* Input base */
+input, select, textarea {
+  font-family: inherit;
+  outline: none;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #f7f7f7;
+input:focus, select:focus, textarea:focus {
+  border-color: var(--color-accent) !important;
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.9); }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
   }
-  .top-bar, .control-bar {
-    background-color: #ffffff;
-    border-color: #e0e0e0;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Utility classes */
+.animate-pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
 }
