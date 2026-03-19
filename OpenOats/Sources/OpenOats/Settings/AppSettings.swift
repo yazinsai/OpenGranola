@@ -95,6 +95,8 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         case .parakeetV2: return ParakeetBackend(version: .v2, customVocabulary: customVocabulary)
         case .parakeetV3: return ParakeetBackend(version: .v3, customVocabulary: customVocabulary)
         case .qwen3ASR06B: return Qwen3Backend()
+        case .whisperBase: return WhisperKitBackend(variant: .base)
+        case .whisperSmall: return WhisperKitBackend(variant: .small)
         }
     }
 }

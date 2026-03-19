@@ -85,6 +85,16 @@ final class TranscriptionBackendTests: XCTestCase {
         XCTAssertEqual(backend.displayName, "Qwen3 ASR 0.6B")
     }
 
+    func testMakeBackendWhisperBase() {
+        let backend = TranscriptionModel.whisperBase.makeBackend()
+        XCTAssertEqual(backend.displayName, "Whisper Base")
+    }
+
+    func testMakeBackendWhisperSmall() {
+        let backend = TranscriptionModel.whisperSmall.makeBackend()
+        XCTAssertEqual(backend.displayName, "Whisper Small")
+    }
+
     // MARK: - Mock Backend (protocol contract)
 
     func testMockBackendPrepareSetStatus() async throws {
