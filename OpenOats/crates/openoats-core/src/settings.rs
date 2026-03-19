@@ -16,6 +16,12 @@ pub struct AppSettings {
     #[serde(default, alias = "input_device_name")]
     pub input_device_name: Option<String>,
 
+    #[serde(default = "default_whisper_model", alias = "whisper_model")]
+    pub whisper_model: String,
+
+    #[serde(default, alias = "system_audio_device_name")]
+    pub system_audio_device_name: Option<String>,
+
     #[serde(default = "default_llm_provider", alias = "llm_provider")]
     pub llm_provider: String,
 
@@ -101,6 +107,8 @@ impl Default for AppSettings {
             transcription_locale: default_locale(),
             transcription_model: default_transcription_model(),
             input_device_name: None,
+            whisper_model: default_whisper_model(),
+            system_audio_device_name: None,
             llm_provider: default_llm_provider(),
             embedding_provider: default_embedding_provider(),
             ollama_base_url: default_ollama_url(),
@@ -118,6 +126,7 @@ impl Default for AppSettings {
     }
 }
 
+fn default_whisper_model() -> String { "base-en".into() }
 fn default_model() -> String { "google/gemini-3-flash-preview".into() }
 fn default_locale() -> String { "en-US".into() }
 fn default_transcription_model() -> String { "whisper-base".into() }
@@ -160,5 +169,53 @@ mod tests {
         let path = dir.path().join("nonexistent.json");
         let s = AppSettings::load_from(path);
         assert_eq!(s.transcription_locale, "en-US");
+    }
+
+    #[test]
+    fn whisper_model_defaults_to_base_en() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("nonexistent.json");
+        let s = AppSettings::load_from(path);
+        assert_eq!(s.whisper_model, "base-en");
+    }
+
+    #[test]
+    fn system_audio_device_name_defaults_to_none() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("nonexistent.json");
+        let s = AppSettings::load_from(path);
+        assert!(s.system_audio_device_name.is_none());
+    }
+
+    #[test]
+    fn whisper_model_missing_from_json_uses_default() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        // Write a settings file that doesn't contain whisper_model
+        std::fs::write(&path, r#"{"selectedModel":"test"}"#).unwrap();
+        let s = AppSettings::load_from(path);
+        assert_eq!(s.whisper_model, "base-en");
+    }
+
+    #[test]
+    fn whisper_model_persists_and_reloads() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let mut s = AppSettings::load_from(path.clone());
+        s.whisper_model = "base".into();
+        s.save_to(path.clone());
+        let s2 = AppSettings::load_from(path);
+        assert_eq!(s2.whisper_model, "base");
+    }
+
+    #[test]
+    fn system_audio_device_name_persists_and_reloads() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let mut s = AppSettings::load_from(path.clone());
+        s.system_audio_device_name = Some("Speakers (Realtek)".into());
+        s.save_to(path.clone());
+        let s2 = AppSettings::load_from(path);
+        assert_eq!(s2.system_audio_device_name.as_deref(), Some("Speakers (Realtek)"));
     }
 }
