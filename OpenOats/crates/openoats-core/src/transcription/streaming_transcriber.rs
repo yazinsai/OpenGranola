@@ -4,22 +4,30 @@ use std::sync::mpsc;
 use std::thread;
 
 pub type OnFinal = Box<dyn Fn(String) + Send + 'static>;
+pub type OnVolatile = Box<dyn Fn(String) + Send + 'static>;
 
 pub struct StreamingTranscriber {
     on_final: OnFinal,
     /// Optional: path to whisper model. If None, transcriber runs in passthrough mode (VAD only).
     model_path: Option<String>,
     language: String,
+    on_volatile: Option<OnVolatile>,
 }
 
 impl StreamingTranscriber {
     pub fn new(model_path: String, language: String, on_final: OnFinal) -> Self {
-        Self { on_final, model_path: Some(model_path), language }
+        Self { on_final, model_path: Some(model_path), language, on_volatile: None }
     }
 
     /// Test-only: passthrough mode that skips actual transcription.
     pub fn new_passthrough(on_final: OnFinal) -> Self {
-        Self { on_final, model_path: None, language: "en".into() }
+        Self { on_final, model_path: None, language: "en".into(), on_volatile: None }
+    }
+
+    /// Builder: attach a volatile (in-progress) speech callback.
+    pub fn with_volatile(mut self, on_volatile: OnVolatile) -> Self {
+        self.on_volatile = Some(on_volatile);
+        self
     }
 
     pub async fn run<S>(self, stream: S)
@@ -30,6 +38,7 @@ impl StreamingTranscriber {
 
         let (seg_tx, seg_rx) = mpsc::sync_channel::<Vec<f32>>(10);
         let on_final = self.on_final;
+        let on_volatile = self.on_volatile;
         let language = self.language.clone();
         let model_path = self.model_path.clone();
 
@@ -63,6 +72,12 @@ impl StreamingTranscriber {
         let mut speech_buf: Vec<f32> = Vec::new();
         let mut speaking = false;
         let mut silence_count = 0usize;
+        let mut last_volatile_at = std::time::Instant::now();
+        let volatile_interval = std::time::Duration::from_millis(500);
+        // Fallback: count samples processed while speaking to fire volatile
+        // even when wall-clock elapsed is near-zero (e.g. in fast tests).
+        let volatile_sample_interval: usize = 8_000; // 500 ms at 16 kHz
+        let mut speaking_samples_since_volatile: usize = 0;
 
         let mut stream = Box::pin(stream);
         while let Some(samples) = stream.next().await {
@@ -94,6 +109,22 @@ impl StreamingTranscriber {
                 if speaking && speech_buf.len() >= Vad::FLUSH_SAMPLES {
                     let _ = seg_tx.send(std::mem::take(&mut speech_buf));
                 }
+
+                // Emit volatile text while speech is active
+                if speaking {
+                    speaking_samples_since_volatile += Vad::CHUNK_SIZE;
+                    if let Some(ref on_vol) = on_volatile {
+                        let time_elapsed = last_volatile_at.elapsed() >= volatile_interval;
+                        let samples_elapsed = speaking_samples_since_volatile >= volatile_sample_interval;
+                        if time_elapsed || samples_elapsed {
+                            on_vol("...".to_string());
+                            last_volatile_at = std::time::Instant::now();
+                            speaking_samples_since_volatile = 0;
+                        }
+                    }
+                } else {
+                    speaking_samples_since_volatile = 0;
+                }
             }
         }
 
@@ -120,5 +151,24 @@ mod tests {
         let silence: Vec<Vec<f32>> = (0..30).map(|_| vec![0.0f32; 1600]).collect();
         transcriber.run(stream::iter(silence)).await;
         assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn volatile_fires_while_speaking() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let calls_clone = Arc::clone(&calls);
+        let on_final = Box::new(|_text: String| {});
+        let on_volatile = Box::new(move |text: String| {
+            calls_clone.lock().unwrap().push(text);
+        });
+        let transcriber = StreamingTranscriber::new_passthrough(on_final)
+            .with_volatile(on_volatile);
+
+        // 2 seconds of continuous speech-level audio (non-silence) at 16kHz
+        let speech_chunk: Vec<f32> = (0..1600).map(|i| (i as f32 / 100.0).sin() * 0.5).collect();
+        let chunks: Vec<Vec<f32>> = (0..200).map(|_| speech_chunk.clone()).collect();
+        transcriber.run(futures::stream::iter(chunks)).await;
+        assert!(!calls.lock().unwrap().is_empty(), "volatile should have fired at least once");
     }
 }

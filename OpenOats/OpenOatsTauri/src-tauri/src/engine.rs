@@ -412,7 +412,14 @@ pub fn start_transcription(
                     }
                 });
             };
-            let transcriber = StreamingTranscriber::new(them_model, them_lang, Box::new(on_them));
+            let app_vol_t = them_app.clone();
+            let on_them_vol = move |_text: String| {
+                app_vol_t.emit("transcript-volatile", &TranscriptPayload {
+                    text: "...".into(), speaker: "them".into(),
+                }).ok();
+            };
+            let transcriber = StreamingTranscriber::new(them_model, them_lang, Box::new(on_them))
+                .with_volatile(Box::new(on_them_vol));
             transcriber.run(them_stream_leveled).await;
         });
 
@@ -445,7 +452,14 @@ pub fn start_transcription(
         };
 
         app_clone.emit("whisper-ready", ()).ok();
-        let transcriber = StreamingTranscriber::new(model_str, language, Box::new(on_you));
+        let app_vol_y = app_clone.clone();
+        let on_you_vol = move |_text: String| {
+            app_vol_y.emit("transcript-volatile", &TranscriptPayload {
+                text: "...".into(), speaker: "you".into(),
+            }).ok();
+        };
+        let transcriber = StreamingTranscriber::new(model_str, language, Box::new(on_you))
+            .with_volatile(Box::new(on_you_vol));
         transcriber.run(mic_stream_leveled).await;
     });
 
