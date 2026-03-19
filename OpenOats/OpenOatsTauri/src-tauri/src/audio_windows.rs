@@ -1,8 +1,8 @@
 //! WASAPI loopback capture — streams system audio as 16kHz f32 mono chunks.
 //! On non-Windows platforms this module still compiles but provides a no-op stub.
 
-use openoats_core::audio::{AudioCaptureService, AudioStream};
 use async_trait::async_trait;
+use openoats_core::audio::{AudioCaptureService, AudioStream};
 use std::error::Error;
 
 #[cfg(target_os = "windows")]
@@ -13,6 +13,9 @@ mod wasapi_impl {
         Arc,
     };
     use tokio::sync::mpsc;
+    use windows::Win32::Devices::Properties::DEVPKEY_Device_FriendlyName;
+    use windows::Win32::System::Com::STGM_READ;
+    use windows::Win32::System::Variant::VT_LPWSTR;
     use windows::{
         core::{PROPVARIANT, PWSTR},
         Win32::Devices::Properties::DEVPROPKEY,
@@ -20,9 +23,6 @@ mod wasapi_impl {
         Win32::System::Com::*,
         Win32::UI::Shell::PropertiesSystem::PROPERTYKEY,
     };
-    use windows::Win32::Devices::Properties::DEVPKEY_Device_FriendlyName;
-    use windows::Win32::System::Com::STGM_READ;
-    use windows::Win32::System::Variant::VT_LPWSTR;
 
     const TARGET_RATE: u32 = 16_000;
 
@@ -67,35 +67,46 @@ mod wasapi_impl {
                     let enumerator: IMMDeviceEnumerator =
                         match CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) {
                             Ok(e) => e,
-                            Err(e) => { log::error!("WASAPI: enumerator: {e}"); return; }
+                            Err(e) => {
+                                log::error!("WASAPI: enumerator: {e}");
+                                return;
+                            }
                         };
 
                     let device = if let Some(ref name) = device_name_inner {
-                        find_device_by_name(&enumerator, name)
-                            .unwrap_or_else(|| {
-                                log::warn!(
-                                    "System audio device '{}' not found, falling back to default", name
-                                );
-                                enumerator
-                                    .GetDefaultAudioEndpoint(eRender, eConsole)
-                                    .expect("no default render endpoint")
-                            })
+                        find_device_by_name(&enumerator, name).unwrap_or_else(|| {
+                            log::warn!(
+                                "System audio device '{}' not found, falling back to default",
+                                name
+                            );
+                            enumerator
+                                .GetDefaultAudioEndpoint(eRender, eConsole)
+                                .expect("no default render endpoint")
+                        })
                     } else {
                         match enumerator.GetDefaultAudioEndpoint(eRender, eConsole) {
                             Ok(d) => d,
-                            Err(e) => { log::error!("WASAPI: GetDefaultAudioEndpoint: {e}"); return; }
+                            Err(e) => {
+                                log::error!("WASAPI: GetDefaultAudioEndpoint: {e}");
+                                return;
+                            }
                         }
                     };
 
-                    let audio_client: IAudioClient =
-                        match device.Activate(CLSCTX_ALL, None) {
-                            Ok(c) => c,
-                            Err(e) => { log::error!("WASAPI: Activate: {e}"); return; }
-                        };
+                    let audio_client: IAudioClient = match device.Activate(CLSCTX_ALL, None) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            log::error!("WASAPI: Activate: {e}");
+                            return;
+                        }
+                    };
 
                     let mix_fmt_ptr = match audio_client.GetMixFormat() {
                         Ok(f) => f,
-                        Err(e) => { log::error!("WASAPI: GetMixFormat: {e}"); return; }
+                        Err(e) => {
+                            log::error!("WASAPI: GetMixFormat: {e}");
+                            return;
+                        }
                     };
                     let mix_fmt = &*mix_fmt_ptr;
 
@@ -113,11 +124,13 @@ mod wasapi_impl {
                         return;
                     }
 
-                    let capture_client: IAudioCaptureClient =
-                        match audio_client.GetService() {
-                            Ok(c) => c,
-                            Err(e) => { log::error!("WASAPI: GetService: {e}"); return; }
-                        };
+                    let capture_client: IAudioCaptureClient = match audio_client.GetService() {
+                        Ok(c) => c,
+                        Err(e) => {
+                            log::error!("WASAPI: GetService: {e}");
+                            return;
+                        }
+                    };
 
                     if let Err(e) = audio_client.Start() {
                         log::error!("WASAPI: Start: {e}");
@@ -130,7 +143,9 @@ mod wasapi_impl {
                     log::info!("WASAPI loopback: {}Hz {}ch {}bit", src_rate, channels, bits);
 
                     loop {
-                        if finished.load(Ordering::Relaxed) { break; }
+                        if finished.load(Ordering::Relaxed) {
+                            break;
+                        }
 
                         std::thread::sleep(std::time::Duration::from_millis(10));
 
@@ -138,34 +153,51 @@ mod wasapi_impl {
                             Ok(n) => n,
                             Err(_) => break,
                         };
-                        if packet_len == 0 { continue; }
+                        if packet_len == 0 {
+                            continue;
+                        }
 
                         let mut data_ptr = std::ptr::null_mut();
                         let mut frames = 0u32;
                         let mut flags = 0u32;
-                        if capture_client.GetBuffer(
-                            &mut data_ptr, &mut frames, &mut flags, None, None
-                        ).is_err() { break; }
+                        if capture_client
+                            .GetBuffer(&mut data_ptr, &mut frames, &mut flags, None, None)
+                            .is_err()
+                        {
+                            break;
+                        }
 
                         let sample_count = frames as usize * channels;
                         let mono: Vec<f32> = if bits == 32 {
-                            let slice = std::slice::from_raw_parts(data_ptr as *const f32, sample_count);
-                            slice.chunks(channels).map(|c| c.iter().sum::<f32>() / channels as f32).collect()
+                            let slice =
+                                std::slice::from_raw_parts(data_ptr as *const f32, sample_count);
+                            slice
+                                .chunks(channels)
+                                .map(|c| c.iter().sum::<f32>() / channels as f32)
+                                .collect()
                         } else if bits == 16 {
-                            let slice = std::slice::from_raw_parts(data_ptr as *const i16, sample_count);
-                            slice.chunks(channels).map(|c| {
-                                c.iter().map(|&s| s as f32 / 32768.0).sum::<f32>() / channels as f32
-                            }).collect()
+                            let slice =
+                                std::slice::from_raw_parts(data_ptr as *const i16, sample_count);
+                            slice
+                                .chunks(channels)
+                                .map(|c| {
+                                    c.iter().map(|&s| s as f32 / 32768.0).sum::<f32>()
+                                        / channels as f32
+                                })
+                                .collect()
                         } else {
                             vec![]
                         };
 
                         let _ = capture_client.ReleaseBuffer(frames);
 
-                        if mono.is_empty() { continue; }
+                        if mono.is_empty() {
+                            continue;
+                        }
 
                         // Update RMS level
-                        let rms = (mono.iter().map(|s| s * s).sum::<f32>() / mono.len() as f32).sqrt();
+                        let rms =
+                            (mono.iter().map(|s| s * s).sum::<f32>() / mono.len() as f32).sqrt();
                         *level_arc.lock().unwrap() = rms;
 
                         // Resample to 16kHz if needed
@@ -187,7 +219,8 @@ mod wasapi_impl {
         }
 
         fn finish_stream(&self) {
-            self.finished.store(true, std::sync::atomic::Ordering::Relaxed);
+            self.finished
+                .store(true, std::sync::atomic::Ordering::Relaxed);
         }
 
         async fn stop(&self) {
@@ -197,16 +230,20 @@ mod wasapi_impl {
 
     /// Simple linear resampler (quality sufficient for voice).
     fn resample_linear(samples: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
-        if src_rate == dst_rate { return samples.to_vec(); }
+        if src_rate == dst_rate {
+            return samples.to_vec();
+        }
         let ratio = src_rate as f64 / dst_rate as f64;
         let dst_len = (samples.len() as f64 / ratio) as usize;
-        (0..dst_len).map(|i| {
-            let src_pos = i as f64 * ratio;
-            let lo = src_pos as usize;
-            let hi = (lo + 1).min(samples.len() - 1);
-            let frac = src_pos - lo as f64;
-            samples[lo] * (1.0 - frac as f32) + samples[hi] * frac as f32
-        }).collect()
+        (0..dst_len)
+            .map(|i| {
+                let src_pos = i as f64 * ratio;
+                let lo = src_pos as usize;
+                let hi = (lo + 1).min(samples.len() - 1);
+                let frac = src_pos - lo as f64;
+                samples[lo] * (1.0 - frac as f32) + samples[hi] * frac as f32
+            })
+            .collect()
     }
 
     fn property_key_from_devprop(key: DEVPROPKEY) -> PROPERTYKEY {
@@ -233,14 +270,17 @@ mod wasapi_impl {
         enumerator: &IMMDeviceEnumerator,
         name: &str,
     ) -> Option<IMMDevice> {
-        let collection = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE).ok()?;
+        let collection = enumerator
+            .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+            .ok()?;
         let count = collection.GetCount().ok()?;
         let friendly_name_key = property_key_from_devprop(DEVPKEY_Device_FriendlyName);
         for i in 0..count {
             if let Ok(device) = collection.Item(i) {
                 if let Ok(store) = device.OpenPropertyStore(STGM_READ) {
                     if let Ok(prop) = store.GetValue(&friendly_name_key) {
-                        let matched = friendly_name_from_propvariant(&prop).as_deref() == Some(name);
+                        let matched =
+                            friendly_name_from_propvariant(&prop).as_deref() == Some(name);
                         if matched {
                             return Some(device);
                         }
@@ -249,6 +289,38 @@ mod wasapi_impl {
             }
         }
         None
+    }
+
+    /// Returns friendly names of all active render (output/loopback) endpoints.
+    pub fn list_render_devices() -> Vec<String> {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let enumerator: IMMDeviceEnumerator =
+                match CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) {
+                    Ok(e) => e,
+                    Err(_) => return vec![],
+                };
+            let collection =
+                match enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE) {
+                    Ok(c) => c,
+                    Err(_) => return vec![],
+                };
+            let count = collection.GetCount().unwrap_or(0);
+            let friendly_name_key = property_key_from_devprop(DEVPKEY_Device_FriendlyName);
+            let mut names = Vec::new();
+            for i in 0..count {
+                if let Ok(device) = collection.Item(i) {
+                    if let Ok(store) = device.OpenPropertyStore(STGM_READ) {
+                        if let Ok(prop) = store.GetValue(&friendly_name_key) {
+                            if let Some(name) = friendly_name_from_propvariant(&prop) {
+                                names.push(name);
+                            }
+                        }
+                    }
+                }
+            }
+            names
+        }
     }
 
     pub use WasapiLoopback as SystemAudioCapture;
@@ -263,12 +335,20 @@ mod wasapi_impl {
     pub struct SystemAudioCapture;
 
     impl SystemAudioCapture {
-        pub fn new(_device_name: Option<&str>) -> Self { Self }
+        pub fn new(_device_name: Option<&str>) -> Self {
+            Self
+        }
+    }
+
+    pub fn list_render_devices() -> Vec<String> {
+        vec![]
     }
 
     #[async_trait]
     impl AudioCaptureService for SystemAudioCapture {
-        fn audio_level(&self) -> f32 { 0.0 }
+        fn audio_level(&self) -> f32 {
+            0.0
+        }
         async fn buffer_stream(&self) -> Result<AudioStream, Box<dyn Error + Send + Sync>> {
             Ok(Box::pin(stream::empty()))
         }
@@ -278,3 +358,4 @@ mod wasapi_impl {
 }
 
 pub use wasapi_impl::SystemAudioCapture;
+pub use wasapi_impl::list_render_devices;

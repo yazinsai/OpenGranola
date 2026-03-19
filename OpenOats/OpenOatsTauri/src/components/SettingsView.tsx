@@ -824,26 +824,6 @@ export function SettingsView({ settings: initialSettings = null, onSettingsChang
 
           <div style={styles.divider} />
 
-          {/* Audio Section */}
-          <div style={styles.section}>
-            <h4 style={styles.sectionTitle}>Audio Input</h4>
-            <div style={styles.fieldWrap}>
-              <label style={styles.labelStyle}>Microphone</label>
-              <select
-                value={settings.inputDeviceName || "default"}
-                onChange={(e) =>
-                  saveSettings({ ...settings, inputDeviceName: e.target.value === "default" ? null : e.target.value })
-                }
-                style={styles.selectStyle}
-              >
-                <option value="default">System Default</option>
-                {/* Device list would be populated here */}
-              </select>
-            </div>
-          </div>
-
-          <div style={styles.divider} />
-
           {/* Reset Section */}
           <div style={styles.section}>
             <h4 style={styles.sectionTitle}>Reset</h4>

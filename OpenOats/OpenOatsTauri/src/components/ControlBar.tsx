@@ -113,14 +113,23 @@ export function ControlBar({
 }: Props) {
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("default");
+  const [sysDevices, setSysDevices] = useState<string[]>([]);
+  const [selectedSysDevice, setSelectedSysDevice] = useState<string>("default");
   const [audioLevel, setAudioLevel] = useState(0);
   const [duration, setDuration] = useState(0);
   const durationRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    invoke<string[]>("list_mic_devices").then((d) => {
-      setDevices(d);
+    Promise.all([
+      invoke<string[]>("list_mic_devices"),
+      invoke<string[]>("list_sys_audio_devices"),
+      invoke<any>("get_settings"),
+    ]).then(([mics, sysDevs, s]) => {
+      setDevices(mics);
+      setSysDevices(sysDevs);
+      if (s.inputDeviceName) setSelectedDevice(s.inputDeviceName);
+      if (s.systemAudioDeviceName) setSelectedSysDevice(s.systemAudioDeviceName);
     });
   }, []);
 
@@ -183,6 +192,18 @@ export function ControlBar({
       });
     } catch (e) {
       console.error("Failed to save device:", e);
+    }
+  };
+
+  const handleSysDeviceChange = async (device: string) => {
+    setSelectedSysDevice(device);
+    try {
+      const settings = await invoke<any>("get_settings");
+      await invoke("save_settings", {
+        newSettings: { ...settings, systemAudioDeviceName: device === "default" ? null : device },
+      });
+    } catch (e) {
+      console.error("Failed to save sys audio device:", e);
     }
   };
 
@@ -253,6 +274,31 @@ export function ControlBar({
             No microphones found
           </option>
         )}
+      </select>
+
+      {/* System Audio Selector */}
+      <select
+        value={selectedSysDevice}
+        onChange={(e) => handleSysDeviceChange(e.target.value)}
+        disabled={isRunning}
+        style={{
+          padding: `${spacing[2]}px`,
+          background: colors.background,
+          color: colors.text,
+          border: `1px solid ${colors.border}`,
+          borderRadius: 4,
+          fontSize: typography.base,
+          minWidth: 140,
+          cursor: isRunning ? "not-allowed" : "pointer",
+          opacity: isRunning ? 0.6 : 1,
+        }}
+      >
+        <option value="default">🔊 System Default</option>
+        {sysDevices.map((d) => (
+          <option key={d} value={d}>
+            {d}
+          </option>
+        ))}
       </select>
 
       {/* Main Control Button */}

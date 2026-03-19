@@ -9,20 +9,26 @@ use crate::audio_windows::SystemAudioCapture;
 use openoats_core::{
     audio::{cpal_mic::CpalMicCapture, AudioCaptureService, MicCaptureService},
     download,
-    intelligence::{embedding_client, knowledge_base::KnowledgeBase, notes_engine, suggestion_engine::SuggestionEngine},
+    intelligence::{
+        embedding_client, knowledge_base::KnowledgeBase, notes_engine,
+        suggestion_engine::SuggestionEngine,
+    },
     keychain,
     models::{MeetingTemplate, SessionRecord, Speaker, SuggestionFeedbackEntry},
     settings::AppSettings,
-    storage::{session_store::SessionStore, template_store::TemplateStore, transcript_logger::TranscriptLogger},
+    storage::{
+        session_store::SessionStore, template_store::TemplateStore,
+        transcript_logger::TranscriptLogger,
+    },
     transcription::streaming_transcriber::StreamingTranscriber,
 };
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU32, Ordering};
-use tokio::sync::Mutex as AsyncMutex;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
+use tokio::sync::Mutex as AsyncMutex;
 
 const SUGGESTION_CONTEXT_WINDOW_SECS: i64 = 180;
 
@@ -91,7 +97,10 @@ impl AppState {
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
             .join("kb_cache.json");
-        let kb_fingerprint = format!("{}:{}", settings.embedding_provider, settings.ollama_embed_model);
+        let kb_fingerprint = format!(
+            "{}:{}",
+            settings.embedding_provider, settings.ollama_embed_model
+        );
         Self {
             knowledge_base: AsyncMutex::new(KnowledgeBase::new(kb_cache, kb_fingerprint)),
             suggestion_engine: AsyncMutex::new(SuggestionEngine::new()),
@@ -123,22 +132,42 @@ fn resolve_whisper_model(settings: &AppSettings) -> &'static str {
 
     match settings.whisper_model.as_str() {
         "tiny" => {
-            if is_english { "tiny-en" } else { "tiny" }
+            if is_english {
+                "tiny-en"
+            } else {
+                "tiny"
+            }
         }
         "tiny-en" => "tiny-en",
         "base" => {
-            if is_english { "base-en" } else { "base" }
+            if is_english {
+                "base-en"
+            } else {
+                "base"
+            }
         }
         "base-en" => "base-en",
         "small" => {
-            if is_english { "small-en" } else { "small" }
+            if is_english {
+                "small-en"
+            } else {
+                "small"
+            }
         }
         "small-en" => "small-en",
         "auto" => {
-            if is_english { "base-en" } else { "base" }
+            if is_english {
+                "base-en"
+            } else {
+                "base"
+            }
         }
         _ => {
-            if is_english { "base-en" } else { "base" }
+            if is_english {
+                "base-en"
+            } else {
+                "base"
+            }
         }
     }
 }
@@ -179,7 +208,11 @@ fn embed_config(settings: &AppSettings) -> (String, Option<String>, String) {
         }
         _ => {
             let key = keychain::KeyEntry::voyage_api_key().load();
-            ("https://api.voyageai.com/v1".into(), key, "voyage-3-lite".into())
+            (
+                "https://api.voyageai.com/v1".into(),
+                key,
+                "voyage-3-lite".into(),
+            )
         }
     }
 }
@@ -194,7 +227,9 @@ fn normalize_openai_base_url(base_url: &str) -> String {
 }
 
 fn compute_rms(samples: &[f32]) -> f32 {
-    if samples.is_empty() { return 0.0; }
+    if samples.is_empty() {
+        return 0.0;
+    }
     let mean_sq = samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32;
     mean_sq.sqrt().min(1.0)
 }
@@ -230,10 +265,18 @@ pub fn get_settings(state: tauri::State<'_, Arc<AppState>>) -> AppSettings {
 #[tauri::command]
 pub fn get_api_keys() -> ApiKeysPayload {
     ApiKeysPayload {
-        open_router_api_key: keychain::KeyEntry::open_router_api_key().load().unwrap_or_default(),
-        voyage_api_key: keychain::KeyEntry::voyage_api_key().load().unwrap_or_default(),
-        open_ai_llm_api_key: keychain::KeyEntry::open_ai_llm_api_key().load().unwrap_or_default(),
-        open_ai_embed_api_key: keychain::KeyEntry::open_ai_embed_api_key().load().unwrap_or_default(),
+        open_router_api_key: keychain::KeyEntry::open_router_api_key()
+            .load()
+            .unwrap_or_default(),
+        voyage_api_key: keychain::KeyEntry::voyage_api_key()
+            .load()
+            .unwrap_or_default(),
+        open_ai_llm_api_key: keychain::KeyEntry::open_ai_llm_api_key()
+            .load()
+            .unwrap_or_default(),
+        open_ai_embed_api_key: keychain::KeyEntry::open_ai_embed_api_key()
+            .load()
+            .unwrap_or_default(),
     }
 }
 
@@ -275,6 +318,11 @@ pub fn list_mic_devices() -> Vec<String> {
 }
 
 #[tauri::command]
+pub fn list_sys_audio_devices() -> Vec<String> {
+    crate::audio_windows::list_render_devices()
+}
+
+#[tauri::command]
 pub fn start_transcription(
     app: AppHandle,
     state: tauri::State<'_, Arc<AppState>>,
@@ -288,10 +336,15 @@ pub fn start_transcription(
 
     let mut running = state.is_running.lock().unwrap();
     if *running {
-        let session_id = state.session_store.lock().unwrap()
+        let session_id = state
+            .session_store
+            .lock()
+            .unwrap()
             .current_session_id()
             .map(str::to_owned)
-            .ok_or_else(|| "Transcription is already running, but no active session ID was found.".to_string())?;
+            .ok_or_else(|| {
+                "Transcription is already running, but no active session ID was found.".to_string()
+            })?;
         return Ok(session_id);
     }
     *running = true;
@@ -300,7 +353,8 @@ pub fn start_transcription(
     let session_id = {
         let mut session_store = state.session_store.lock().unwrap();
         session_store.start_session();
-        session_store.current_session_id()
+        session_store
+            .current_session_id()
             .map(str::to_owned)
             .ok_or_else(|| "Failed to create a recording session.".to_string())?
     };
@@ -312,8 +366,13 @@ pub fn start_transcription(
     let state_clone = Arc::clone(&state);
 
     let device_name = settings.input_device_name.clone();
-    let language = settings.transcription_locale
-        .split('-').next().unwrap_or("en").to_string();
+    let sys_device_name = settings.system_audio_device_name.clone();
+    let language = settings
+        .transcription_locale
+        .split('-')
+        .next()
+        .unwrap_or("en")
+        .to_string();
     let suggestion_interval_secs = settings.suggestion_interval_seconds.max(30);
 
     let recent_utterances: Arc<Mutex<Vec<openoats_core::models::Utterance>>> =
@@ -329,10 +388,14 @@ pub fn start_transcription(
             let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
             loop {
                 interval.tick().await;
-                if !*running_flag.is_running.lock().unwrap() { break; }
+                if !*running_flag.is_running.lock().unwrap() {
+                    break;
+                }
                 let you = f32::from_bits(ml.load(Ordering::Relaxed));
                 let them = f32::from_bits(sl.load(Ordering::Relaxed));
-                app_lvl.emit("audio-level", &AudioLevelPayload { you, them }).ok();
+                app_lvl
+                    .emit("audio-level", &AudioLevelPayload { you, them })
+                    .ok();
             }
         });
         *state_clone.poll_task.lock().unwrap() = Some(poll_handle);
@@ -345,7 +408,7 @@ pub fn start_transcription(
         let recent_utterances_spawn = Arc::clone(&recent_utterances);
 
         let them_handle = tauri::async_runtime::spawn(async move {
-            let sys = SystemAudioCapture::new(None);
+            let sys = SystemAudioCapture::new(sys_device_name.as_deref());
             let them_stream = match sys.buffer_stream().await {
                 Ok(s) => s,
                 Err(e) => {
@@ -369,7 +432,7 @@ pub fn start_transcription(
                 if !*state_sg.is_running.lock().unwrap() {
                     return;
                 }
-                use openoats_core::models::{Utterance, Speaker};
+                use openoats_core::models::{Speaker, Utterance};
                 let utterance = Utterance {
                     id: uuid::Uuid::new_v4(),
                     text: text.clone(),
@@ -378,7 +441,10 @@ pub fn start_transcription(
                 };
 
                 // Emit finalized transcript
-                let payload = TranscriptPayload { text: text.clone(), speaker: "them".into() };
+                let payload = TranscriptPayload {
+                    text: text.clone(),
+                    speaker: "them".into(),
+                };
                 app_sg.emit("transcript", &payload).ok();
 
                 // Append to session store and logger
@@ -386,16 +452,25 @@ pub fn start_transcription(
                     speaker: Speaker::Them,
                     text: text.clone(),
                     timestamp: chrono::Utc::now(),
-                    suggestions: None, kb_hits: None,
+                    suggestions: None,
+                    kb_hits: None,
                     suggestion_decision: None,
                     surfaced_suggestion_text: None,
                     conversation_state_summary: None,
                 };
-                state_sg.session_store.lock().unwrap().append_record(&record).ok();
-                state_sg.transcript_logger.lock().unwrap().append("Them", &text, chrono::Utc::now());
+                state_sg
+                    .session_store
+                    .lock()
+                    .unwrap()
+                    .append_record(&record)
+                    .ok();
+                state_sg.transcript_logger.lock().unwrap().append(
+                    "Them",
+                    &text,
+                    chrono::Utc::now(),
+                );
 
                 push_recent_utterance(&recent_utterances_clone, utterance.clone());
-
             };
             let app_vol_t = them_app.clone();
             let state_vol_t = Arc::clone(&them_state);
@@ -403,9 +478,15 @@ pub fn start_transcription(
                 if !*state_vol_t.is_running.lock().unwrap() {
                     return;
                 }
-                app_vol_t.emit("transcript-volatile", &TranscriptPayload {
-                    text: "...".into(), speaker: "them".into(),
-                }).ok();
+                app_vol_t
+                    .emit(
+                        "transcript-volatile",
+                        &TranscriptPayload {
+                            text: "...".into(),
+                            speaker: "them".into(),
+                        },
+                    )
+                    .ok();
             };
             let transcriber = StreamingTranscriber::new(them_model, them_lang, Box::new(on_them))
                 .with_volatile(Box::new(on_them_vol));
@@ -417,7 +498,8 @@ pub fn start_transcription(
         let suggestion_state = Arc::clone(&state_clone);
         let suggestion_recent_utterances = Arc::clone(&recent_utterances);
         let suggestion_handle = tauri::async_runtime::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(suggestion_interval_secs));
+            let mut interval =
+                tokio::time::interval(std::time::Duration::from_secs(suggestion_interval_secs));
             interval.tick().await;
 
             loop {
@@ -426,7 +508,8 @@ pub fn start_transcription(
                     break;
                 }
 
-                let cutoff = chrono::Utc::now() - chrono::Duration::seconds(SUGGESTION_CONTEXT_WINDOW_SECS);
+                let cutoff =
+                    chrono::Utc::now() - chrono::Duration::seconds(SUGGESTION_CONTEXT_WINDOW_SECS);
                 let recent_buf = suggestion_recent_utterances
                     .lock()
                     .unwrap()
@@ -451,10 +534,15 @@ pub fn start_transcription(
                 }
 
                 suggestion_app.emit("suggestion-generating", ()).ok();
-                suggestion_app.emit("suggestion-check-started", &SuggestionCheckPayload {
-                    checked_at: chrono::Utc::now().to_rfc3339(),
-                    surfaced: false,
-                }).ok();
+                suggestion_app
+                    .emit(
+                        "suggestion-check-started",
+                        &SuggestionCheckPayload {
+                            checked_at: chrono::Utc::now().to_rfc3339(),
+                            surfaced: false,
+                        },
+                    )
+                    .ok();
 
                 let settings = suggestion_state.settings.lock().unwrap().clone();
                 let (embed_url, embed_key, embed_model) = embed_config(&settings);
@@ -473,11 +561,19 @@ pub fn start_transcription(
                     let key = embed_key.clone();
                     let model = embed_model.clone();
                     move |texts: Vec<String>| {
-                        let url = url.clone(); let key = key.clone(); let model = model.clone();
+                        let url = url.clone();
+                        let key = key.clone();
+                        let model = model.clone();
                         async move {
                             openoats_core::intelligence::embedding_client::embed(
-                                &url, key.as_deref(), &model, &texts, None, None,
-                            ).await
+                                &url,
+                                key.as_deref(),
+                                &model,
+                                &texts,
+                                None,
+                                None,
+                            )
+                            .await
                         }
                     }
                 };
@@ -491,11 +587,18 @@ pub fn start_transcription(
                     let key = llm_key.clone();
                     let model = llm_model.clone();
                     move |messages: Vec<openoats_core::intelligence::llm_client::Message>| {
-                        let url = url.clone(); let key = key.clone(); let model = model.clone();
+                        let url = url.clone();
+                        let key = key.clone();
+                        let model = model.clone();
                         async move {
                             openoats_core::intelligence::llm_client::complete(
-                                &url, key.as_deref(), &model, messages, 512,
-                            ).await
+                                &url,
+                                key.as_deref(),
+                                &model,
+                                messages,
+                                512,
+                            )
+                            .await
                         }
                     }
                 };
@@ -506,21 +609,27 @@ pub fn start_transcription(
                     .collect::<Vec<_>>();
 
                 let mut engine = suggestion_state.suggestion_engine.lock().await;
-                let suggestion = engine.process_transcript_window(
-                    &transcript_window,
-                    &recent_them,
-                    embed_fn,
-                    search_fn,
-                    complete_fn,
-                ).await;
+                let suggestion = engine
+                    .process_transcript_window(
+                        &transcript_window,
+                        &recent_them,
+                        embed_fn,
+                        search_fn,
+                        complete_fn,
+                    )
+                    .await;
                 let surfaced = suggestion.is_some();
 
                 if let Some(suggestion) = suggestion {
                     let payload = SuggestionPayload {
                         id: suggestion.id.to_string(),
                         kind: match suggestion.kind {
-                            openoats_core::models::SuggestionKind::KnowledgeBase => "knowledge_base".into(),
-                            openoats_core::models::SuggestionKind::SmartQuestion => "smart_question".into(),
+                            openoats_core::models::SuggestionKind::KnowledgeBase => {
+                                "knowledge_base".into()
+                            }
+                            openoats_core::models::SuggestionKind::SmartQuestion => {
+                                "smart_question".into()
+                            }
                         },
                         text: suggestion.text.clone(),
                         kb_hits: suggestion.kb_hits.clone(),
@@ -532,10 +641,15 @@ pub fn start_transcription(
                     suggestion_app.emit("suggestion", &payload).ok();
                 }
 
-                suggestion_app.emit("suggestion-check-finished", &SuggestionCheckPayload {
-                    checked_at: chrono::Utc::now().to_rfc3339(),
-                    surfaced,
-                }).ok();
+                suggestion_app
+                    .emit(
+                        "suggestion-check-finished",
+                        &SuggestionCheckPayload {
+                            checked_at: chrono::Utc::now().to_rfc3339(),
+                            surfaced,
+                        },
+                    )
+                    .ok();
                 suggestion_app.emit("suggestion-finished", ()).ok();
             }
         });
@@ -557,7 +671,10 @@ pub fn start_transcription(
             if !*state_y.is_running.lock().unwrap() {
                 return;
             }
-            let payload = TranscriptPayload { text: text.clone(), speaker: "you".into() };
+            let payload = TranscriptPayload {
+                text: text.clone(),
+                speaker: "you".into(),
+            };
             app_y.emit("transcript", &payload).ok();
             push_recent_utterance(
                 &recent_utterances,
@@ -572,13 +689,23 @@ pub fn start_transcription(
                 speaker: Speaker::You,
                 text: text.clone(),
                 timestamp: chrono::Utc::now(),
-                suggestions: None, kb_hits: None,
+                suggestions: None,
+                kb_hits: None,
                 suggestion_decision: None,
                 surfaced_suggestion_text: None,
                 conversation_state_summary: None,
             };
-            state_y.session_store.lock().unwrap().append_record(&record).ok();
-            state_y.transcript_logger.lock().unwrap().append("You", &text, chrono::Utc::now());
+            state_y
+                .session_store
+                .lock()
+                .unwrap()
+                .append_record(&record)
+                .ok();
+            state_y
+                .transcript_logger
+                .lock()
+                .unwrap()
+                .append("You", &text, chrono::Utc::now());
         };
 
         app_clone.emit("whisper-ready", ()).ok();
@@ -588,9 +715,15 @@ pub fn start_transcription(
             if !*state_vol_y.is_running.lock().unwrap() {
                 return;
             }
-            app_vol_y.emit("transcript-volatile", &TranscriptPayload {
-                text: "...".into(), speaker: "you".into(),
-            }).ok();
+            app_vol_y
+                .emit(
+                    "transcript-volatile",
+                    &TranscriptPayload {
+                        text: "...".into(),
+                        speaker: "you".into(),
+                    },
+                )
+                .ok();
         };
         let transcriber = StreamingTranscriber::new(model_str, language, Box::new(on_you))
             .with_volatile(Box::new(on_you_vol));
@@ -630,7 +763,8 @@ pub async fn download_model(app: AppHandle, model: String) -> Result<(), String>
     let model_clone = model.clone();
     download::download_model(&model_clone, model_path, move |pct| {
         app_clone.emit("model-download-progress", pct).ok();
-    }).await?;
+    })
+    .await?;
     app.emit("model-download-done", ()).ok();
     Ok(())
 }
@@ -643,7 +777,11 @@ pub async fn generate_notes(
     template_id: Option<String>,
 ) -> Result<String, String> {
     let settings = state.settings.lock().unwrap().clone();
-    let records = state.session_store.lock().unwrap().load_transcript(&session_id);
+    let records = state
+        .session_store
+        .lock()
+        .unwrap()
+        .load_transcript(&session_id);
     let transcript_chars: usize = records.iter().map(|record| record.text.len()).sum();
     log::info!(
         "generate_notes requested: session_id={}, template_id={:?}, utterances={}, transcript_chars={}",
@@ -653,13 +791,20 @@ pub async fn generate_notes(
         transcript_chars
     );
     if records.is_empty() {
-        log::warn!("generate_notes aborted: transcript is empty for session_id={}", session_id);
+        log::warn!(
+            "generate_notes aborted: transcript is empty for session_id={}",
+            session_id
+        );
         return Err(format!("No transcript found for session `{session_id}`."));
     }
 
     let template = template_id
         .as_deref()
-        .and_then(|id| MeetingTemplate::built_ins().into_iter().find(|template| template.id.to_string() == id))
+        .and_then(|id| {
+            MeetingTemplate::built_ins()
+                .into_iter()
+                .find(|template| template.id.to_string() == id)
+        })
         .unwrap_or_else(|| MeetingTemplate::built_ins().into_iter().next().unwrap());
     let (base_url, api_key) = llm_base_url_and_key(&settings);
     let model = if settings.llm_provider == "ollama" {
@@ -669,7 +814,9 @@ pub async fn generate_notes(
     };
 
     let app_c = app.clone();
-    let on_chunk = move |chunk: String| { app_c.emit("notes-chunk", chunk).ok(); };
+    let on_chunk = move |chunk: String| {
+        app_c.emit("notes-chunk", chunk).ok();
+    };
 
     let result = notes_engine::generate_notes(
         &records,
@@ -678,7 +825,8 @@ pub async fn generate_notes(
         api_key.as_deref(),
         &model,
         on_chunk,
-    ).await?;
+    )
+    .await?;
 
     state.session_store.lock().unwrap().save_notes(
         &session_id,
@@ -729,10 +877,7 @@ pub async fn index_kb(
 }
 
 #[tauri::command]
-pub fn update_kb_folder(
-    folder: String,
-    state: tauri::State<'_, Arc<AppState>>,
-) {
+pub fn update_kb_folder(folder: String, state: tauri::State<'_, Arc<AppState>>) {
     let mut s = state.settings.lock().unwrap();
     s.kb_folder_path = Some(folder);
     s.save();
@@ -745,7 +890,11 @@ pub fn suggestion_feedback(
     helpful: bool,
     state: tauri::State<'_, Arc<AppState>>,
 ) {
-    log::info!("suggestion_feedback: id={} helpful={}", suggestion_id, helpful);
+    log::info!(
+        "suggestion_feedback: id={} helpful={}",
+        suggestion_id,
+        helpful
+    );
 
     let session_id = session_id.or_else(|| {
         let session_store = state.session_store.lock().unwrap();
@@ -753,14 +902,18 @@ pub fn suggestion_feedback(
     });
 
     if let Some(session_id) = session_id {
-        state.session_store.lock().unwrap().save_suggestion_feedback(
-            &session_id,
-            SuggestionFeedbackEntry {
-                suggestion_id,
-                helpful,
-                created_at: chrono::Utc::now(),
-            },
-        );
+        state
+            .session_store
+            .lock()
+            .unwrap()
+            .save_suggestion_feedback(
+                &session_id,
+                SuggestionFeedbackEntry {
+                    suggestion_id,
+                    helpful,
+                    created_at: chrono::Utc::now(),
+                },
+            );
     }
 }
 
@@ -788,7 +941,8 @@ pub fn hide_overlay(app: AppHandle) -> Result<(), String> {
 pub fn set_content_protection(app: AppHandle, enabled: bool) -> Result<(), String> {
     for label in ["main", "overlay"] {
         if let Some(w) = app.get_webview_window(label) {
-            w.set_content_protected(enabled).map_err(|e| e.to_string())?;
+            w.set_content_protected(enabled)
+                .map_err(|e| e.to_string())?;
         }
     }
     Ok(())
@@ -809,7 +963,9 @@ pub async fn choose_folder(app: AppHandle) -> Option<String> {
 }
 
 #[tauri::command]
-pub fn list_sessions(state: tauri::State<'_, Arc<AppState>>) -> Vec<openoats_core::models::SessionIndex> {
+pub fn list_sessions(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Vec<openoats_core::models::SessionIndex> {
     state.session_store.lock().unwrap().load_session_index()
 }
 
@@ -841,10 +997,7 @@ pub fn save_template(
 }
 
 #[tauri::command]
-pub fn delete_template(
-    id: String,
-    state: tauri::State<'_, Arc<AppState>>,
-) -> Result<(), String> {
+pub fn delete_template(id: String, state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
     let uuid = uuid::Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     state.template_store.lock().unwrap().delete(uuid);
     Ok(())

@@ -21,6 +21,7 @@ pub fn run() {
             engine::save_settings,
             engine::save_api_keys,
             engine::list_mic_devices,
+            engine::list_sys_audio_devices,
             engine::start_transcription,
             engine::stop_transcription,
             engine::download_model,
@@ -46,7 +47,8 @@ pub fn run() {
                         .build(),
                 )?;
             }
-            let hide_from_screen_share = setup_state.settings.lock().unwrap().hide_from_screen_share;
+            let hide_from_screen_share =
+                setup_state.settings.lock().unwrap().hide_from_screen_share;
             engine::set_content_protection(app.handle().clone(), hide_from_screen_share)
                 .map_err(|err| std::io::Error::other(err))?;
             Ok(())

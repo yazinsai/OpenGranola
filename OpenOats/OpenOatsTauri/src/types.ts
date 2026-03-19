@@ -26,6 +26,7 @@ export interface AppSettings {
   transcriptionModel: string;
   whisperModel: string;
   inputDeviceName: string | null;
+  systemAudioDeviceName: string | null;
   llmProvider: string;
   embeddingProvider: string;
   ollamaBaseUrl: string;
