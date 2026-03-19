@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Utterance } from "../types";
+import type { Utterance } from "../types";
 
 interface Props {
   utterances: Utterance[];

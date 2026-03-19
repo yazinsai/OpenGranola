@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Suggestion } from "../types";
+import type { Suggestion } from "../types";
 
 interface Props {
   suggestions: Suggestion[];
