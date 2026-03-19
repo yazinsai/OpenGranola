@@ -90,10 +90,10 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         }
     }
 
-    func makeBackend() -> any TranscriptionBackend {
+    func makeBackend(customVocabulary: String = "") -> any TranscriptionBackend {
         switch self {
-        case .parakeetV2: return ParakeetBackend(version: .v2)
-        case .parakeetV3: return ParakeetBackend(version: .v3)
+        case .parakeetV2: return ParakeetBackend(version: .v2, customVocabulary: customVocabulary)
+        case .parakeetV3: return ParakeetBackend(version: .v3, customVocabulary: customVocabulary)
         case .qwen3ASR06B: return Qwen3Backend()
         }
     }
