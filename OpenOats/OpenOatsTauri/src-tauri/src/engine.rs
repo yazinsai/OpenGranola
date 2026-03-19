@@ -453,6 +453,17 @@ pub fn set_content_protection(app: AppHandle, enabled: bool) -> Result<(), Strin
     Ok(())
 }
 
+#[tauri::command]
+pub async fn choose_folder(app: AppHandle) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    use std::sync::mpsc;
+    let (tx, rx) = mpsc::channel::<Option<String>>();
+    app.dialog().file().pick_folder(move |folder| {
+        tx.send(folder.map(|f| f.to_string())).ok();
+    });
+    rx.recv().ok().flatten()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

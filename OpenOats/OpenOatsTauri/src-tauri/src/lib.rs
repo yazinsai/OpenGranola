@@ -9,6 +9,7 @@ pub fn run() {
     let state = Arc::new(engine::AppState::new());
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             engine::check_model,
@@ -28,6 +29,7 @@ pub fn run() {
             engine::show_overlay,
             engine::hide_overlay,
             engine::set_content_protection,
+            engine::choose_folder,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
