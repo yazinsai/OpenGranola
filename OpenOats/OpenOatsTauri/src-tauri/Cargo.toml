@@ -22,3 +22,16 @@ tauri = { version = "2.10.3", features = [] }
 tauri-plugin-log = "2"
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+tokio-stream = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.54", features = [
+    "Win32_Media_Audio",
+    "Win32_System_Com",
+    "Win32_Foundation",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_Media_KernelStreaming",
+    "Win32_System_Variant",
+] }

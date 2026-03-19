@@ -1,3 +1,4 @@
+mod audio_windows;
 mod engine;
 
 use std::sync::Arc;
@@ -17,6 +18,9 @@ pub fn run() {
             engine::start_transcription,
             engine::stop_transcription,
             engine::download_model,
+            engine::generate_notes,
+            engine::index_kb,
+            engine::update_kb_folder,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
