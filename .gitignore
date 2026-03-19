@@ -9,3 +9,9 @@ OpenOats/.build/
 data/
 CLAUDE.md
 AGENTS.md
+OpenOats/node_modules/
+OpenOats/*.log
+OpenOats/target/
+.claude/settings.local.json
+OpenOats/Cargo.lock
+OpenOats/package-lock.json

@@ -1,0 +1,172 @@
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  min-height: 100vh;
+}
+
+#root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100vh;
+}
+
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background-color: #1a1a1a;
+  border-bottom: 1px solid #333;
+}
+
+.top-bar h1 {
+  font-size: 1.2rem;
+  margin: 0;
+  font-weight: 600;
+}
+
+.status {
+  font-size: 0.9rem;
+  color: #888;
+}
+
+.transcript-area {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.placeholder {
+  color: #666;
+  font-style: italic;
+  text-align: center;
+  margin-top: 40px;
+}
+
+.utterance {
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.speaker-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 8px;
+  color: #888;
+}
+
+.utterance.you .speaker-label { color: #4fc3f7; }
+.utterance.them .speaker-label { color: #a5d6a7; }
+
+.utterance-text {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.model-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  width: 100%;
+}
+
+.model-notice p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #aaa;
+}
+
+.model-notice small {
+  font-size: 0.7rem;
+  color: #666;
+  word-break: break-all;
+}
+
+.download-btn {
+  background-color: #1565c0;
+  color: white;
+}
+
+.download-btn:hover { background-color: #0d47a1; }
+
+.progress-bar {
+  width: 240px;
+  height: 6px;
+  background: #333;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #1565c0;
+  transition: width 0.3s;
+}
+
+.control-bar {
+  padding: 12px 16px;
+  background-color: #1a1a1a;
+  border-top: 1px solid #333;
+  display: flex;
+  justify-content: center;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 8px 16px;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.25s;
+}
+
+button.start-btn {
+  background-color: #2e7d32;
+  color: white;
+}
+
+button.start-btn:hover {
+  background-color: #1b5e20;
+}
+
+button.stop-btn {
+  background-color: #c62828;
+  color: white;
+}
+
+button.stop-btn:hover {
+  background-color: #b71c1c;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #f7f7f7;
+  }
+  .top-bar, .control-bar {
+    background-color: #ffffff;
+    border-color: #e0e0e0;
+  }
+}

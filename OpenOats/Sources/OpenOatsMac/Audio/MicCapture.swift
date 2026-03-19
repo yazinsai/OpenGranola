@@ -1,0 +1,387 @@
+@preconcurrency import AVFoundation
+import CoreAudio
+import Foundation
+import os
+import OpenOatsCore
+
+private let micLog = Logger(subsystem: "com.openoats", category: "MicCapture")
+
+/// Captures microphone audio via AVAudioEngine and streams PCM buffers.
+public final class MicCapture: MicCaptureService, @unchecked Sendable {
+    private var engine = AVAudioEngine()
+    private var hasTapInstalled = false
+    private let _audioLevel = AudioLevel()
+    private let _error = SyncString()
+    private let _streamContinuation = OSAllocatedUnfairLock<AsyncStream<[Float]>.Continuation?>(uncheckedState: nil)
+
+    private var converter: AVAudioConverter?
+    private let targetFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: 16000,
+        channels: 1,
+        interleaved: false
+    )!
+
+    public var isAuthorized: Bool {
+        get async {
+            switch AVCaptureDevice.authorizationStatus(for: .audio) {
+            case .authorized: return true
+            case .notDetermined: return await AVCaptureDevice.requestAccess(for: .audio)
+            default: return false
+            }
+        }
+    }
+
+    public var audioLevel: Float { _audioLevel.value }
+    var captureError: String? { _error.value }
+
+    public func bufferStream() async throws -> AsyncStream<[Float]> {
+        return bufferStream(deviceID: 0)
+    }
+
+    public func bufferStream(deviceID: UInt32) -> AsyncStream<[Float]> {
+        let level = _audioLevel
+        let errorHolder = _error
+
+        return AsyncStream { continuation in
+            self._streamContinuation.withLock { $0 = continuation }
+            errorHolder.value = nil
+
+            diagLog("[MIC-1] bufferStream called, deviceID=\(deviceID)")
+
+            let engine = self.makeFreshEngine()
+
+            if deviceID > 0 {
+                let inputNode = engine.inputNode
+                let audioUnit = inputNode.audioUnit!
+                var devID = deviceID
+                let status = AudioUnitSetProperty(
+                    audioUnit,
+                    kAudioOutputUnitProperty_CurrentDevice,
+                    kAudioUnitScope_Global,
+                    0,
+                    &devID,
+                    UInt32(MemoryLayout<AudioDeviceID>.size)
+                )
+                diagLog("[MIC-2] setInputDevice status=\(status) (0=ok)")
+            } else {
+                diagLog("[MIC-2] no deviceID, using system default")
+            }
+
+            let inputNode = engine.inputNode
+            let format = inputNode.outputFormat(forBus: 0)
+
+            diagLog("[MIC-3] inputNode format: sr=\(format.sampleRate) ch=\(format.channelCount) interleaved=\(format.isInterleaved) commonFormat=\(format.commonFormat.rawValue)")
+
+            guard format.sampleRate > 0 && format.channelCount > 0 else {
+                let msg = "Invalid audio format: sr=\(format.sampleRate) ch=\(format.channelCount)"
+                diagLog("[MIC-3-FAIL] \(msg)")
+                errorHolder.value = msg
+                continuation.finish()
+                return
+            }
+
+            guard let tapFormat = AVAudioFormat(
+                standardFormatWithSampleRate: format.sampleRate,
+                channels: format.channelCount
+            ) else {
+                let msg = "Failed to build tap format from input format"
+                diagLog("[MIC-4-FAIL] \(msg)")
+                errorHolder.value = msg
+                continuation.finish()
+                return
+            }
+
+            diagLog("[MIC-4] tapFormat: sr=\(tapFormat.sampleRate) ch=\(tapFormat.channelCount)")
+
+            var tapCallCount = 0
+            inputNode.installTap(onBus: 0, bufferSize: 4096, format: tapFormat) { [weak self] buffer, _ in
+                tapCallCount += 1
+                let rms = Self.normalizedRMS(from: buffer)
+                level.value = min(rms * 25, 1.0)
+
+                if tapCallCount <= 5 || tapCallCount % 100 == 0 {
+                    diagLog("[MIC-6] tap #\(tapCallCount): frames=\(buffer.frameLength) rms=\(rms) level=\(level.value)")
+                }
+
+                if let samples = self?.extractSamples(buffer) {
+                    continuation.yield(samples)
+                }
+            }
+            self.hasTapInstalled = true
+
+            diagLog("[MIC-5] tap installed, preparing engine...")
+
+            continuation.onTermination = { _ in
+                diagLog("[MIC-TERM] stream terminated")
+            }
+
+            do {
+                engine.prepare()
+                diagLog("[MIC-7] engine prepared, starting...")
+                try engine.start()
+                diagLog("[MIC-8] engine started successfully, isRunning=\(engine.isRunning)")
+            } catch {
+                let msg = "Mic failed: \(error.localizedDescription)"
+                print("[MIC-8-FAIL] \(msg)")
+                errorHolder.value = msg
+                self.hasTapInstalled = false
+                continuation.finish()
+            }
+        }
+    }
+
+    private func extractSamples(_ buffer: AVAudioPCMBuffer) -> [Float]? {
+        let sourceFormat = buffer.format
+        let frameLength = Int(buffer.frameLength)
+        guard frameLength > 0 else { return nil }
+
+        if sourceFormat.commonFormat == .pcmFormatFloat32 && sourceFormat.sampleRate == 16000 {
+            guard let channelData = buffer.floatChannelData else { return nil }
+            return Array(UnsafeBufferPointer(start: channelData[0], count: frameLength))
+        }
+
+        if converter == nil || converter?.inputFormat != sourceFormat {
+            converter = AVAudioConverter(from: sourceFormat, to: targetFormat)
+        }
+        guard let converter else { return nil }
+
+        let ratio = targetFormat.sampleRate / sourceFormat.sampleRate
+        let outputFrames = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+        guard outputFrames > 0 else { return nil }
+
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrames) else { return nil }
+
+        var error: NSError?
+        var consumed = false
+        converter.convert(to: outputBuffer, error: &error) { _, outStatus in
+            if consumed {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            consumed = true
+            outStatus.pointee = .haveData
+            return buffer
+        }
+
+        guard error == nil else { return nil }
+        guard let channelData = outputBuffer.floatChannelData else { return nil }
+        return Array(UnsafeBufferPointer(start: channelData[0], count: Int(outputBuffer.frameLength)))
+    }
+
+    /// Finish the async stream so consumers exit their for-await loop.
+    public func finishStream() {
+        _streamContinuation.withLock { $0?.finish(); $0 = nil }
+    }
+
+    public func stop() {
+        finishStream()
+        if hasTapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            hasTapInstalled = false
+        }
+        engine.stop()
+        _audioLevel.value = 0
+    }
+
+    private func makeFreshEngine() -> AVAudioEngine {
+        if hasTapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            hasTapInstalled = false
+        }
+        engine.stop()
+        let freshEngine = AVAudioEngine()
+        engine = freshEngine
+        return freshEngine
+    }
+
+    private static func normalizedRMS(from buffer: AVAudioPCMBuffer) -> Float {
+        let frameLength = Int(buffer.frameLength)
+        let channelCount = Int(max(buffer.format.channelCount, 1))
+        guard frameLength > 0 else { return 0 }
+
+        if let channelData = buffer.floatChannelData {
+            return rms(
+                frameLength: frameLength,
+                channelCount: channelCount
+            ) { frame, channel in
+                if buffer.format.isInterleaved {
+                    let stride = channelCount
+                    return channelData[0][(frame * stride) + channel]
+                }
+                return channelData[channel][frame]
+            }
+        }
+
+        if let channelData = buffer.int16ChannelData {
+            let scale: Float = 1 / Float(Int16.max)
+            return rms(
+                frameLength: frameLength,
+                channelCount: channelCount
+            ) { frame, channel in
+                if buffer.format.isInterleaved {
+                    let stride = channelCount
+                    return Float(channelData[0][(frame * stride) + channel]) * scale
+                }
+                return Float(channelData[channel][frame]) * scale
+            }
+        }
+
+        if let channelData = buffer.int32ChannelData {
+            let scale: Float = 1 / Float(Int32.max)
+            return rms(
+                frameLength: frameLength,
+                channelCount: channelCount
+            ) { frame, channel in
+                if buffer.format.isInterleaved {
+                    let stride = channelCount
+                    return Float(channelData[0][(frame * stride) + channel]) * scale
+                }
+                return Float(channelData[channel][frame]) * scale
+            }
+        }
+
+        return 0
+    }
+
+    private static func rms(
+        frameLength: Int,
+        channelCount: Int,
+        sampleAt: (_ frame: Int, _ channel: Int) -> Float
+    ) -> Float {
+        var sum: Float = 0
+
+        for frame in 0..<frameLength {
+            for channel in 0..<channelCount {
+                let s = sampleAt(frame, channel)
+                sum += s * s
+            }
+        }
+
+        let sampleCount = Float(frameLength * channelCount)
+        return sampleCount > 0 ? sqrt(sum / sampleCount) : 0
+    }
+
+    // MARK: - List available input devices
+
+    static func availableInputDevices() -> [(id: AudioDeviceID, name: String)] {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var dataSize: UInt32 = 0
+        var status = AudioObjectGetPropertyDataSize(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0, nil,
+            &dataSize
+        )
+        guard status == noErr else { return [] }
+
+        let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
+        status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0, nil,
+            &dataSize,
+            &deviceIDs
+        )
+        guard status == noErr else { return [] }
+
+        var result: [(id: AudioDeviceID, name: String)] = []
+
+        for deviceID in deviceIDs {
+            // Check if device has input channels
+            var inputAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreamConfiguration,
+                mScope: kAudioDevicePropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+
+            var bufferListSize: UInt32 = 0
+            status = AudioObjectGetPropertyDataSize(deviceID, &inputAddress, 0, nil, &bufferListSize)
+            guard status == noErr, bufferListSize > 0 else { continue }
+
+            let bufferListPtr = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: 1)
+            defer { bufferListPtr.deallocate() }
+            status = AudioObjectGetPropertyData(deviceID, &inputAddress, 0, nil, &bufferListSize, bufferListPtr)
+            guard status == noErr else { continue }
+
+            let bufferList = UnsafeMutableAudioBufferListPointer(bufferListPtr)
+            let inputChannels = bufferList.reduce(0) { $0 + Int($1.mNumberChannels) }
+            guard inputChannels > 0 else { continue }
+
+            // Get device name
+            var nameAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceNameCFString,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var name: Unmanaged<CFString>?
+            var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            status = AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, &name)
+            guard status == noErr, let name else { continue }
+
+            result.append((id: deviceID, name: name.takeRetainedValue() as String))
+        }
+
+        return result
+    }
+
+    /// Convert a CoreAudio AudioDeviceID to its stable UID string.
+    static func deviceUID(for deviceID: AudioDeviceID) -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var uid: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &uid)
+        guard status == noErr, let uid else { return nil }
+        return uid.takeRetainedValue() as String
+    }
+
+    static func defaultInputDeviceID() -> AudioDeviceID? {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID: AudioDeviceID = 0
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0, nil,
+            &dataSize,
+            &deviceID
+        )
+        return status == noErr ? deviceID : nil
+    }
+}
+
+/// Simple thread-safe float holder for audio level.
+final class AudioLevel: @unchecked Sendable {
+    private var _value: Float = 0
+    private let lock = NSLock()
+
+    var value: Float {
+        get { lock.withLock { _value } }
+        set { lock.withLock { _value = newValue } }
+    }
+}
+
+/// Simple thread-safe optional string holder.
+final class SyncString: @unchecked Sendable {
+    private var _value: String?
+    private let lock = NSLock()
+
+    var value: String? {
+        get { lock.withLock { _value } }
+        set { lock.withLock { _value = newValue } }
+    }
+}
