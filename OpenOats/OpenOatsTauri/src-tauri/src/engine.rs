@@ -95,10 +95,10 @@ impl AppState {
         }
     }
 
-    pub fn model_path(app: &AppHandle) -> Result<PathBuf, String> {
+    pub fn model_path_for(app: &AppHandle, model: &str) -> Result<PathBuf, String> {
         app.path()
             .app_data_dir()
-            .map(|p| p.join("ggml-base.en.bin"))
+            .map(|p| p.join(openoats_core::download::model_filename(model)))
             .map_err(|e| e.to_string())
     }
 }
@@ -162,14 +162,14 @@ fn compute_rms(samples: &[f32]) -> f32 {
 // ── Tauri commands ───────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn check_model(app: AppHandle) -> Result<bool, String> {
-    let path = AppState::model_path(&app)?;
+pub fn check_model(app: AppHandle, model: String) -> Result<bool, String> {
+    let path = AppState::model_path_for(&app, &model)?;
     Ok(download::model_exists(&path))
 }
 
 #[tauri::command]
-pub fn get_model_path(app: AppHandle) -> Result<String, String> {
-    AppState::model_path(&app).map(|p| p.to_string_lossy().into_owned())
+pub fn get_model_path(app: AppHandle, model: String) -> Result<String, String> {
+    AppState::model_path_for(&app, &model).map(|p| p.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -224,7 +224,7 @@ pub fn start_transcription(
     app: AppHandle,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<String, String> {
-    let model_path = AppState::model_path(&app)?;
+    let model_path = AppState::model_path_for(&app, "base-en")?;
     if !download::model_exists(&model_path) {
         return Err("Whisper model not found. Download it first.".into());
     }
@@ -486,10 +486,11 @@ pub fn stop_transcription(state: tauri::State<'_, Arc<AppState>>) -> Result<(), 
 }
 
 #[tauri::command]
-pub async fn download_model(app: AppHandle) -> Result<(), String> {
-    let model_path = AppState::model_path(&app)?;
+pub async fn download_model(app: AppHandle, model: String) -> Result<(), String> {
+    let model_path = AppState::model_path_for(&app, &model)?;
     let app_clone = app.clone();
-    download::download_model(model_path, move |pct| {
+    let model_clone = model.clone();
+    download::download_model(&model_clone, model_path, move |pct| {
         app_clone.emit("model-download-progress", pct).ok();
     }).await?;
     app.emit("model-download-done", ()).ok();
