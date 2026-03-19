@@ -131,13 +131,17 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new() -> Self {
-        let settings = AppSettings::load();
-        // Derive KB cache path from the settings path (same OpenOats data dir)
-        let kb_cache = AppSettings::default_path()
+    fn persistent_data_dir() -> PathBuf {
+        AppSettings::default_path()
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
-            .join("kb_cache.json");
+            .to_path_buf()
+    }
+
+    pub fn new() -> Self {
+        let settings = AppSettings::load();
+        // Derive KB cache path from the stable OpenOats data dir.
+        let kb_cache = Self::persistent_data_dir().join("kb_cache.json");
         let kb_fingerprint = format!(
             "{}:{}",
             settings.embedding_provider, settings.ollama_embed_model
@@ -160,11 +164,8 @@ impl AppState {
         }
     }
 
-    pub fn model_path_for(app: &AppHandle, model: &str) -> Result<PathBuf, String> {
-        app.path()
-            .app_data_dir()
-            .map(|p| p.join(openoats_core::download::model_filename(model)))
-            .map_err(|e| e.to_string())
+    pub fn model_path_for(_app: &AppHandle, model: &str) -> Result<PathBuf, String> {
+        Ok(Self::persistent_data_dir().join(openoats_core::download::model_filename(model)))
     }
 }
 
