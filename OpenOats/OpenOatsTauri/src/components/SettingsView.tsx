@@ -2,38 +2,205 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ApiKeys, AppSettings } from "../types";
 
-const sectionTitle: React.CSSProperties = {
-  color: "#888",
-  fontSize: 12,
-  textTransform: "uppercase",
-  margin: "0 0 8px",
+type Tab = "general" | "ai" | "advanced";
+
+// Design system constants
+const colors = {
+  background: "#111111",
+  surface: "#1a1a1a",
+  surfaceElevated: "#222222",
+  border: "#333333",
+  text: "#eeeeee",
+  textSecondary: "#888888",
+  textMuted: "#666666",
+  accent: "#2b7a78",
+  accentLight: "#3a9a98",
+  success: "#27ae60",
+  error: "#c0392b",
+  warning: "#f39c12",
+  you: "#5b8cbf",
+  them: "#d2994d",
 };
 
-const fieldWrap: React.CSSProperties = { marginBottom: 12 };
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 12,
-  color: "#888",
-  marginBottom: 4,
+const typography = {
+  xs: 10,
+  sm: 11,
+  base: 12,
+  md: 13,
+  lg: 14,
+  xl: 15,
 };
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "4px 8px",
-  background: "#1a1a1a",
-  color: "#fff",
-  border: "1px solid #444",
-  borderRadius: 4,
-  fontSize: 13,
-  boxSizing: "border-box",
+const spacing = {
+  1: 4,
+  2: 8,
+  3: 12,
+  4: 16,
+  5: 20,
+  6: 24,
+};
+
+const styles = {
+  container: {
+    padding: spacing[4],
+    overflowY: "auto" as const,
+    height: "100%",
+    backgroundColor: colors.background,
+  },
+  header: {
+    margin: `0 0 ${spacing[4]}px`,
+    color: colors.text,
+    fontSize: typography.lg,
+    fontWeight: 600,
+  },
+  tabs: {
+    display: "flex" as const,
+    gap: spacing[1],
+    marginBottom: spacing[4],
+    borderBottom: `1px solid ${colors.border}`,
+    paddingBottom: spacing[1],
+  },
+  tab: (isActive: boolean): React.CSSProperties => ({
+    padding: `${spacing[2]}px ${spacing[3]}px`,
+    background: "transparent",
+    border: "none",
+    borderBottom: isActive ? `2px solid ${colors.accent}` : "2px solid transparent",
+    color: isActive ? colors.accent : colors.textSecondary,
+    fontSize: typography.base,
+    fontWeight: isActive ? 600 : 400,
+    cursor: "pointer",
+    transition: "all 0.2s",
+  }),
+  section: {
+    marginBottom: spacing[5],
+  },
+  sectionTitle: {
+    color: colors.textSecondary,
+    fontSize: typography.xs,
+    textTransform: "uppercase" as const,
+    letterSpacing: "1.5px",
+    margin: `0 0 ${spacing[2]}px`,
+    fontWeight: 600,
+  },
+  sectionDescription: {
+    color: colors.textMuted,
+    fontSize: typography.sm,
+    margin: `0 0 ${spacing[3]}px`,
+    lineHeight: 1.5,
+  },
+  fieldWrap: {
+    marginBottom: spacing[3],
+  },
+  labelStyle: {
+    display: "block" as const,
+    fontSize: typography.base,
+    color: colors.textSecondary,
+    marginBottom: spacing[1],
+    fontWeight: 500,
+  },
+  inputStyle: {
+    width: "100%",
+    padding: `${spacing[2]}px`,
+    background: colors.surface,
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 4,
+    fontSize: typography.md,
+    boxSizing: "border-box" as const,
+    fontFamily: "inherit",
+  },
+  selectStyle: {
+    width: "100%",
+    padding: `${spacing[2]}px`,
+    background: colors.surface,
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 4,
+    fontSize: typography.md,
+    cursor: "pointer",
+  },
+  checkboxStyle: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing[2],
+    cursor: "pointer",
+  },
+  checkboxInput: {
+    width: 16,
+    height: 16,
+    accentColor: colors.accent,
+  },
+  checkboxLabel: {
+    fontSize: typography.base,
+    color: colors.text,
+  },
+  button: {
+    padding: `${spacing[2]}px ${spacing[3]}px`,
+    background: colors.accent,
+    color: "#fff",
+    border: "none",
+    borderRadius: 4,
+    fontSize: typography.base,
+    cursor: "pointer",
+    transition: "background 0.2s",
+  },
+  buttonSecondary: {
+    padding: `${spacing[2]}px ${spacing[3]}px`,
+    background: "transparent",
+    color: colors.textSecondary,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 4,
+    fontSize: typography.base,
+    cursor: "pointer",
+  },
+  statusBadge: (type: "success" | "warning" | "error"): React.CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: spacing[1],
+    padding: `${spacing[1]}px ${spacing[2]}px`,
+    background: type === "success" ? `${colors.success}20` : type === "warning" ? `${colors.warning}20` : `${colors.error}20`,
+    color: type === "success" ? colors.success : type === "warning" ? colors.warning : colors.error,
+    borderRadius: 4,
+    fontSize: typography.sm,
+  }),
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: spacing[3],
+  },
+  aiModeCard: (isSelected: boolean): React.CSSProperties => ({
+    padding: spacing[3],
+    background: isSelected ? `${colors.accent}15` : colors.surface,
+    border: `1px solid ${isSelected ? colors.accent : colors.border}`,
+    borderRadius: 8,
+    cursor: "pointer",
+    transition: "all 0.2s",
+  }),
+  aiModeTitle: {
+    fontSize: typography.md,
+    fontWeight: 600,
+    color: colors.text,
+    marginBottom: spacing[1],
+  },
+  aiModeDesc: {
+    fontSize: typography.sm,
+    color: colors.textMuted,
+    lineHeight: 1.4,
+  },
+  divider: {
+    height: 1,
+    background: colors.border,
+    margin: `${spacing[4]}px 0`,
+  },
 };
 
 export function SettingsView() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [apiKeys, setApiKeys] = useState<ApiKeys | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("general");
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [kbFileCount, setKbFileCount] = useState<number>(0);
 
   useEffect(() => {
     Promise.all([
@@ -43,13 +210,23 @@ export function SettingsView() {
       .then(([loadedSettings, loadedKeys]) => {
         setSettings(loadedSettings);
         setApiKeys(loadedKeys);
+        // Count KB files if path exists
+        if (loadedSettings.kbFolderPath) {
+          countKBFiles(loadedSettings.kbFolderPath);
+        }
       })
       .catch((err) => setError(String(err)));
   }, []);
 
-  if (!settings || !apiKeys) {
-    return <div style={{ padding: 16, color: "#666" }}>Loading settings...</div>;
-  }
+  const countKBFiles = async (path: string) => {
+    try {
+      // This would need a Tauri command to count files
+      // For now, we'll just set it to 0
+      setKbFileCount(0);
+    } catch {
+      setKbFileCount(0);
+    }
+  };
 
   const flashSaved = () => {
     setSaved(true);
@@ -78,146 +255,476 @@ export function SettingsView() {
     }
   };
 
-  const textField = (
-    label: string,
-    value: string,
-    key: keyof AppSettings,
-    type = "text",
-    placeholder?: string,
-  ) => (
-    <div style={fieldWrap}>
-      <label style={labelStyle}>{label}</label>
-      <input
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => saveSettings({ ...settings, [key]: e.target.value })}
-        style={inputStyle}
-      />
-    </div>
-  );
+  const chooseFolder = async (key: "kbFolderPath" | "notesFolderPath") => {
+    try {
+      const selected = await invoke<string | null>("choose_folder");
+      if (selected && settings) {
+        saveSettings({ ...settings, [key]: selected });
+        if (key === "kbFolderPath") {
+          countKBFiles(selected);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to choose folder:", err);
+    }
+  };
 
-  const secretField = (
-    label: string,
-    value: string,
-    key: keyof ApiKeys,
-    placeholder?: string,
-  ) => (
-    <div style={fieldWrap}>
-      <label style={labelStyle}>{label}</label>
-      <input
-        type="password"
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => saveApiKeys({ ...apiKeys, [key]: e.target.value })}
-        style={inputStyle}
-      />
-    </div>
-  );
+  if (!settings || !apiKeys) {
+    return (
+      <div style={{ padding: spacing[4], color: colors.textMuted }}>
+        <div style={{ display: "flex", alignItems: "center", gap: spacing[2] }}>
+          <span>Loading settings...</span>
+        </div>
+      </div>
+    );
+  }
 
-  const selectField = (
-    label: string,
-    value: string,
-    key: keyof AppSettings,
-    options: Array<{ value: string; label: string }>,
-  ) => (
-    <div style={fieldWrap}>
-      <label style={labelStyle}>{label}</label>
-      <select
-        value={value}
-        onChange={(e) => saveSettings({ ...settings, [key]: e.target.value })}
-        style={inputStyle}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
+  const isLocalMode = settings.llmProvider === "ollama" && settings.embeddingProvider === "ollama";
 
   return (
-    <div style={{ padding: 16, overflowY: "auto", height: "100%" }}>
-      <h3 style={{ margin: "0 0 16px", color: "#ccc" }}>Settings</h3>
+    <div style={styles.container}>
+      <h3 style={styles.header}>Settings</h3>
 
-      <section style={{ marginBottom: 20 }}>
-        <h4 style={sectionTitle}>LLM</h4>
-        {selectField("Provider", settings.llmProvider, "llmProvider", [
-          { value: "openrouter", label: "OpenRouter" },
-          { value: "ollama", label: "Ollama-Compatible" },
-          { value: "openai", label: "OpenAI Compatible" },
-        ])}
+      {/* Tabs */}
+      <div style={styles.tabs}>
+        <button
+          style={styles.tab(activeTab === "general")}
+          onClick={() => setActiveTab("general")}
+        >
+          General
+        </button>
+        <button
+          style={styles.tab(activeTab === "ai")}
+          onClick={() => setActiveTab("ai")}
+        >
+          AI Providers
+        </button>
+        <button
+          style={styles.tab(activeTab === "advanced")}
+          onClick={() => setActiveTab("advanced")}
+        >
+          Advanced
+        </button>
+      </div>
 
-        {settings.llmProvider === "openrouter" && (
-          <>
-            {secretField("OpenRouter API Key", apiKeys.openRouterApiKey, "openRouterApiKey")}
-            {textField("Model", settings.selectedModel, "selectedModel", "text", "e.g. google/gemini-2.5-flash-preview")}
-          </>
-        )}
-
-        {settings.llmProvider === "ollama" && (
-          <>
-            {textField("Base URL", settings.ollamaBaseUrl, "ollamaBaseUrl", "text", "http://127.0.0.1:11434")}
-            {textField("Model", settings.ollamaLlmModel, "ollamaLlmModel", "text", "e.g. qwen3:8b")}
-          </>
-        )}
-
-        {settings.llmProvider === "openai" && (
-          <>
-            {textField("Base URL", settings.openAiLlmBaseUrl, "openAiLlmBaseUrl", "text", "http://127.0.0.1:1234")}
-            {secretField("API Key (optional)", apiKeys.openAiLlmApiKey, "openAiLlmApiKey")}
-            {textField("Model", settings.selectedModel, "selectedModel", "text", "e.g. nvidia/nemotron-3-nano-4b")}
-          </>
-        )}
-      </section>
-
-      <section style={{ marginBottom: 20 }}>
-        <h4 style={sectionTitle}>Embeddings</h4>
-        {selectField("Provider", settings.embeddingProvider, "embeddingProvider", [
-          { value: "voyage", label: "Voyage AI" },
-          { value: "ollama", label: "Ollama-Compatible" },
-          { value: "openai", label: "OpenAI Compatible" },
-        ])}
-
-        {settings.embeddingProvider === "voyage" && (
-          <>
-            {secretField("Voyage API Key", apiKeys.voyageApiKey, "voyageApiKey")}
-            <div style={{ ...labelStyle, marginTop: -4, marginBottom: 8 }}>
-              Uses the built-in `voyage-3-lite` model.
+      {/* General Tab */}
+      {activeTab === "general" && (
+        <div>
+          {/* Meeting Notes Section */}
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>Meeting Notes</h4>
+            <p style={styles.sectionDescription}>
+              Where transcripts and generated notes are saved.
+            </p>
+            <div style={styles.fieldWrap}>
+              <label style={styles.labelStyle}>Save Location</label>
+              <div style={{ display: "flex", gap: spacing[2] }}>
+                <input
+                  type="text"
+                  value={settings.notesFolderPath}
+                  readOnly
+                  style={{ ...styles.inputStyle, flex: 1 }}
+                  placeholder="Choose a folder..."
+                />
+                <button
+                  style={styles.buttonSecondary}
+                  onClick={() => chooseFolder("notesFolderPath")}
+                >
+                  Choose...
+                </button>
+              </div>
             </div>
-          </>
-        )}
+          </div>
 
-        {settings.embeddingProvider === "ollama" && (
-          <>
-            {textField("Base URL", settings.ollamaBaseUrl, "ollamaBaseUrl", "text", "http://127.0.0.1:11434")}
-            {textField("Embedding Model", settings.ollamaEmbedModel, "ollamaEmbedModel", "text", "e.g. nomic-embed-text")}
-          </>
-        )}
+          <div style={styles.divider} />
 
-        {settings.embeddingProvider === "openai" && (
-          <>
-            {textField("Base URL", settings.openAiEmbedBaseUrl, "openAiEmbedBaseUrl", "text", "http://127.0.0.1:1234")}
-            {secretField("API Key (optional)", apiKeys.openAiEmbedApiKey, "openAiEmbedApiKey")}
-            {textField("Embedding Model", settings.openAiEmbedModel, "openAiEmbedModel", "text", "e.g. text-embedding-3-small")}
-          </>
-        )}
-      </section>
+          {/* Knowledge Base Section */}
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>Knowledge Base</h4>
+            <p style={styles.sectionDescription}>
+              Optional folder of notes for smart suggestions. OpenOats searches these files during calls to surface relevant talking points.
+            </p>
+            <div style={styles.fieldWrap}>
+              <label style={styles.labelStyle}>KB Folder</label>
+              <div style={{ display: "flex", gap: spacing[2], alignItems: "center" }}>
+                <input
+                  type="text"
+                  value={settings.kbFolderPath || ""}
+                  readOnly
+                  style={{ ...styles.inputStyle, flex: 1 }}
+                  placeholder="No folder selected..."
+                />
+                <button
+                  style={styles.buttonSecondary}
+                  onClick={() => chooseFolder("kbFolderPath")}
+                >
+                  {settings.kbFolderPath ? "Change..." : "Choose..."}
+                </button>
+                {settings.kbFolderPath && (
+                  <button
+                    style={{ ...styles.buttonSecondary, color: colors.error }}
+                    onClick={() => saveSettings({ ...settings, kbFolderPath: "" })}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {settings.kbFolderPath && (
+                <div style={{ marginTop: spacing[2] }}>
+                  <span style={styles.statusBadge("success")}>
+                    <span>⚡</span>
+                    <span>KB Connected {kbFileCount > 0 && `· ${kbFileCount} files`}</span>
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
 
-      <section style={{ marginBottom: 20 }}>
-        <h4 style={sectionTitle}>Transcription</h4>
-        {textField("Locale (e.g. en-US)", settings.transcriptionLocale, "transcriptionLocale")}
-      </section>
+          <div style={styles.divider} />
 
-      <section style={{ marginBottom: 20 }}>
-        <h4 style={sectionTitle}>Knowledge Base</h4>
-        {textField("KB Folder Path", settings.kbFolderPath ?? "", "kbFolderPath")}
-        {textField("Notes Folder Path", settings.notesFolderPath, "notesFolderPath")}
-      </section>
+          {/* Privacy Section */}
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>Privacy</h4>
+            <label style={styles.checkboxStyle}>
+              <input
+                type="checkbox"
+                checked={settings.hideFromScreenShare}
+                onChange={(e) =>
+                  saveSettings({ ...settings, hideFromScreenShare: e.target.checked })
+                }
+                style={styles.checkboxInput}
+              />
+              <span style={styles.checkboxLabel}>
+                Hide from screen sharing
+                <span style={{ display: "block", fontSize: typography.sm, color: colors.textMuted, marginTop: 2 }}>
+                  Makes the app invisible during screen recordings
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+      )}
 
-      {error && <div style={{ color: "#e74c3c", fontSize: 13, marginTop: 8 }}>{error}</div>}
-      {saved && <div style={{ color: "#27ae60", fontSize: 13, marginTop: 8 }}>Saved</div>}
+      {/* AI Providers Tab */}
+      {activeTab === "ai" && (
+        <div>
+          {/* Mode Selection */}
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>AI Mode</h4>
+            <p style={styles.sectionDescription}>
+              Choose how OpenOats processes your data.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: spacing[3] }}>
+              <div
+                style={styles.aiModeCard(isLocalMode)}
+                onClick={() =>
+                  saveSettings({
+                    ...settings,
+                    llmProvider: "ollama",
+                    embeddingProvider: "ollama",
+                  })
+                }
+              >
+                <div style={styles.aiModeTitle}>🔒 Local Mode</div>
+                <div style={styles.aiModeDesc}>
+                  Everything runs on your machine. Requires Ollama running locally. Maximum privacy, no data leaves your device.
+                </div>
+              </div>
+              <div
+                style={styles.aiModeCard(!isLocalMode)}
+                onClick={() =>
+                  saveSettings({
+                    ...settings,
+                    llmProvider: "openrouter",
+                    embeddingProvider: "voyage",
+                  })
+                }
+              >
+                <div style={styles.aiModeTitle}>☁️ Cloud Mode</div>
+                <div style={styles.aiModeDesc}>
+                  Uses cloud providers for best quality. Requires API keys. Transcription stays local, only text snippets are sent to cloud.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.divider} />
+
+          {/* LLM Provider Settings */}
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>Language Model</h4>
+            
+            {settings.llmProvider === "openrouter" ? (
+              <>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>OpenRouter API Key</label>
+                  <input
+                    type="password"
+                    value={apiKeys.openRouterApiKey}
+                    onChange={(e) =>
+                      saveApiKeys({ ...apiKeys, openRouterApiKey: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                    placeholder="sk-or-..."
+                  />
+                </div>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>Model</label>
+                  <input
+                    type="text"
+                    value={settings.selectedModel}
+                    onChange={(e) =>
+                      saveSettings({ ...settings, selectedModel: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                    placeholder="e.g. google/gemini-2.5-flash-preview"
+                  />
+                  <span style={{ fontSize: typography.sm, color: colors.textMuted, marginTop: 4, display: "block" }}>
+                    Popular: google/gemini-2.5-flash, anthropic/claude-3.5-sonnet, openai/gpt-4o
+                  </span>
+                </div>
+              </>
+            ) : settings.llmProvider === "ollama" ? (
+              <>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>Ollama Base URL</label>
+                  <input
+                    type="text"
+                    value={settings.ollamaBaseUrl}
+                    onChange={(e) =>
+                      saveSettings({ ...settings, ollamaBaseUrl: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                    placeholder="http://127.0.0.1:11434"
+                  />
+                </div>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>Model</label>
+                  <input
+                    type="text"
+                    value={settings.ollamaLlmModel}
+                    onChange={(e) =>
+                      saveSettings({ ...settings, ollamaLlmModel: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                    placeholder="e.g. qwen3:8b, llama3.2:3b"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>Base URL</label>
+                  <input
+                    type="text"
+                    value={settings.openAiLlmBaseUrl}
+                    onChange={(e) =>
+                      saveSettings({ ...settings, openAiLlmBaseUrl: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                    placeholder="http://127.0.0.1:1234"
+                  />
+                </div>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>API Key (optional)</label>
+                  <input
+                    type="password"
+                    value={apiKeys.openAiLlmApiKey}
+                    onChange={(e) =>
+                      saveApiKeys({ ...apiKeys, openAiLlmApiKey: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                  />
+                </div>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>Model</label>
+                  <input
+                    type="text"
+                    value={settings.selectedModel}
+                    onChange={(e) =>
+                      saveSettings({ ...settings, selectedModel: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                    placeholder="e.g. gpt-4o-mini"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          <div style={styles.divider} />
+
+          {/* Embedding Provider Settings */}
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>Embeddings</h4>
+            <p style={styles.sectionDescription}>
+              Used for knowledge base search.
+            </p>
+
+            {settings.embeddingProvider === "voyage" ? (
+              <>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>Voyage AI API Key</label>
+                  <input
+                    type="password"
+                    value={apiKeys.voyageApiKey}
+                    onChange={(e) =>
+                      saveApiKeys({ ...apiKeys, voyageApiKey: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                    placeholder="pa-..."
+                  />
+                </div>
+                <div style={{ ...styles.statusBadge("warning"), marginTop: spacing[2] }}>
+                  <span>⚡</span>
+                  <span>Uses voyage-3-lite model</span>
+                </div>
+              </>
+            ) : settings.embeddingProvider === "ollama" ? (
+              <>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>Ollama Base URL</label>
+                  <input
+                    type="text"
+                    value={settings.ollamaBaseUrl}
+                    onChange={(e) =>
+                      saveSettings({ ...settings, ollamaBaseUrl: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                    placeholder="http://127.0.0.1:11434"
+                  />
+                </div>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>Embedding Model</label>
+                  <input
+                    type="text"
+                    value={settings.ollamaEmbedModel}
+                    onChange={(e) =>
+                      saveSettings({ ...settings, ollamaEmbedModel: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                    placeholder="e.g. nomic-embed-text"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>Base URL</label>
+                  <input
+                    type="text"
+                    value={settings.openAiEmbedBaseUrl}
+                    onChange={(e) =>
+                      saveSettings({ ...settings, openAiEmbedBaseUrl: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                    placeholder="http://127.0.0.1:8080"
+                  />
+                </div>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>API Key (optional)</label>
+                  <input
+                    type="password"
+                    value={apiKeys.openAiEmbedApiKey}
+                    onChange={(e) =>
+                      saveApiKeys({ ...apiKeys, openAiEmbedApiKey: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                  />
+                </div>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>Model</label>
+                  <input
+                    type="text"
+                    value={settings.openAiEmbedModel}
+                    onChange={(e) =>
+                      saveSettings({ ...settings, openAiEmbedModel: e.target.value })
+                    }
+                    style={styles.inputStyle}
+                    placeholder="e.g. text-embedding-3-small"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Advanced Tab */}
+      {activeTab === "advanced" && (
+        <div>
+          {/* Transcription Section */}
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>Transcription</h4>
+            <div style={styles.fieldWrap}>
+              <label style={styles.labelStyle}>Language / Locale</label>
+              <input
+                type="text"
+                value={settings.transcriptionLocale}
+                onChange={(e) =>
+                  saveSettings({ ...settings, transcriptionLocale: e.target.value })
+                }
+                style={styles.inputStyle}
+                placeholder="e.g. en-US, es-ES, fr-FR"
+              />
+              <span style={{ fontSize: typography.sm, color: colors.textMuted, marginTop: 4, display: "block" }}>
+                BCP-47 format. Leave empty for auto-detection.
+              </span>
+            </div>
+          </div>
+
+          <div style={styles.divider} />
+
+          {/* Audio Section */}
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>Audio Input</h4>
+            <div style={styles.fieldWrap}>
+              <label style={styles.labelStyle}>Microphone</label>
+              <select
+                value={settings.inputDeviceName || "default"}
+                onChange={(e) =>
+                  saveSettings({ ...settings, inputDeviceName: e.target.value === "default" ? undefined : e.target.value })
+                }
+                style={styles.selectStyle}
+              >
+                <option value="default">System Default</option>
+                {/* Device list would be populated here */}
+              </select>
+            </div>
+          </div>
+
+          <div style={styles.divider} />
+
+          {/* Reset Section */}
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>Reset</h4>
+            <button
+              style={{ ...styles.buttonSecondary, color: colors.error }}
+              onClick={() => {
+                if (confirm("Reset all settings to defaults? This cannot be undone.")) {
+                  // Reset logic would go here
+                }
+              }}
+            >
+              Reset to Defaults
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Status Messages */}
+      {error && (
+        <div style={{ ...styles.statusBadge("error"), marginTop: spacing[4] }}>
+          <span>⚠️</span>
+          <span>{error}</span>
+        </div>
+      )}
+      {saved && (
+        <div style={{ ...styles.statusBadge("success"), marginTop: spacing[4] }}>
+          <span>✓</span>
+          <span>Saved</span>
+        </div>
+      )}
     </div>
   );
 }

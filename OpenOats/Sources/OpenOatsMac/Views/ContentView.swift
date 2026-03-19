@@ -104,7 +104,10 @@ struct ContentView: View {
                 errorMessage: transcriptionEngine?.lastError,
                 needsDownload: transcriptionEngine?.needsModelDownload ?? false,
                 onToggle: isRunning ? stopSession : startSession,
-                onConfirmDownload: confirmDownloadAndStart
+                onConfirmDownload: confirmDownloadAndStart,
+                kbConnected: !settings.kbFolderPath.isEmpty,
+                kbFileCount: knowledgeBase?.fileCount ?? 0,
+                isLocalMode: settings.llmProvider == .ollama && settings.embeddingProvider == .ollama
             )
         }
         .frame(minWidth: 360, maxWidth: 600, minHeight: 400)
