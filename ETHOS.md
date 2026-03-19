@@ -233,13 +233,14 @@ A release may be created autonomously only if all of the following are true:
 - No merged PR since the last release is labeled `release:major`
 - No merged PR in the release batch is `risk:high`
 - The current default branch tip has a green `validate-swift` run
+- The current default branch tip has a green `package-smoke` run
 - Required GitHub checks and the release workflow are green
 - Signing and notarization secrets required by the release workflow are available
 - Release notes are generated from the merged PRs in the batch
 
 ### Required Repo Prerequisite
 
-Autonomous release of app code is disabled until this repo also has a separate non-destructive package smoke check that validates app bundling without signing, notarization, DMG creation, or installation. The release workflow alone is not a sufficient safety gate.
+The `package-smoke` workflow must exist and remain non-destructive. It validates app bundling without signing, notarization, DMG creation, or installation. The release workflow alone is not a sufficient safety gate.
 
 ### Version Bump Rule
 
