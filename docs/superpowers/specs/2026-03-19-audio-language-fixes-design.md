@@ -1,7 +1,7 @@
 # Design: Audio Device Selection, Duplicate Removal & Language Model Fix
 
 **Date:** 2026-03-19
-**Status:** Approved
+**Status:** In Review (revision 2)
 
 ---
 
@@ -17,9 +17,9 @@ Three related issues in the OpenOats Tauri app:
 
 ## Decisions
 
-- System audio: add a device dropdown in `ControlBar` (Option A) — mirrors the mic selector pattern, visible and quick to change before recording.
+- System audio: add a device dropdown in `ControlBar` (mirrors mic selector pattern, visible and quick to change before recording).
 - Duplicate mic selector: remove the broken one from `SettingsView` entirely.
-- Language model: keep both models (`base-en` and `base`), add an explicit user-facing toggle in Settings > Advanced > Transcription (Option A/B hybrid). Default stays `base-en` to preserve existing behaviour.
+- Language model: keep both models (`base-en` and `base`), add an explicit user-facing toggle in Settings > Advanced > Transcription. Default stays `base-en` to preserve existing behaviour. Old model files are **never auto-deleted** (see Out of Scope).
 
 ---
 
@@ -32,14 +32,16 @@ Three related issues in the OpenOats Tauri app:
 | `systemAudioDeviceName` | `Option<String>` / `string \| null` | `null` | Selected loopback device. `null` = system default. |
 | `whisperModel` | `String` / `string` | `"base-en"` | `"base-en"` or `"base"`. Controls which model file is used. |
 
+Both new fields **must use `#[serde(default)]`** on the Rust side so that existing settings files that predate these fields deserialize without error. The `Default` impl for each field must match the defaults above.
+
 ### Model filenames
 
 | Setting value | Filename | Notes |
 |---|---|---|
 | `"base-en"` | `ggml-base.en.bin` | English-only, existing behaviour |
-| `"base"` | `ggml-base.bin` | Multilingual Whisper base model |
+| `"base"` | `ggml-base.bin` | Multilingual Whisper base model (~142 MB) |
 
-Both files live in the app data directory. Only the selected model needs to be downloaded.
+Both files live in the app data directory. Only the selected model needs to be present to record; the other may or may not exist.
 
 ---
 
@@ -52,23 +54,26 @@ list_sys_audio_devices() -> Vec<String>
 ```
 
 - **Windows:** enumerates WASAPI render endpoints via `IMMDeviceEnumerator::EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)`, returns friendly names.
-- **macOS:** delegates to `audio_macos` module device enumeration.
+- **macOS:** macOS system audio enumeration is **deferred / out of scope** for this change. The function returns an empty `Vec` on macOS, so the selector shows only "System Default" on that platform.
 - **Other:** returns empty vec.
-- Registered in `lib.rs` `invoke_handler`.
+- Must be annotated with `#[tauri::command]`, declared in `engine.rs`, and registered in the `invoke_handler!` macro in `lib.rs`.
 
-### `SystemAudioCapture` — optional device selection
+### Updated Tauri command: `check_model(model: String) -> Result<bool, String>`
 
-`WasapiLoopback::new()` gains a `device_name: Option<&str>` parameter:
-- `Some(name)`: enumerate render endpoints, find the one with matching friendly name, use it for loopback capture.
-- `None`: fall back to `GetDefaultAudioEndpoint` (existing behaviour, no regression).
+The existing `check_model` command is updated to accept an explicit `model` parameter (`"base-en"` or `"base"`). It resolves the filename via `model_filename(model)` and checks existence. This replaces the current no-argument version. The frontend calls it once per model variant on mount to populate badge state for both radio options independently.
 
-### `start_transcription` — reads `systemAudioDeviceName`
+### Updated Tauri command: `download_model(model: String) -> Result<(), String>`
 
-Reads `settings.system_audio_device_name` and passes it to `SystemAudioCapture::new()`, following the same pattern as `input_device_name` for mic selection.
+The existing `download_model` command gains an explicit `model` parameter. It resolves the target filename via `model_filename(model)` and downloads only that file. The current hardcoded `MODEL_URL` constant in `download.rs` becomes a function of the model variant:
 
-### `AppState::model_path` — settings-aware
+| Model | URL |
+|---|---|
+| `"base-en"` | `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin` |
+| `"base"` | `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin` |
 
-`model_path` is updated to accept the `whisper_model` setting value:
+Both URLs are from the canonical `ggerganov/whisper.cpp` Hugging Face repository. This replaces the current no-argument version.
+
+### Model filename helper
 
 ```rust
 fn model_filename(whisper_model: &str) -> &'static str {
@@ -79,7 +84,19 @@ fn model_filename(whisper_model: &str) -> &'static str {
 }
 ```
 
-`check_model` and `download_model` both read `settings.whisper_model` before resolving the path, so they operate on the correct file.
+`check_model` and `download_model` both call this helper with their `model` argument.
+
+### `SystemAudioCapture` — optional device selection
+
+`WasapiLoopback::new()` gains a `device_name: Option<&str>` parameter:
+- `Some(name)`: enumerate render endpoints, find the one with matching friendly name, use it for loopback capture.
+- `None`: fall back to `GetDefaultAudioEndpoint` (existing behaviour, no regression).
+
+### `start_transcription` — reads `systemAudioDeviceName` and `whisperModel`
+
+Reads `settings.system_audio_device_name` and passes it to `SystemAudioCapture::new()`, following the same pattern as `input_device_name` for mic selection.
+
+Reads `settings.whisper_model` to resolve the model path for both the mic and system audio `StreamingTranscriber` instances.
 
 ---
 
@@ -87,21 +104,21 @@ fn model_filename(whisper_model: &str) -> &'static str {
 
 ### `ControlBar.tsx` — system audio device selector
 
-A second `<select>` is added immediately after the mic selector:
+A second `<select>` is added immediately after the mic selector. `ControlBar` already receives `isRunning` as an existing prop — no new props are needed for this component:
 
-- Populated on mount via `invoke<string[]>("list_sys_audio_devices")`.
-- First option: `"🔊 System Default"` (value `"default"`).
+- On mount: calls `invoke<AppSettings>("get_settings")` to read `systemAudioDeviceName` and initialise `selectedSysDevice` state. The reverse mapping applies here: a `null` value from settings is mapped to `"default"` so the dropdown renders the correct first option. Also calls `invoke<string[]>("list_sys_audio_devices")` to populate the option list.
+- First option: `"System Default"` (value `"default"`).
 - Disabled while `isRunning` (same as mic selector).
-- `onChange` reads current settings, writes `systemAudioDeviceName: value === "default" ? null : value` via `save_settings`.
-- Component manages its own `selectedSysDevice` state internally — no new props needed.
+- `onChange`: the `"default"` option value is mapped to `null` before being written to `systemAudioDeviceName` — matching the `Option<String>` backend representation where `None` means system default. All other option values are written as-is. Reads current settings from the backend via `get_settings`, merges `systemAudioDeviceName: value === "default" ? null : value`, and writes via `save_settings`. **To avoid a read-modify-write race between the two dropdowns**, the system audio selector uses the same sequential `get_settings` + `save_settings` pattern already used by the mic selector. This is a known minor race under rapid simultaneous changes; it is accepted as a low-risk limitation given that both selectors are disabled during recording.
+- If `list_sys_audio_devices` returns an empty list (macOS or failure), only "System Default" is shown — graceful degradation.
 
 ### `SettingsView.tsx` — remove duplicate mic selector
 
-Delete the entire "Audio Input" subsection from the Advanced tab (currently lines 678–694). The ControlBar is the canonical location for audio device selection.
+Delete the entire "Audio Input" `<div>` section (the one with the `<h4>` heading "Audio Input") from the Advanced tab. No replacement — the canonical control is in `ControlBar`.
 
-### `SettingsView.tsx` — model selector in Transcription section
+### `SettingsView.tsx` — model selector in Transcription section (whisperModel radio)
 
-Added below the locale input in Advanced > Transcription:
+Added below the locale input in Advanced > Transcription. `SettingsView` currently takes no props; it gains one new prop: `isRunning: boolean`, passed from `App.tsx` where the state already exists. The radio group is **disabled while `isRunning`**.
 
 ```
 Whisper Model
@@ -109,11 +126,13 @@ Whisper Model
   ○ Multilingual (base)       [Download ~142 MB]
 ```
 
-- Radio group bound to `settings.whisperModel`.
-- Each option shows a `✓ ready` badge if the corresponding file exists (checked via `check_model` with model variant), or a `Download` button if not.
-- Clicking Download triggers the existing `download_model` flow (with model variant passed).
-- Switching to an already-downloaded model takes effect immediately on next recording start.
-- Switching to a model not yet downloaded shows the Download button but does not auto-start a download.
+- Two radio inputs bound to `settings.whisperModel`.
+- On mount: calls `check_model("base-en")` and `check_model("base")` in parallel to determine which files exist, and stores results in local state (`baseEnReady`, `baseReady`).
+- Each option shows a `✓ ready` badge if its corresponding file exists, or a `Download` button if not.
+- Clicking a Download button calls `download_model(model)` with the relevant variant. On completion (resolved promise), the component calls `check_model(model)` to re-verify the file exists before setting the badge to ready — this guards against silent download failures.
+- Selecting a radio that is already downloaded saves `whisperModel` immediately via `save_settings`. The change takes effect on the next recording start.
+- Selecting a radio whose model is not yet downloaded: saves the preference but also shows the Download button — does **not** auto-start a download.
+- The radio group is visually disabled (pointer-events: none, reduced opacity) when `isRunning`.
 
 ### `types.ts`
 
@@ -128,14 +147,17 @@ whisperModel: string;
 
 ## Error Handling
 
-- If `list_sys_audio_devices` fails, the system audio selector shows only "System Default" — graceful degradation, no crash.
-- If the selected system audio device is unavailable at capture time, `buffer_stream()` logs a warning and returns an empty stream (existing behaviour, "them" track simply produces no audio).
-- If `whisperModel` is an unrecognised value, the backend defaults to `base-en`.
+- If `list_sys_audio_devices` fails, the system audio selector shows only "System Default" — no crash.
+- If the selected system audio device is unavailable at capture time, `buffer_stream()` logs a warning and returns an empty stream — the "them" track produces no audio but the app continues.
+- If `whisperModel` is an unrecognised value, the backend `model_filename` helper defaults to `base-en`.
+- If a model file is missing when recording starts, `start_transcription` returns an error. The error message should include the missing filename (e.g., `"Whisper model not found: ggml-base.bin. Download it in Settings > Advanced > Transcription."`) so the user knows how to recover. This is a minor improvement over the existing generic message.
 
 ---
 
 ## Out of Scope
 
+- macOS system audio device enumeration (deferred; the selector shows only "System Default" on macOS).
+- Auto-deleting old model files when the user switches models. Both files may coexist on disk indefinitely. Storage cleanup is the user's responsibility.
 - Selecting per-channel sample rate or bit depth.
 - Showing real-time audio level for the system audio device in the selector.
 - Auto-switching models based on locale.
