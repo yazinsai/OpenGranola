@@ -114,6 +114,17 @@ final class TranscriptionEngine {
                 try await micAsr.initialize(models: models)
                 let systemAsr = AsrManager(config: .default)
                 try await systemAsr.initialize(models: models)
+                if let (customVocabulary, ctcModels) = try await loadCustomVocabularyBoosting() {
+                    assetStatus = "Loading custom keywords..."
+                    try await micAsr.configureVocabularyBoosting(
+                        vocabulary: customVocabulary,
+                        ctcModels: ctcModels
+                    )
+                    try await systemAsr.configureVocabularyBoosting(
+                        vocabulary: customVocabulary,
+                        ctcModels: ctcModels
+                    )
+                }
                 self.micAsrManager = micAsr
                 self.systemAsrManager = systemAsr
                 self.qwen3Manager = nil
@@ -124,6 +135,17 @@ final class TranscriptionEngine {
                 try await micAsr.initialize(models: models)
                 let systemAsr = AsrManager(config: .default)
                 try await systemAsr.initialize(models: models)
+                if let (customVocabulary, ctcModels) = try await loadCustomVocabularyBoosting() {
+                    assetStatus = "Loading custom keywords..."
+                    try await micAsr.configureVocabularyBoosting(
+                        vocabulary: customVocabulary,
+                        ctcModels: ctcModels
+                    )
+                    try await systemAsr.configureVocabularyBoosting(
+                        vocabulary: customVocabulary,
+                        ctcModels: ctcModels
+                    )
+                }
                 self.micAsrManager = micAsr
                 self.systemAsrManager = systemAsr
                 self.qwen3Manager = nil
@@ -522,5 +544,23 @@ final class TranscriptionEngine {
         let languageCode = normalizedLanguageCode(for: locale)
         guard let languageCode else { return nil }
         return Qwen3AsrConfig.Language(from: languageCode)
+    }
+
+    private func loadCustomVocabularyBoosting() async throws -> (CustomVocabularyContext, CtcModels)? {
+        let customVocabularyText = settings.transcriptionCustomVocabulary
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !customVocabularyText.isEmpty else { return nil }
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openoats-custom-vocabulary-\(UUID().uuidString).txt")
+
+        try customVocabularyText.write(to: tempURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let (customVocabulary, ctcModels) = try await CustomVocabularyContext.loadWithCtcTokens(
+            from: tempURL.path
+        )
+        guard !customVocabulary.terms.isEmpty else { return nil }
+        return (customVocabulary, ctcModels)
     }
 }

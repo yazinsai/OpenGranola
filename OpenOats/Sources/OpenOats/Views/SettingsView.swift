@@ -150,6 +150,40 @@ struct SettingsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Custom Keywords")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    ZStack(alignment: .topLeading) {
+                        if settings.transcriptionCustomVocabulary.isEmpty {
+                            Text("One term per line. Optional aliases: OpenOats: open oats")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.quaternary)
+                                .padding(.top, 6)
+                                .padding(.leading, 4)
+                                .allowsHitTesting(false)
+                        }
+
+                        TextEditor(text: $settings.transcriptionCustomVocabulary)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(height: 90)
+                            .frame(maxWidth: .infinity)
+                            .scrollContentBackground(.hidden)
+                    }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(.quaternary)
+                    )
+
+                    Text(
+                        "Optional. Boost meeting-specific jargon, names, and product terms for Parakeet TDT v2/v3. Enter one term per line, or use `Preferred Term: alias one, alias two`."
+                    )
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Section("Privacy") {

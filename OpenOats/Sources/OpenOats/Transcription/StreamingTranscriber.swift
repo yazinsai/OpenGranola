@@ -165,6 +165,11 @@ final class StreamingTranscriber: @unchecked Sendable {
             switch backend {
             case .parakeet(let asrManager):
                 let result = try await asrManager.transcribe(samples)
+                if let appliedTerms = result.ctcAppliedTerms, !appliedTerms.isEmpty {
+                    let joinedTerms = appliedTerms.joined(separator: ", ")
+                    log.info("[\(self.speaker.rawValue)] custom keywords applied: \(joinedTerms)")
+                    diagLog("[\(self.speaker.rawValue)] custom keywords applied: \(joinedTerms)")
+                }
                 text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             case .qwen3(let qwen3Manager, let qwenLanguage):
                 text = try await qwen3Manager.transcribe(

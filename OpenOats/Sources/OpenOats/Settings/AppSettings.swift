@@ -107,6 +107,15 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(transcriptionLocale, forKey: "transcriptionLocale") }
     }
 
+    var transcriptionCustomVocabulary: String {
+        didSet {
+            UserDefaults.standard.set(
+                transcriptionCustomVocabulary,
+                forKey: "transcriptionCustomVocabulary"
+            )
+        }
+    }
+
     var transcriptionModel: TranscriptionModel {
         didSet { UserDefaults.standard.set(transcriptionModel.rawValue, forKey: "transcriptionModel") }
     }
@@ -183,6 +192,7 @@ final class AppSettings {
         self.notesFolderPath = defaults.string(forKey: "notesFolderPath") ?? defaultNotesPath
         self.selectedModel = defaults.string(forKey: "selectedModel") ?? "google/gemini-3-flash-preview"
         self.transcriptionLocale = defaults.string(forKey: "transcriptionLocale") ?? "en-US"
+        self.transcriptionCustomVocabulary = defaults.string(forKey: "transcriptionCustomVocabulary") ?? ""
         self.transcriptionModel = TranscriptionModel(
             rawValue: defaults.string(forKey: "transcriptionModel") ?? ""
         ) ?? .parakeetV2
