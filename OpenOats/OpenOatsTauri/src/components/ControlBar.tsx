@@ -128,17 +128,29 @@ export function ControlBar({
   }, [isRunning]);
 
   useEffect(() => {
-    import("@tauri-apps/api/event").then(({ listen }) => {
-      let unlisten: (() => void) | null = null;
-      if (isRunning) {
+    let active = true;
+    let unlistenFn: (() => void) | null = null;
+
+    if (isRunning) {
+      import("@tauri-apps/api/event").then(({ listen }) => {
         listen<{ you: number; them: number }>("audio-level", (e) => {
-          setAudioLevel(e.payload.you);
-        }).then((f) => { unlisten = f; });
-      } else {
-        setAudioLevel(0);
-      }
-      return () => { unlisten?.(); };
-    });
+          if (active) setAudioLevel(e.payload.you);
+        }).then((f) => {
+          if (active) {
+            unlistenFn = f;
+          } else {
+            f(); // already cleaned up, immediately unlisten
+          }
+        });
+      });
+    } else {
+      setAudioLevel(0);
+    }
+
+    return () => {
+      active = false;
+      unlistenFn?.();
+    };
   }, [isRunning]);
 
   const handleDeviceChange = async (device: string) => {

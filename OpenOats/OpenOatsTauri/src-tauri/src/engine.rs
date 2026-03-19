@@ -56,6 +56,7 @@ pub struct AppState {
     pub knowledge_base: AsyncMutex<KnowledgeBase>,
     pub suggestion_engine: Mutex<SuggestionEngine>,
     pub audio_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+    pub poll_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
     pub is_running: Mutex<bool>,
     pub mic_level: Arc<AtomicU32>,
     pub sys_level: Arc<AtomicU32>,
@@ -77,6 +78,7 @@ impl AppState {
             transcript_logger: Mutex::new(TranscriptLogger::with_default_path()),
             settings: Mutex::new(settings),
             audio_task: Mutex::new(None),
+            poll_task: Mutex::new(None),
             is_running: Mutex::new(false),
             mic_level: Arc::new(AtomicU32::new(0)),
             sys_level: Arc::new(AtomicU32::new(0)),
@@ -253,7 +255,7 @@ pub fn start_transcription(
         let ml = Arc::clone(&state_clone.mic_level);
         let sl = Arc::clone(&state_clone.sys_level);
         let running_flag = Arc::clone(&state_clone);
-        tauri::async_runtime::spawn(async move {
+        let poll_handle = tauri::async_runtime::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
             loop {
                 interval.tick().await;
@@ -263,6 +265,7 @@ pub fn start_transcription(
                 app_lvl.emit("audio-level", &AudioLevelPayload { you, them }).ok();
             }
         });
+        *state_clone.poll_task.lock().unwrap() = Some(poll_handle);
 
         // ── "Them" system audio (WASAPI loopback) ──────────────────────────
         let them_app = app_clone.clone();
@@ -347,6 +350,9 @@ pub fn start_transcription(
 #[tauri::command]
 pub fn stop_transcription(state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
     if let Some(handle) = state.audio_task.lock().unwrap().take() {
+        handle.abort();
+    }
+    if let Some(handle) = state.poll_task.lock().unwrap().take() {
         handle.abort();
     }
     state.session_store.lock().unwrap().end_session();
