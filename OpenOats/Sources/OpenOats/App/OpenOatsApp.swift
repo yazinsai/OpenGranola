@@ -99,6 +99,7 @@ extension OpenOatsRootApp {
     }
 
     private func showMainWindow() {
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == Self.mainWindowID }) {
             window.makeKeyAndOrderFront(nil)
@@ -139,6 +140,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+
         let hidden = defaults.object(forKey: "hideFromScreenShare") == nil
             ? true
             : defaults.bool(forKey: "hideFromScreenShare")
@@ -218,6 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         if isMainWindow {
             sender.orderOut(nil)
+            NSApp.setActivationPolicy(.accessory)
             showBackgroundModeHintIfNeeded()
             return false
         }
