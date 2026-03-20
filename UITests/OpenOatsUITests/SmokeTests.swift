@@ -43,8 +43,10 @@ final class SmokeTests: XCTestCase {
         let deepLink = URL(string: "openoats://notes?sessionID=session_ui_test_notes")!
         openDeepLink(deepLink)
 
-        // 2-tab model defaults to Transcript tab; switch to Notes tab via Cmd+2
-        app.typeKey("2", modifierFlags: .command)
+        // 2-tab model defaults to Transcript tab; switch to Notes tab
+        let notesTab = app.segmentedControls.buttons["Notes"]
+        XCTAssertTrue(notesTab.waitForExistence(timeout: 5))
+        notesTab.click()
 
         XCTAssertTrue(element(in: app, identifier: "notes.generateButton").waitForExistence(timeout: 5))
         element(in: app, identifier: "notes.generateButton").click()
