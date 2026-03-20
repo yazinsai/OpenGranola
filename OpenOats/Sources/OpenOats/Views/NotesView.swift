@@ -32,6 +32,7 @@ struct NotesView: View {
             await coordinator.loadHistory()
             if let requested = coordinator.consumeRequestedSessionSelection() {
                 selectedSessionID = requested
+                detailViewMode = .notes
             } else if let last = coordinator.lastEndedSession {
                 selectedSessionID = last.id
             }
@@ -47,6 +48,8 @@ struct NotesView: View {
         .onChange(of: coordinator.requestedSessionSelectionID) {
             if let requested = coordinator.consumeRequestedSessionSelection() {
                 selectedSessionID = requested
+                // Deep links target notes, so default to the Notes tab
+                detailViewMode = .notes
             }
         }
     }
@@ -288,16 +291,13 @@ struct NotesView: View {
 
     @ViewBuilder
     private func detailBody(sessionID: String) -> some View {
-        ZStack {
-            transcriptView
-                .zIndex(detailViewMode == .transcript ? 1 : 0)
-                .opacity(detailViewMode == .transcript ? 1 : 0)
-                .allowsHitTesting(detailViewMode == .transcript)
-
-            notesTab(sessionID: sessionID)
-                .zIndex(detailViewMode == .notes ? 1 : 0)
-                .opacity(detailViewMode == .notes ? 1 : 0)
-                .allowsHitTesting(detailViewMode == .notes)
+        Group {
+            switch detailViewMode {
+            case .transcript:
+                transcriptView
+            case .notes:
+                notesTab(sessionID: sessionID)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
