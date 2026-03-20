@@ -77,17 +77,24 @@ struct SettingsView: View {
                 }
                 .font(.system(size: 12))
 
-                if settings.llmProvider == .openRouter {
+                switch settings.llmProvider {
+                case .openRouter:
                     SecureField("API Key", text: $settings.openRouterApiKey)
                         .font(.system(size: 12, design: .monospaced))
 
                     TextField("Model", text: $settings.selectedModel, prompt: Text("e.g. google/gemini-3-flash-preview"))
                         .font(.system(size: 12, design: .monospaced))
-                } else {
+                case .ollama:
                     TextField("Ollama URL", text: $settings.ollamaBaseURL, prompt: Text("http://localhost:11434"))
                         .font(.system(size: 12, design: .monospaced))
 
                     TextField("Model", text: $settings.ollamaLLMModel, prompt: Text("e.g. qwen3:8b"))
+                        .font(.system(size: 12, design: .monospaced))
+                case .mlx:
+                    TextField("MLX Server URL", text: $settings.mlxBaseURL, prompt: Text("http://localhost:8080"))
+                        .font(.system(size: 12, design: .monospaced))
+
+                    TextField("Model", text: $settings.mlxModel, prompt: Text("e.g. mlx-community/Llama-3.2-3B-Instruct-4bit"))
                         .font(.system(size: 12, design: .monospaced))
                 }
             }
@@ -108,7 +115,7 @@ struct SettingsView: View {
                     TextField("Embedding Model", text: $settings.ollamaEmbedModel, prompt: Text("e.g. nomic-embed-text"))
                         .font(.system(size: 12, design: .monospaced))
 
-                    if settings.llmProvider != .ollama {
+                    if settings.llmProvider != .ollama && settings.llmProvider != .mlx {
                         TextField("Ollama URL", text: $settings.ollamaBaseURL, prompt: Text("http://localhost:11434"))
                             .font(.system(size: 12, design: .monospaced))
                     }

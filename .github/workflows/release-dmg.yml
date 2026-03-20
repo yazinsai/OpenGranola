@@ -2,6 +2,11 @@ name: Build macOS DMG
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild and publish, for example v1.11.1
+        required: true
+        type: string
   release:
     types: [published]
 
@@ -10,9 +15,28 @@ jobs:
     runs-on: macos-26
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve release metadata
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="${{ inputs.tag }}"
+          fi
+
+          VERSION="${TAG#v}"
+
+          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Resolved release tag: $TAG"
+          echo "Resolved version: $VERSION"
 
       - name: Select Xcode 26
         run: |
@@ -20,14 +44,11 @@ jobs:
           swift --version
 
       - name: Set version from tag
-        if: github.event_name == 'release'
         run: |
-          TAG="${{ github.event.release.tag_name }}"
-          VERSION="${TAG#v}"
           PLIST="OpenOats/Sources/OpenOats/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
-          echo "Set version to $VERSION"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${RELEASE_VERSION}" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${RELEASE_VERSION}" "$PLIST"
+          echo "Set version to ${RELEASE_VERSION}"
 
       - name: Check for signing certificate
         env:
@@ -97,20 +118,16 @@ jobs:
           path: dist/OpenOats.dmg
 
       - name: Attach DMG to Release
-        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload ${{ github.event.release.tag_name }} dist/OpenOats.dmg --clobber
+          gh release upload "${RELEASE_TAG}" dist/OpenOats.dmg --clobber
 
       - name: Sign DMG and update appcast
-        if: github.event_name == 'release'
         env:
           SPARKLE_EDDSA_KEY: ${{ secrets.SPARKLE_EDDSA_KEY }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ github.event.release.tag_name }}"
-          VERSION="${TAG#v}"
           DMG_PATH="dist/OpenOats.dmg"
 
           # Extract sign_update from Sparkle build artifacts
@@ -135,7 +152,7 @@ jobs:
           echo "EdDSA signature: $ED_SIGNATURE"
           echo "DMG length: $DMG_LENGTH"
 
-          DMG_URL="https://github.com/yazinsai/OpenOats/releases/download/${TAG}/OpenOats.dmg"
+          DMG_URL="https://github.com/yazinsai/OpenOats/releases/download/${RELEASE_TAG}/OpenOats.dmg"
           PUB_DATE=$(date -u +"%a, %d %b %Y %H:%M:%S %z")
 
           # Clone gh-pages branch
@@ -151,10 +168,10 @@ jobs:
               <description>Most recent updates to OpenOats</description>
               <language>en</language>
               <item>
-                <title>Version ${VERSION}</title>
+                <title>Version ${RELEASE_VERSION}</title>
                 <pubDate>${PUB_DATE}</pubDate>
-                <sparkle:version>${VERSION}</sparkle:version>
-                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                <sparkle:version>${RELEASE_VERSION}</sparkle:version>
+                <sparkle:shortVersionString>${RELEASE_VERSION}</sparkle:shortVersionString>
                 <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
                 <enclosure url="${DMG_URL}"
                            sparkle:edSignature="${ED_SIGNATURE}"
@@ -172,23 +189,20 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add appcast.xml
-          git commit -m "Update appcast for ${VERSION}" || echo "No changes to commit"
+          git commit -m "Update appcast for ${RELEASE_VERSION}" || echo "No changes to commit"
           git push origin gh-pages
 
       - name: Update Homebrew cask
-        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ github.event.release.tag_name }}"
-          VERSION="${TAG#v}"
           SHA256=$(shasum -a 256 dist/OpenOats.dmg | awk '{print $1}')
           REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/yazinsai/OpenOats.git"
 
           git clone --branch main --single-branch "$REPO_URL" /tmp/openoats-main
 
           chmod +x /tmp/openoats-main/scripts/update_homebrew_cask.sh
-          /tmp/openoats-main/scripts/update_homebrew_cask.sh "$VERSION" "$SHA256"
+          /tmp/openoats-main/scripts/update_homebrew_cask.sh "$RELEASE_VERSION" "$SHA256"
 
           cd /tmp/openoats-main
           git config user.name "github-actions[bot]"
@@ -199,13 +213,13 @@ jobs:
             exit 0
           fi
 
-          git commit -m "Update Homebrew cask for ${VERSION}"
+          git commit -m "Update Homebrew cask for ${RELEASE_VERSION}"
 
           if git push origin main; then
             exit 0
           fi
 
-          BRANCH="automation/homebrew-cask-${VERSION}"
+          BRANCH="automation/homebrew-cask-${RELEASE_VERSION}"
           git checkout -B "$BRANCH"
           git push origin "$BRANCH" --force
 
@@ -225,5 +239,8 @@ jobs:
             --repo yazinsai/OpenOats \
             --base main \
             --head "$BRANCH" \
-            --title "Update Homebrew cask for ${VERSION}" \
-            --body "Automated follow-up from the release workflow because direct pushes to protected \`main\` are blocked by branch protection."
+            --title "Update Homebrew cask for ${RELEASE_VERSION}" \
+            --body "Automated follow-up from the release workflow because direct pushes to protected \`main\` are blocked by branch protection." || {
+              echo "::warning::Unable to create the Homebrew cask PR automatically. Branch ${BRANCH} was pushed and can be opened manually."
+              exit 0
+            }

@@ -99,6 +99,8 @@ actor TranscriptRefinementEngine {
         let openRouterKey = await MainActor.run { settings.openRouterApiKey }
         let ollamaURL = await MainActor.run { settings.ollamaBaseURL }
         let ollamaModel = await MainActor.run { settings.ollamaLLMModel }
+        let mlxURL = await MainActor.run { settings.mlxBaseURL }
+        let mlxModelName = await MainActor.run { settings.mlxModel }
 
         switch provider {
         case .openRouter:
@@ -114,6 +116,15 @@ actor TranscriptRefinementEngine {
             }
             baseURL = url
             model = ollamaModel
+        case .mlx:
+            apiKey = nil
+            let base = mlxURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard let url = URL(string: base + "/v1/chat/completions") else {
+                await markFailed(utterance.id)
+                return
+            }
+            baseURL = url
+            model = mlxModelName
         }
 
         let messages: [OpenRouterClient.Message] = [

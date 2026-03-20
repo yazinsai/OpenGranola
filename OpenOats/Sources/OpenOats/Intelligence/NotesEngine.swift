@@ -56,6 +56,16 @@ final class NotesEngine {
             }
             baseURL = ollamaURL
             model = settings.ollamaLLMModel
+        case .mlx:
+            apiKey = nil
+            let base = settings.mlxBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard let mlxURL = URL(string: base + "/v1/chat/completions") else {
+                error = "Invalid MLX URL: \(settings.mlxBaseURL)"
+                isGenerating = false
+                return
+            }
+            baseURL = mlxURL
+            model = settings.mlxModel
         }
 
         let transcriptText = formatTranscript(transcript)

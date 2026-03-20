@@ -60,6 +60,7 @@ final class SuggestionEngine {
         switch settings.llmProvider {
         case .openRouter: settings.openRouterApiKey
         case .ollama: nil
+        case .mlx: nil
         }
     }
 
@@ -75,6 +76,13 @@ final class SuggestionEngine {
                 return nil
             }
             return url
+        case .mlx:
+            let base = settings.mlxBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard let url = URL(string: base + "/v1/chat/completions") else {
+                print("[SuggestionEngine] Invalid MLX URL: \(settings.mlxBaseURL)")
+                return nil
+            }
+            return url
         }
     }
 
@@ -83,6 +91,7 @@ final class SuggestionEngine {
         switch settings.llmProvider {
         case .openRouter: settings.selectedModel
         case .ollama: settings.ollamaLLMModel
+        case .mlx: settings.mlxModel
         }
     }
 
@@ -99,6 +108,8 @@ final class SuggestionEngine {
         case .openRouter:
             guard !settings.openRouterApiKey.isEmpty else { return }
         case .ollama:
+            guard llmBaseURL != nil else { return }
+        case .mlx:
             guard llmBaseURL != nil else { return }
         }
 

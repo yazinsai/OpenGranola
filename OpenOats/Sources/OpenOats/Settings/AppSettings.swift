@@ -7,6 +7,7 @@ import CoreAudio
 enum LLMProvider: String, CaseIterable, Identifiable {
     case openRouter
     case ollama
+    case mlx
 
     var id: String { rawValue }
 
@@ -14,6 +15,7 @@ enum LLMProvider: String, CaseIterable, Identifiable {
         switch self {
         case .openRouter: "OpenRouter"
         case .ollama: "Ollama"
+        case .mlx: "MLX"
         }
     }
 }
@@ -87,6 +89,16 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         case .whisperBase: .base
         case .whisperSmall: .small
         default: nil
+        }
+    }
+
+    func makeBackend(customVocabulary: String = "") -> any TranscriptionBackend {
+        switch self {
+        case .parakeetV2: return ParakeetBackend(version: .v2, customVocabulary: customVocabulary)
+        case .parakeetV3: return ParakeetBackend(version: .v3, customVocabulary: customVocabulary)
+        case .qwen3ASR06B: return Qwen3Backend()
+        case .whisperBase: return WhisperKitBackend(variant: .base)
+        case .whisperSmall: return WhisperKitBackend(variant: .small)
         }
     }
 }
@@ -268,6 +280,28 @@ final class AppSettings {
         }
     }
 
+    @ObservationIgnored nonisolated(unsafe) private var _mlxBaseURL: String
+    var mlxBaseURL: String {
+        get { access(keyPath: \.mlxBaseURL); return _mlxBaseURL }
+        set {
+            withMutation(keyPath: \.mlxBaseURL) {
+                _mlxBaseURL = newValue
+                UserDefaults.standard.set(newValue, forKey: "mlxBaseURL")
+            }
+        }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _mlxModel: String
+    var mlxModel: String {
+        get { access(keyPath: \.mlxModel); return _mlxModel }
+        set {
+            withMutation(keyPath: \.mlxModel) {
+                _mlxModel = newValue
+                UserDefaults.standard.set(newValue, forKey: "mlxModel")
+            }
+        }
+    }
+
     @ObservationIgnored nonisolated(unsafe) private var _openAIEmbedBaseURL: String
     var openAIEmbedBaseURL: String {
         get { access(keyPath: \.openAIEmbedBaseURL); return _openAIEmbedBaseURL }
@@ -421,6 +455,8 @@ final class AppSettings {
         self._ollamaBaseURL = defaults.string(forKey: "ollamaBaseURL") ?? "http://localhost:11434"
         self._ollamaLLMModel = defaults.string(forKey: "ollamaLLMModel") ?? "qwen3:8b"
         self._ollamaEmbedModel = defaults.string(forKey: "ollamaEmbedModel") ?? "nomic-embed-text"
+        self._mlxBaseURL = defaults.string(forKey: "mlxBaseURL") ?? "http://localhost:8080"
+        self._mlxModel = defaults.string(forKey: "mlxModel") ?? "mlx-community/Llama-3.2-3B-Instruct-4bit"
         self._openAIEmbedBaseURL = defaults.string(forKey: "openAIEmbedBaseURL") ?? "http://localhost:8080"
         self._openAIEmbedApiKey = KeychainHelper.load(key: "openAIEmbedApiKey") ?? ""
         self._openAIEmbedModel = defaults.string(forKey: "openAIEmbedModel") ?? "text-embedding-3-small"
@@ -662,6 +698,7 @@ final class AppSettings {
         switch llmProvider {
         case .openRouter: raw = selectedModel
         case .ollama: raw = ollamaLLMModel
+        case .mlx: raw = mlxModel
         }
         return raw.split(separator: "/").last.map(String.init) ?? raw
     }
