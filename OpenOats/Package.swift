@@ -21,10 +21,7 @@ let package = Package(
                 .product(name: "LaunchAtLogin", package: "LaunchAtLogin-Modern"),
             ],
             path: "Sources/OpenOats",
-            exclude: ["Info.plist", "OpenOats.entitlements", "Assets"],
-            resources: [
-                .copy("Resources/meeting-apps.json"),
-            ]
+            exclude: ["Info.plist", "OpenOats.entitlements", "Assets", "Resources"]
         ),
         .testTarget(
             name: "OpenOatsTests",

@@ -171,14 +171,10 @@ actor MeetingDetector {
         self.customBundleIDs = customBundleIDs
         self.selfBundleID = Bundle.main.bundleIdentifier ?? "com.openoats.app"
 
-        // Load known apps from bundled JSON
-        var loaded: [MeetingAppEntry] = []
-        if let url = Bundle.module.url(forResource: "meeting-apps", withExtension: "json"),
-           let data = try? Data(contentsOf: url) {
-            loaded = (try? JSONDecoder().decode([MeetingAppEntry].self, from: data)) ?? []
-        }
-        self.knownApps = loaded
-        self.knownBundleIDs = Set(loaded.map(\.bundleID) + customBundleIDs)
+        // Known meeting apps (embedded to avoid Bundle.module issues in
+        // manually-constructed .app bundles)
+        self.knownApps = Self.defaultMeetingApps
+        self.knownBundleIDs = Set(Self.defaultMeetingApps.map(\.bundleID) + customBundleIDs)
             .subtracting([selfBundleID])
 
         var capturedContinuation: AsyncStream<MeetingDetectionEvent>.Continuation!
@@ -279,4 +275,16 @@ actor MeetingDetector {
         return nil
     }
 
+    // MARK: - Default Meeting Apps
+
+    private static let defaultMeetingApps: [MeetingAppEntry] = [
+        MeetingAppEntry(bundleID: "us.zoom.xos", displayName: "Zoom"),
+        MeetingAppEntry(bundleID: "com.microsoft.teams2", displayName: "Microsoft Teams"),
+        MeetingAppEntry(bundleID: "com.apple.FaceTime", displayName: "FaceTime"),
+        MeetingAppEntry(bundleID: "com.cisco.webexmeetingsapp", displayName: "Webex"),
+        MeetingAppEntry(bundleID: "app.tuple.app", displayName: "Tuple"),
+        MeetingAppEntry(bundleID: "co.around.Around", displayName: "Around"),
+        MeetingAppEntry(bundleID: "com.slack.Slack", displayName: "Slack"),
+        MeetingAppEntry(bundleID: "com.hnc.Discord", displayName: "Discord"),
+    ]
 }
