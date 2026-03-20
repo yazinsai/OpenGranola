@@ -35,6 +35,7 @@ export const theme = {
     // Speaker colors - refined
     you: "#4a7fb5",             // Muted blue (was #5b8cbf)
     them: "#c98b4f",            // Warm amber (was #d2994d)
+    themLight: "#dba86e",       // Lighter amber tint
 
     // Overlay specific (glassmorphism)
     overlay: {
