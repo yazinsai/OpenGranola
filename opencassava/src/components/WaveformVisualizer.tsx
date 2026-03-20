@@ -4,13 +4,20 @@ import { colors } from "../theme";
 interface Props {
   level: number; // 0-1
   isActive: boolean;
+  color?: string;
+  colorLight?: string;
 }
 
-export function WaveformVisualizer({ level, isActive }: Props) {
+export function WaveformVisualizer({
+  level,
+  isActive,
+  color = colors.accent,
+  colorLight = colors.accentLight,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dataArray, setDataArray] = useState<Float32Array>(new Float32Array(64));
   const width = 140;
-  const height = 32;
+  const height = 18;
   const normalizedLevel = Math.max(0, Math.min(1, (level - 0.015) / 0.985));
   const visualLevel = Math.pow(normalizedLevel, 0.65);
 
@@ -64,9 +71,9 @@ export function WaveformVisualizer({ level, isActive }: Props) {
 
       // Draw waveform
       const gradient = ctx.createLinearGradient(0, 0, width, 0);
-      gradient.addColorStop(0, colors.accent);
-      gradient.addColorStop(0.5, colors.accentLight);
-      gradient.addColorStop(1, colors.accent);
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(0.5, colorLight);
+      gradient.addColorStop(1, color);
 
       ctx.strokeStyle = gradient;
       ctx.lineWidth = 2;
@@ -119,7 +126,7 @@ export function WaveformVisualizer({ level, isActive }: Props) {
       }
 
       ctx.closePath();
-      ctx.fillStyle = `${colors.accent}20`;
+      ctx.fillStyle = `${color}20`;
       ctx.fill();
       ctx.stroke();
 
@@ -129,7 +136,7 @@ export function WaveformVisualizer({ level, isActive }: Props) {
     draw();
 
     return () => cancelAnimationFrame(animationId);
-  }, [dataArray, isActive, normalizedLevel, visualLevel]);
+  }, [dataArray, isActive, normalizedLevel, visualLevel, color, colorLight]);
 
   return (
     <canvas
