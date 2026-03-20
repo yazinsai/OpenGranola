@@ -67,9 +67,18 @@ final class WhisperKitManager: @unchecked Sendable {
             throw WhisperKitManagerError.notInitialized
         }
         let options = DecodingOptions(
-            // Let Whisper auto-detect the language
+            task: .transcribe,
             language: nil,
-            wordTimestamps: false
+            temperature: 0.0,
+            temperatureIncrementOnFallback: 0.2,
+            temperatureFallbackCount: 5,
+            usePrefillPrompt: true,
+            detectLanguage: true,
+            wordTimestamps: false,
+            compressionRatioThreshold: 2.4,
+            logProbThreshold: -1.0,
+            firstTokenLogProbThreshold: -1.5,
+            noSpeechThreshold: 0.6
         )
         let results = try await pipe.transcribe(audioArray: samples, decodeOptions: options)
         return results.map { $0.text }.joined(separator: " ")
