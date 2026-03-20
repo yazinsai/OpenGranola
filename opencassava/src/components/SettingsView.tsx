@@ -187,7 +187,11 @@ export function SettingsView({ settings: initialSettings = null, onSettingsChang
     );
   }
 
-  const isLocalMode = settings.llmProvider === "ollama" && settings.embeddingProvider === "ollama";
+  const isLocalUrl = (url?: string) => !url || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(url);
+  const isLocalMode =
+    (settings.llmProvider === "ollama" && settings.embeddingProvider === "ollama") ||
+    (settings.llmProvider === "openai" && settings.embeddingProvider === "openai" &&
+      isLocalUrl(settings.openAiLlmBaseUrl) && isLocalUrl(settings.openAiEmbedBaseUrl));
 
   // Local styles for SettingsView
   const styles = {

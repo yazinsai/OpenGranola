@@ -338,7 +338,11 @@ function App() {
     );
   }
 
-  const isLocalMode = settings?.llmProvider === "ollama" && settings?.embeddingProvider === "ollama";
+  const isLocalUrl = (url?: string) => !url || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(url);
+  const isLocalMode =
+    (settings?.llmProvider === "ollama" && settings?.embeddingProvider === "ollama") ||
+    (settings?.llmProvider === "openai" && settings?.embeddingProvider === "openai" &&
+      isLocalUrl(settings?.openAiLlmBaseUrl) && isLocalUrl(settings?.openAiEmbedBaseUrl));
   const modelName = settings?.llmProvider === "ollama" ? settings.ollamaLlmModel || "Unknown" : settings?.selectedModel || "Unknown";
   const kbConnected = !!settings?.kbFolderPath;
 

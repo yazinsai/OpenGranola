@@ -137,7 +137,7 @@ fn default_whisper_model() -> String {
     "auto".into()
 }
 fn default_model() -> String {
-    "google/gemini-3-flash-preview".into()
+    "nvidia/nemotron-3-nano-4b".into()
 }
 fn default_locale() -> String {
     "en-US".into()
@@ -146,10 +146,10 @@ fn default_transcription_model() -> String {
     "whisper-base".into()
 }
 fn default_llm_provider() -> String {
-    "openrouter".into()
+    "openai".into()
 }
 fn default_embedding_provider() -> String {
-    "voyage".into()
+    "openai".into()
 }
 fn default_ollama_url() -> String {
     "http://localhost:11434".into()
@@ -161,13 +161,13 @@ fn default_ollama_embed_model() -> String {
     "nomic-embed-text".into()
 }
 fn default_openai_llm_url() -> String {
-    "http://localhost:1234".into()
+    "http://127.0.0.1:1234".into()
 }
 fn default_openai_embed_url() -> String {
-    "http://localhost:8080".into()
+    "http://127.0.0.1:1234".into()
 }
 fn default_openai_embed_model() -> String {
-    "text-embedding-3-small".into()
+    "jina-embeddings-v5-text-small-retrieval".into()
 }
 fn default_suggestion_interval_seconds() -> u64 {
     30
