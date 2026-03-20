@@ -2,7 +2,7 @@
 //! On non-Windows platforms this module still compiles but provides a no-op stub.
 
 use async_trait::async_trait;
-use openoats_core::audio::{AudioCaptureService, AudioStream};
+use opencassava_core::audio::{AudioCaptureService, AudioStream};
 use std::error::Error;
 
 #[cfg(target_os = "windows")]

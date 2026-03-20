@@ -6,7 +6,7 @@
 use crate::audio_macos::MacosAudioCapture as SystemAudioCapture;
 #[cfg(not(target_os = "macos"))]
 use crate::audio_windows::SystemAudioCapture;
-use openoats_core::{
+use opencassava_core::{
     audio::{cpal_mic::CpalMicCapture, AudioCaptureService, MicCaptureService},
     download,
     intelligence::{
@@ -40,7 +40,7 @@ fn ensure_overlay_window(app: &AppHandle) -> Result<WebviewWindow, String> {
     }
 
     let window = WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::default())
-        .title("OpenOats Overlay")
+        .title("OpenCassava Overlay")
         .inner_size(380.0, 160.0)
         .resizable(false)
         .decorations(false)
@@ -94,7 +94,7 @@ pub struct SuggestionPayload {
     pub id: String,
     pub kind: String,
     pub text: String,
-    pub kb_hits: Vec<openoats_core::models::KBResult>,
+    pub kb_hits: Vec<opencassava_core::models::KBResult>,
 }
 
 #[derive(Clone, Serialize)]
@@ -140,7 +140,7 @@ impl AppState {
 
     pub fn new() -> Self {
         let settings = AppSettings::load();
-        // Derive KB cache path from the stable OpenOats data dir.
+        // Derive KB cache path from the stable OpenCassava data dir.
         let kb_cache = Self::persistent_data_dir().join("kb_cache.json");
         let kb_fingerprint = format!(
             "{}:{}",
@@ -165,7 +165,7 @@ impl AppState {
     }
 
     pub fn model_path_for(_app: &AppHandle, model: &str) -> Result<PathBuf, String> {
-        Ok(Self::persistent_data_dir().join(openoats_core::download::model_filename(model)))
+        Ok(Self::persistent_data_dir().join(opencassava_core::download::model_filename(model)))
     }
 }
 
@@ -278,8 +278,8 @@ fn compute_rms(samples: &[f32]) -> f32 {
 }
 
 fn push_recent_utterance(
-    buffer: &Arc<Mutex<Vec<openoats_core::models::Utterance>>>,
-    utterance: openoats_core::models::Utterance,
+    buffer: &Arc<Mutex<Vec<opencassava_core::models::Utterance>>>,
+    utterance: opencassava_core::models::Utterance,
 ) {
     let cutoff = chrono::Utc::now() - chrono::Duration::seconds(SUGGESTION_CONTEXT_WINDOW_SECS);
     let mut entries = buffer.lock().unwrap();
@@ -422,7 +422,7 @@ pub fn start_transcription(
         .to_string();
     let suggestion_interval_secs = settings.suggestion_interval_seconds.max(30);
 
-    let recent_utterances: Arc<Mutex<Vec<openoats_core::models::Utterance>>> =
+    let recent_utterances: Arc<Mutex<Vec<opencassava_core::models::Utterance>>> =
         Arc::new(Mutex::new(Vec::new()));
 
     let handle = tauri::async_runtime::spawn(async move {
@@ -479,7 +479,7 @@ pub fn start_transcription(
                 if !*state_sg.is_running.lock().unwrap() {
                     return;
                 }
-                use openoats_core::models::{Speaker, Utterance};
+                use opencassava_core::models::{Speaker, Utterance};
                 let utterance = Utterance {
                     id: uuid::Uuid::new_v4(),
                     text: text.clone(),
@@ -608,7 +608,7 @@ pub fn start_transcription(
                     settings.selected_model.clone()
                 };
 
-                use openoats_core::intelligence::knowledge_base::search_chunks;
+                use opencassava_core::intelligence::knowledge_base::search_chunks;
                 let kb_snapshot = suggestion_state.knowledge_base.lock().await.chunks.clone();
 
                 let embed_fn = {
@@ -620,7 +620,7 @@ pub fn start_transcription(
                         let key = key.clone();
                         let model = model.clone();
                         async move {
-                            openoats_core::intelligence::embedding_client::embed(
+                            opencassava_core::intelligence::embedding_client::embed(
                                 &url,
                                 key.as_deref(),
                                 &model,
@@ -633,7 +633,7 @@ pub fn start_transcription(
                     }
                 };
 
-                let search_fn = move |emb: &[f32]| -> Vec<openoats_core::models::KBResult> {
+                let search_fn = move |emb: &[f32]| -> Vec<opencassava_core::models::KBResult> {
                     search_chunks(&kb_snapshot, emb, 5, 0.4)
                 };
 
@@ -641,12 +641,12 @@ pub fn start_transcription(
                     let url = llm_url.clone();
                     let key = llm_key.clone();
                     let model = llm_model.clone();
-                    move |messages: Vec<openoats_core::intelligence::llm_client::Message>| {
+                    move |messages: Vec<opencassava_core::intelligence::llm_client::Message>| {
                         let url = url.clone();
                         let key = key.clone();
                         let model = model.clone();
                         async move {
-                            openoats_core::intelligence::llm_client::complete(
+                            opencassava_core::intelligence::llm_client::complete(
                                 &url,
                                 key.as_deref(),
                                 &model,
@@ -683,10 +683,10 @@ pub fn start_transcription(
                     let payload = SuggestionPayload {
                         id: suggestion.id.to_string(),
                         kind: match suggestion.kind {
-                            openoats_core::models::SuggestionKind::KnowledgeBase => {
+                            opencassava_core::models::SuggestionKind::KnowledgeBase => {
                                 "knowledge_base".into()
                             }
-                            openoats_core::models::SuggestionKind::SmartQuestion => {
+                            opencassava_core::models::SuggestionKind::SmartQuestion => {
                                 "smart_question".into()
                             }
                         },
@@ -738,7 +738,7 @@ pub fn start_transcription(
             app_y.emit("transcript", &payload).ok();
             push_recent_utterance(
                 &recent_utterances,
-                openoats_core::models::Utterance {
+                opencassava_core::models::Utterance {
                     id: uuid::Uuid::new_v4(),
                     text: text.clone(),
                     speaker: Speaker::You,
@@ -897,7 +897,7 @@ pub async fn generate_notes(
 
     state.session_store.lock().unwrap().save_notes(
         &session_id,
-        openoats_core::models::EnhancedNotes {
+        opencassava_core::models::EnhancedNotes {
             template: (&template).into(),
             generated_at: chrono::Utc::now(),
             markdown: result.clone(),
@@ -1083,7 +1083,7 @@ pub async fn choose_folder(app: AppHandle) -> Option<String> {
 #[tauri::command]
 pub fn list_sessions(
     state: tauri::State<'_, Arc<AppState>>,
-) -> Vec<openoats_core::models::SessionIndex> {
+) -> Vec<opencassava_core::models::SessionIndex> {
     state.session_store.lock().unwrap().load_session_index()
 }
 

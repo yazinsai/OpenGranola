@@ -7,7 +7,7 @@
 //! Windows build is not affected.
 
 use async_trait::async_trait;
-use openoats_core::audio::{AudioCaptureService, AudioStream};
+use opencassava_core::audio::{AudioCaptureService, AudioStream};
 use std::error::Error;
 
 // ── macOS implementation ──────────────────────────────────────────────────────

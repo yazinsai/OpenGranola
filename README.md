@@ -1,17 +1,17 @@
-# OpenOats
+# OpenCassava
 
 **A meeting note-taker that talks back — now on Windows and Mac.**
 
 <p align="center">
-  <a href="https://github.com/romeroej2/OpenOats/releases/latest">
+  <a href="https://github.com/romeroej2/OpenCassava/releases/latest">
     <img src="https://img.shields.io/badge/Download_for_Mac-DMG-black?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Mac" />
   </a>
-  <a href="https://github.com/romeroej2/OpenOats/releases/latest">
+  <a href="https://github.com/romeroej2/OpenCassava/releases/latest">
     <img src="https://img.shields.io/badge/Download_for_Windows-EXE-black?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
   </a>
 </p>
 
-OpenOats sits next to your call, transcribes both sides of the conversation in real time, and searches your own notes to surface talking points right when you need them.
+OpenCassava sits next to your call, transcribes both sides of the conversation in real time, and searches your own notes to surface talking points right when you need them.
 
 For first-time setup with LM Studio, start here: [LM Studio Setup Guide](docs/lm-studio-setup.md)
 
@@ -28,7 +28,7 @@ For first-time setup with LM Studio, start here: [LM Studio Setup Guide](docs/lm
 - **Runs 100% locally** — pair with [Ollama](https://ollama.com/) for LLM suggestions and local embeddings, and nothing touches the network at all
 - **Pick any LLM** — use [OpenRouter](https://openrouter.ai/) for cloud models (GPT-4o, Claude, Gemini) or Ollama for local ones (Llama, Qwen, Mistral)
 - **Live transcript** — see both sides of the conversation as it happens, copy the whole thing with one click
-- **Smart suggestions** — when the conversation hits a moment that matters, OpenOats pulls in relevant talking points from your notes
+- **Smart suggestions** — when the conversation hits a moment that matters, OpenCassava pulls in relevant talking points from your notes
 - **Auto-generated notes** — after each session, produce structured markdown notes from the transcript using meeting templates (1:1, stand-up, customer discovery, and more)
 - **Auto-saved sessions** — every conversation is automatically saved as a plain-text transcript and a structured session log, no manual export needed
 - **Knowledge base search** — point it at a folder of notes and it retrieves what's relevant using [Voyage AI](https://www.voyageai.com/) embeddings, local Ollama embeddings, or any OpenAI-compatible endpoint
@@ -38,7 +38,7 @@ For first-time setup with LM Studio, start here: [LM Studio Setup Guide](docs/lm
 ## How it works
 
 1. You start a call and click **Start Session**
-2. OpenOats captures your microphone and (on Windows) system audio — the other side's voice is captured as "them"
+2. OpenCassava captures your microphone and (on Windows) system audio — the other side's voice is captured as "them"
 3. When the conversation hits a moment that matters — a question, a decision point, a claim worth backing up — it searches your notes and surfaces relevant talking points
 4. After the session, generate structured markdown notes from the transcript using a meeting template
 5. You sound prepared because you are
@@ -47,12 +47,12 @@ For first-time setup with LM Studio, start here: [LM Studio Setup Guide](docs/lm
 
 ## Downloads
 
-Grab the latest release for your platform from the [Releases page](https://github.com/romeroej2/OpenOats/releases/latest).
+Grab the latest release for your platform from the [Releases page](https://github.com/romeroej2/OpenCassava/releases/latest).
 
 Windows releases are built automatically by GitHub Actions from `.github/workflows/windows-release.yml`. On every `v*` tag push, the pipeline publishes:
 
-- `OpenOats_*_x64-setup.exe` via NSIS for normal end users
-- `OpenOats_*_x64_en-US.msi` for managed or enterprise installs
+- `OpenCassava_*_x64-setup.exe` via NSIS for normal end users
+- `OpenCassava_*_x64_en-US.msi` for managed or enterprise installs
 
 The Windows installer embeds the WebView2 bootstrapper so installs are more reliable on machines that do not already have the runtime preinstalled.
 
@@ -67,20 +67,20 @@ Or build from source.
 
 ```bash
 # Clone the repo
-git clone https://github.com/romeroej2/OpenOats.git
-cd OpenOats
+git clone https://github.com/romeroej2/OpenCassava.git
+cd OpenCassava
 
 # Build the Tauri app
-cd OpenOatsTauri
+cd OpenCassavaTauri
 npm install
 npm run tauri -- build
 ```
 
-This project uses the local Tauri CLI from `OpenOatsTauri/node_modules`, so `cargo tauri build` is not required and will fail unless you separately install the `cargo-tauri` subcommand globally.
+This project uses the local Tauri CLI from `OpenCassavaTauri/node_modules`, so `cargo tauri build` is not required and will fail unless you separately install the `cargo-tauri` subcommand globally.
 
 On Windows PowerShell, prefer `npm.cmd ci` and either `npm.cmd run tauri -- build` or `cmd.exe /d /s /c .\node_modules\.bin\tauri.cmd build` if your global `npm` or `npx` shim is misconfigured.
 
-The installers are output to `OpenOatsTauri/src-tauri/target/release/bundle/`.
+The installers are output to `OpenCassavaTauri/src-tauri/target/release/bundle/`.
 
 ---
 
@@ -119,12 +119,12 @@ The first run downloads the local Whisper speech model (~600 MB).
 
 ## Architecture
 
-OpenOats is built on a cross-platform Rust core with a shared React frontend.
+OpenCassava is built on a cross-platform Rust core with a shared React frontend.
 
 ```
-OpenOats/                        # Cargo workspace root
+OpenCassava/                        # Cargo workspace root
 ├── crates/
-│   └── openoats-core/           # Shared Rust library — all business logic
+│   └── opencassava-core/           # Shared Rust library — all business logic
 │       └── src/
 │           ├── models.rs        # Utterance, Speaker, Session, Suggestion, ConversationState, etc.
 │           ├── settings.rs      # AppSettings (JSON persistence)
@@ -134,10 +134,10 @@ OpenOats/                        # Cargo workspace root
 │           ├── storage/         # Session persistence (JSONL) + transcript logging
 │           └── intelligence/    # LLM client, embedding client, knowledge base, suggestion engine
 │
-├── OpenOatsTauri/               # Tauri app (Windows + macOS)
+├── OpenCassavaTauri/               # Tauri app (Windows + macOS)
 │   ├── src-tauri/
 │   │   ├── src/
-│   │   │   ├── lib.rs          # Tauri commands — thin bridge to openoats-core
+│   │   │   ├── lib.rs          # Tauri commands — thin bridge to opencassava-core
 │   │   │   ├── main.rs         # Entry point
 │   │   │   ├── engine.rs       # Session orchestration + Tauri event emission
 │   │   │   └── audio_windows.rs # WASAPI loopback (system audio capture)
@@ -152,9 +152,9 @@ OpenOats/                        # Cargo workspace root
 │           └── SettingsView.tsx
 │
 ├── Sources/
-│   ├── OpenOatsCore/           # Swift core (legacy — being replaced)
-│   ├── OpenOatsMac/            # Native Mac app (legacy — being replaced)
-│   └── OpenOatsWindows/       # Windows Swift stubs (legacy — being replaced)
+│   ├── OpenCassavaCore/           # Swift core (legacy — being replaced)
+│   ├── OpenCassavaMac/            # Native Mac app (legacy — being replaced)
+│   └── OpenCassavaWindows/       # Windows Swift stubs (legacy — being replaced)
 │
 └── Package.swift                # Swift package definition (legacy)
 ```
@@ -164,7 +164,7 @@ OpenOats/                        # Cargo workspace root
 | Component | Technology |
 |---|---|
 | App framework | [Tauri 2](https://tauri.app/) |
-| Core logic | Rust (`openoats-core`) |
+| Core logic | Rust (`opencassava-core`) |
 | Transcription | [whisper-rs](https://github.com/ubisoft/Voxxiamo#whisper-rs) (Whisper.cpp bindings) |
 | Audio capture | cpal (mic), WASAPI (Windows system audio) |
 | LLM inference | OpenRouter API or [Ollama](https://ollama.com/) |
@@ -181,18 +181,18 @@ OpenOats/                        # Cargo workspace root
 - **With cloud providers**: KB chunks are sent to Voyage AI (or your chosen OpenAI-compatible endpoint) for embedding (text only, no audio), and conversation context is sent to OpenRouter for suggestions
 - API keys are stored in your system's credential manager (Windows Credential Manager or macOS Keychain)
 - The overlay window is hidden from screen sharing by default
-- Transcripts are saved locally to `~/Documents/OpenOats/`
+- Transcripts are saved locally to `~/Documents/OpenCassava/`
 
 ---
 
 ## Recording Consent & Legal Disclaimer
 
-**Important:** OpenOats records and transcribes audio from your microphone and system audio. Many jurisdictions have laws requiring consent from some or all participants before a conversation may be recorded (e.g., two-party/all-party consent states in the U.S., GDPR in the EU).
+**Important:** OpenCassava records and transcribes audio from your microphone and system audio. Many jurisdictions have laws requiring consent from some or all participants before a conversation may be recorded (e.g., two-party/all-party consent states in the U.S., GDPR in the EU).
 
 **By using this software, you acknowledge and agree that:**
 
 - **You are solely responsible** for determining whether recording is lawful in your jurisdiction and for obtaining any required consent from all participants before starting a session.
-- **The developers and contributors of OpenOats provide no legal advice** and make no representations about the legality of recording in any jurisdiction.
+- **The developers and contributors of OpenCassava provide no legal advice** and make no representations about the legality of recording in any jurisdiction.
 - **The developers accept no liability** for any unauthorized or unlawful recording conducted using this software.
 
 **Do not use this software to record conversations without proper consent where required by law.**

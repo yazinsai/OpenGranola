@@ -21,7 +21,7 @@ impl TemplateStore {
     pub fn default_path() -> PathBuf {
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("OpenOats")
+            .join("OpenCassava")
             .join("templates.json")
     }
 

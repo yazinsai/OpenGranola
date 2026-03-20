@@ -1,5 +1,5 @@
 /**
- * OpenOats Design System
+ * OpenCassava Design System
  * Centralized theme configuration for consistent styling across the app
  */
 

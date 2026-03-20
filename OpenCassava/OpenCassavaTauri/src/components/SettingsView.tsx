@@ -405,7 +405,7 @@ export function SettingsView({ settings: initialSettings = null, onSettingsChang
           <div style={styles.section}>
             <h4 style={styles.sectionTitle}>Knowledge Base</h4>
             <p style={styles.sectionDescription}>
-              Optional folder of notes for smart suggestions. OpenOats searches these files during calls to surface relevant talking points.
+              Optional folder of notes for smart suggestions. OpenCassava searches these files during calls to surface relevant talking points.
             </p>
             <div style={styles.fieldWrap}>
               <label style={styles.labelStyle}>KB Folder</label>
@@ -483,7 +483,7 @@ export function SettingsView({ settings: initialSettings = null, onSettingsChang
           <div style={styles.section}>
             <h4 style={styles.sectionTitle}>AI Mode</h4>
             <p style={styles.sectionDescription}>
-              Choose how OpenOats processes your data.
+              Choose how OpenCassava processes your data.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: spacing[3] }}>
               <div
@@ -743,7 +743,7 @@ export function SettingsView({ settings: initialSettings = null, onSettingsChang
                 ))}
               </select>
               <span style={{ fontSize: typography.sm, color: colors.textMuted, marginTop: 4, display: "block" }}>
-                OpenOats will download and use {resolveWhisperModel(settings.transcriptionLocale, settings.whisperModel)} for this language.
+                OpenCassava will download and use {resolveWhisperModel(settings.transcriptionLocale, settings.whisperModel)} for this language.
               </span>
             </div>
             <div style={styles.fieldWrap}>

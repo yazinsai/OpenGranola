@@ -7,7 +7,7 @@
 
 ## Problem Summary
 
-Three related issues in the OpenOats Tauri app:
+Three related issues in the OpenCassava Tauri app:
 
 1. **System audio not selectable** — WASAPI loopback capture runs automatically as the "them" track but always uses the default render device. There is no UI to choose a different output device to loop back from.
 2. **Duplicate mic selector** — A microphone dropdown exists in both `ControlBar.tsx` (working, populates device list) and `SettingsView.tsx` > Advanced > Audio Input (broken, never populates device list, always shows "System Default" only).

@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "OpenOats",
+  "productName": "OpenCassava",
   "version": "0.1.0",
-  "identifier": "com.openoats.app",
+  "identifier": "com.opencassava.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "OpenOats",
+        "title": "OpenCassava",
         "width": 800,
         "height": 600,
         "resizable": true,
@@ -34,7 +34,7 @@
       }
     },
     "macOS": {
-      "entitlements": "OpenOats.entitlements",
+      "entitlements": "OpenCassava.entitlements",
       "minimumSystemVersion": "13.0",
       "infoPlist": "Info.plist"
     },

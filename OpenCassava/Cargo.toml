@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "crates/openoats-core",
-    "OpenOatsTauri/src-tauri",
+    "crates/opencassava-core",
+    "OpenCassavaTauri/src-tauri",
 ]
 resolver = "2"
 

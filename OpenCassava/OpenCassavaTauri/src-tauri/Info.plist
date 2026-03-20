@@ -3,8 +3,8 @@
 <plist version="1.0">
 <dict>
     <key>NSMicrophoneUsageDescription</key>
-    <string>OpenOats needs microphone access to transcribe your speech.</string>
+    <string>OpenCassava needs microphone access to transcribe your speech.</string>
     <key>NSScreenCaptureUsageDescription</key>
-    <string>OpenOats needs screen recording permission to capture the other speaker's audio.</string>
+    <string>OpenCassava needs screen recording permission to capture the other speaker's audio.</string>
 </dict>
 </plist>

@@ -129,7 +129,7 @@ function EmptyState({
             lineHeight: 1.6,
           }}
         >
-          Add a folder of notes and OpenOats will surface relevant talking points during your calls.
+          Add a folder of notes and OpenCassava will surface relevant talking points during your calls.
         </p>
         <button
           style={{

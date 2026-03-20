@@ -26,7 +26,7 @@ impl SessionStore {
     pub fn with_default_path() -> Self {
         let dir = dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("OpenOats")
+            .join("OpenCassava")
             .join("sessions");
         Self::new(dir)
     }

@@ -20,7 +20,7 @@ impl TranscriptLogger {
     pub fn with_default_path() -> Self {
         let dir = dirs::document_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("OpenOats");
+            .join("OpenCassava");
         Self::new(dir)
     }
 
@@ -30,7 +30,7 @@ impl TranscriptLogger {
         let path = self.directory.join(filename);
         match File::create(&path) {
             Ok(mut f) => {
-                let header = format!("OpenOats - {}\n\n", now.format("%B %d, %Y %H:%M"));
+                let header = format!("OpenCassava - {}\n\n", now.format("%B %d, %Y %H:%M"));
                 let _ = f.write_all(header.as_bytes());
                 self.current_file = Some(f);
             }

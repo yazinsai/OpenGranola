@@ -80,7 +80,7 @@ impl AppSettings {
     pub fn default_path() -> PathBuf {
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("OpenOats")
+            .join("OpenCassava")
             .join("settings.json")
     }
 
@@ -178,7 +178,7 @@ fn default_true() -> bool {
 fn default_notes_folder() -> String {
     dirs::document_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("OpenOats")
+        .join("OpenCassava")
         .to_string_lossy()
         .into_owned()
 }

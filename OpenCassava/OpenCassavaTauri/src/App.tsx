@@ -305,7 +305,7 @@ function App() {
             Transcription Model Required
           </h3>
           <p style={{ color: colors.textSecondary, fontSize: 13, margin: "0 0 20px", lineHeight: 1.5 }}>
-            OpenOats needs {whisperModelLabel(activeWhisperModel)} to transcribe conversations locally.
+            OpenCassava needs {whisperModelLabel(activeWhisperModel)} to transcribe conversations locally.
           </p>
           {modelError && (
             <p style={{ color: colors.error, fontSize: 12, margin: "0 0 16px", lineHeight: 1.5 }}>

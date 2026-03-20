@@ -6,11 +6,11 @@
 
 **Architecture:** Three layers of changes — (1) `openoats-core` gains model/URL helpers and updated download API, (2) the Tauri `engine.rs` layer gains new/updated commands and wires new settings into audio capture, (3) the React frontend adds the system audio dropdown and model radio while removing the broken duplicate.
 
-**Tech Stack:** Rust (workspace: `OpenOats/OpenOats/`), React + TypeScript (Tauri frontend: `OpenOats/OpenOats/OpenOatsTauri/`), windows crate 0.54 for WASAPI enumeration.
+**Tech Stack:** Rust (workspace: `OpenCassava/OpenCassava/`), React + TypeScript (Tauri frontend: `OpenCassava/OpenCassava/OpenCassavaTauri/`), windows crate 0.54 for WASAPI enumeration.
 
 **Spec:** `docs/superpowers/specs/2026-03-19-audio-language-fixes-design.md`
 
-**All shell commands run from workspace root:** `C:\Users\ejrom\exa-tec\OpenOats\OpenOats\` unless noted.
+**All shell commands run from workspace root:** `C:\Users\ejrom\exa-tec\OpenCassava\OpenCassava\` unless noted.
 
 ---
 
@@ -20,14 +20,14 @@
 |---|---|
 | `crates/openoats-core/src/download.rs` | Add `pub fn model_filename`, `fn model_url`; update `download_model` to accept `model: &str` param |
 | `crates/openoats-core/src/settings.rs` | Add `whisper_model` and `system_audio_device_name` fields with custom serde defaults |
-| `OpenOatsTauri/src-tauri/src/engine.rs` | Update `check_model` + `download_model` commands (add `model` param); add `list_sys_audio_devices`; update `start_transcription` |
-| `OpenOatsTauri/src-tauri/src/audio_windows.rs` | Add `list_render_devices()` fn; update `WasapiLoopback::new()` to accept `device_name: Option<&str>` |
-| `OpenOatsTauri/src-tauri/src/lib.rs` | Register `list_sys_audio_devices` in `invoke_handler!` |
-| `OpenOatsTauri/src-tauri/Cargo.toml` | Add `Win32_Devices_Properties` windows feature |
-| `OpenOatsTauri/src/types.ts` | Add `systemAudioDeviceName` and `whisperModel` to `AppSettings` |
-| `OpenOatsTauri/src/App.tsx` | Fix `check_model` call site; fix `download_model` call site; pass `isRunning` to `SettingsView` |
-| `OpenOatsTauri/src/components/ControlBar.tsx` | Add system audio `<select>` |
-| `OpenOatsTauri/src/components/SettingsView.tsx` | Remove duplicate mic selector; add `whisperModel` radio group; accept `isRunning` prop |
+| `OpenCassavaTauri/src-tauri/src/engine.rs` | Update `check_model` + `download_model` commands (add `model` param); add `list_sys_audio_devices`; update `start_transcription` |
+| `OpenCassavaTauri/src-tauri/src/audio_windows.rs` | Add `list_render_devices()` fn; update `WasapiLoopback::new()` to accept `device_name: Option<&str>` |
+| `OpenCassavaTauri/src-tauri/src/lib.rs` | Register `list_sys_audio_devices` in `invoke_handler!` |
+| `OpenCassavaTauri/src-tauri/Cargo.toml` | Add `Win32_Devices_Properties` windows feature |
+| `OpenCassavaTauri/src/types.ts` | Add `systemAudioDeviceName` and `whisperModel` to `AppSettings` |
+| `OpenCassavaTauri/src/App.tsx` | Fix `check_model` call site; fix `download_model` call site; pass `isRunning` to `SettingsView` |
+| `OpenCassavaTauri/src/components/ControlBar.tsx` | Add system audio `<select>` |
+| `OpenCassavaTauri/src/components/SettingsView.tsx` | Remove duplicate mic selector; add `whisperModel` radio group; accept `isRunning` prop |
 
 ---
 
@@ -302,7 +302,7 @@ git commit -m "feat: add whisper_model and system_audio_device_name to AppSettin
 ## Task 3: Update `check_model` and `download_model` Tauri commands; fix `AppState::model_path`
 
 **Files:**
-- Modify: `OpenOatsTauri/src-tauri/src/engine.rs`
+- Modify: `OpenCassavaTauri/src-tauri/src/engine.rs`
 
 Context: Both commands now accept an explicit `model: String` parameter. `AppState::model_path` currently hardcodes `ggml-base.en.bin` — replace it with a `model_path_for` helper that takes the model name. The `start_transcription` call to `model_path` is updated in Task 5; here we just fix the command-level wiring.
 
@@ -416,7 +416,7 @@ Expected: two compile errors — (1) `start_transcription` still calls `AppState
 - [ ] **Step 6: Commit**
 
 ```bash
-git add OpenOatsTauri/src-tauri/src/engine.rs
+git add OpenCassavaTauri/src-tauri/src/engine.rs
 git commit -m "feat: add model param to check_model, download_model commands"
 ```
 
@@ -425,16 +425,16 @@ git commit -m "feat: add model param to check_model, download_model commands"
 ## Task 4: Add Windows device enumeration + `list_sys_audio_devices` command
 
 **Files:**
-- Modify: `OpenOatsTauri/src-tauri/src/audio_windows.rs`
-- Modify: `OpenOatsTauri/src-tauri/src/engine.rs`
-- Modify: `OpenOatsTauri/src-tauri/src/lib.rs`
-- Modify: `OpenOatsTauri/src-tauri/Cargo.toml`
+- Modify: `OpenCassavaTauri/src-tauri/src/audio_windows.rs`
+- Modify: `OpenCassavaTauri/src-tauri/src/engine.rs`
+- Modify: `OpenCassavaTauri/src-tauri/src/lib.rs`
+- Modify: `OpenCassavaTauri/src-tauri/Cargo.toml`
 
 Context: We need to enumerate WASAPI render (output/loopback) endpoints by friendly name. This uses `IMMDeviceEnumerator::EnumAudioEndpoints` and reads each device's `PKEY_Device_FriendlyName` property. We also need to update `WasapiLoopback::new()` to accept an optional device name and look up that device instead of always using the default. There are no unit tests for WASAPI code (requires hardware), so we verify by compile + manual smoke test.
 
 - [ ] **Step 1: Add windows feature for device properties**
 
-In `OpenOatsTauri/src-tauri/Cargo.toml`, in the `[target.'cfg(windows)'.dependencies]` windows features list, add:
+In `OpenCassavaTauri/src-tauri/Cargo.toml`, in the `[target.'cfg(windows)'.dependencies]` windows features list, add:
 
 ```toml
 "Win32_Devices_Properties",
@@ -618,7 +618,7 @@ pub fn list_sys_audio_devices() -> Vec<String> {
 
 - [ ] **Step 6: Register in `lib.rs`**
 
-In `OpenOatsTauri/src-tauri/src/lib.rs`, add `engine::list_sys_audio_devices` to the `invoke_handler!` macro list (after `engine::list_mic_devices`):
+In `OpenCassavaTauri/src-tauri/src/lib.rs`, add `engine::list_sys_audio_devices` to the `invoke_handler!` macro list (after `engine::list_mic_devices`):
 
 ```rust
 engine::list_sys_audio_devices,
@@ -635,10 +635,10 @@ Expected: no errors. If PROPVARIANT types don't resolve, verify that `Win32_Devi
 - [ ] **Step 8: Commit**
 
 ```bash
-git add OpenOatsTauri/src-tauri/src/audio_windows.rs \
-        OpenOatsTauri/src-tauri/src/engine.rs \
-        OpenOatsTauri/src-tauri/src/lib.rs \
-        OpenOatsTauri/src-tauri/Cargo.toml
+git add OpenCassavaTauri/src-tauri/src/audio_windows.rs \
+        OpenCassavaTauri/src-tauri/src/engine.rs \
+        OpenCassavaTauri/src-tauri/src/lib.rs \
+        OpenCassavaTauri/src-tauri/Cargo.toml
 git commit -m "feat: add list_sys_audio_devices command and WasapiLoopback device selection"
 ```
 
@@ -647,7 +647,7 @@ git commit -m "feat: add list_sys_audio_devices command and WasapiLoopback devic
 ## Task 5: Wire `whisper_model` and `system_audio_device_name` into `start_transcription`
 
 **Files:**
-- Modify: `OpenOatsTauri/src-tauri/src/engine.rs`
+- Modify: `OpenCassavaTauri/src-tauri/src/engine.rs`
 
 Context: `start_transcription` reads `settings.input_device_name` for the mic. It needs to also read `settings.system_audio_device_name` for the system audio capture, and use `settings.whisper_model` to resolve the model path (replacing the old `AppState::model_path` call).
 
@@ -720,7 +720,7 @@ Expected: all pass, no errors.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add OpenOatsTauri/src-tauri/src/engine.rs
+git add OpenCassavaTauri/src-tauri/src/engine.rs
 git commit -m "feat: wire whisper_model and system_audio_device_name into start_transcription"
 ```
 
@@ -729,13 +729,13 @@ git commit -m "feat: wire whisper_model and system_audio_device_name into start_
 ## Task 6: Update `types.ts` with new `AppSettings` fields
 
 **Files:**
-- Modify: `OpenOatsTauri/src/types.ts`
+- Modify: `OpenCassavaTauri/src/types.ts`
 
 Context: The Rust `AppSettings` struct now has two new fields serialized as camelCase. The TypeScript interface must match or the frontend will treat them as `undefined`.
 
 - [ ] **Step 1: Add fields to `AppSettings`**
 
-In `OpenOatsTauri/src/types.ts`, in the `AppSettings` interface, add after `inputDeviceName`:
+In `OpenCassavaTauri/src/types.ts`, in the `AppSettings` interface, add after `inputDeviceName`:
 
 ```typescript
 systemAudioDeviceName: string | null;
@@ -745,7 +745,7 @@ whisperModel: string;
 - [ ] **Step 2: Verify TypeScript compiles**
 
 ```bash
-cd OpenOatsTauri && npx tsc --noEmit
+cd OpenCassavaTauri && npx tsc --noEmit
 ```
 
 Expected: no errors.
@@ -754,7 +754,7 @@ Expected: no errors.
 
 ```bash
 cd ..
-git add OpenOatsTauri/src/types.ts
+git add OpenCassavaTauri/src/types.ts
 git commit -m "feat: add systemAudioDeviceName and whisperModel to AppSettings TS type"
 ```
 
@@ -763,7 +763,7 @@ git commit -m "feat: add systemAudioDeviceName and whisperModel to AppSettings T
 ## Task 7: Update `SettingsView.tsx` — remove duplicate mic selector; add model radio
 
 **Files:**
-- Modify: `OpenOatsTauri/src/components/SettingsView.tsx`
+- Modify: `OpenCassavaTauri/src/components/SettingsView.tsx`
 
 Context: (1) The "Audio Input" section in the Advanced tab is a broken duplicate — delete it. (2) Add a `whisperModel` radio group below the locale input. (3) Accept `isRunning: boolean` prop. This task comes before Task 9 (App.tsx) so the prop is available when App.tsx passes it.
 
@@ -916,7 +916,7 @@ In the Transcription section, after the locale `<div style={styles.fieldWrap}>` 
 - [ ] **Step 5: Verify TypeScript compiles**
 
 ```bash
-cd OpenOatsTauri && npx tsc --noEmit
+cd OpenCassavaTauri && npx tsc --noEmit
 ```
 
 Expected: no errors.
@@ -925,7 +925,7 @@ Expected: no errors.
 
 ```bash
 cd ..
-git add OpenOatsTauri/src/components/SettingsView.tsx
+git add OpenCassavaTauri/src/components/SettingsView.tsx
 git commit -m "feat: remove duplicate mic selector; add whisperModel radio to Settings"
 ```
 
@@ -934,7 +934,7 @@ git commit -m "feat: remove duplicate mic selector; add whisperModel radio to Se
 ## Task 8: Add system audio device selector to `ControlBar.tsx`
 
 **Files:**
-- Modify: `OpenOatsTauri/src/components/ControlBar.tsx`
+- Modify: `OpenCassavaTauri/src/components/ControlBar.tsx`
 
 Context: `ControlBar` already has a mic device `<select>` that calls `list_mic_devices` on mount and saves via `get_settings` + `save_settings`. The system audio selector follows the same pattern. `isRunning` is already a pre-existing prop — no new props needed.
 
@@ -1019,7 +1019,7 @@ In the JSX return, after the existing mic `<select>` block (which ends around li
 - [ ] **Step 4: Verify TypeScript compiles**
 
 ```bash
-cd OpenOatsTauri && npx tsc --noEmit
+cd OpenCassavaTauri && npx tsc --noEmit
 ```
 
 Expected: no errors.
@@ -1028,7 +1028,7 @@ Expected: no errors.
 
 ```bash
 cd ..
-git add OpenOatsTauri/src/components/ControlBar.tsx
+git add OpenCassavaTauri/src/components/ControlBar.tsx
 git commit -m "feat: add system audio device selector to ControlBar"
 ```
 
@@ -1037,7 +1037,7 @@ git commit -m "feat: add system audio device selector to ControlBar"
 ## Task 9: Fix `App.tsx` call sites; pass `isRunning` to `SettingsView`
 
 **Files:**
-- Modify: `OpenOatsTauri/src/App.tsx`
+- Modify: `OpenCassavaTauri/src/App.tsx`
 
 Context: Two existing call sites — `check_model()` on boot (~line 46) and `download_model()` (~line 119) — need the `model` argument. Also `<SettingsView />` needs `isRunning`. Comes after Task 7 so SettingsView already accepts the prop.
 
@@ -1125,7 +1125,7 @@ Replace with:
 - [ ] **Step 4: Verify TypeScript compiles**
 
 ```bash
-cd OpenOatsTauri && npx tsc --noEmit
+cd OpenCassavaTauri && npx tsc --noEmit
 ```
 
 Expected: no errors (`SettingsView` already accepts `isRunning` from Task 7).
@@ -1134,7 +1134,7 @@ Expected: no errors (`SettingsView` already accepts `isRunning` from Task 7).
 
 ```bash
 cd ..
-git add OpenOatsTauri/src/App.tsx
+git add OpenCassavaTauri/src/App.tsx
 git commit -m "feat: pass model param to check_model/download_model; pass isRunning to SettingsView"
 ```
 
@@ -1147,7 +1147,7 @@ Run the app and verify all three features work end-to-end.
 - [ ] **Step 1: Start the dev server**
 
 ```bash
-cd OpenOatsTauri && npm run tauri dev
+cd OpenCassavaTauri && npm run tauri dev
 ```
 
 - [ ] **Step 2: Verify system audio selector**
@@ -1175,11 +1175,11 @@ cd OpenOatsTauri && npm run tauri dev
 - [ ] **Step 5: Final commit (if any last fixes)**
 
 ```bash
-git add OpenOatsTauri/src-tauri/src/engine.rs \
-        OpenOatsTauri/src-tauri/src/audio_windows.rs \
-        OpenOatsTauri/src/App.tsx \
-        OpenOatsTauri/src/components/ControlBar.tsx \
-        OpenOatsTauri/src/components/SettingsView.tsx
+git add OpenCassavaTauri/src-tauri/src/engine.rs \
+        OpenCassavaTauri/src-tauri/src/audio_windows.rs \
+        OpenCassavaTauri/src/App.tsx \
+        OpenCassavaTauri/src/components/ControlBar.tsx \
+        OpenCassavaTauri/src/components/SettingsView.tsx
 git commit -m "fix: smoke test fixes"
 ```
 
