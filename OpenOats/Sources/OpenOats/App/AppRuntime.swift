@@ -39,6 +39,7 @@ final class AppRuntime {
     let notesDirectory: URL
 
     private var didSeedInitialData = false
+    private var didInitializeServices = false
 
     init(
         mode: AppRuntimeMode,
@@ -166,6 +167,17 @@ final class AppRuntime {
             ),
             audioRecorder: AudioRecorder(outputDirectory: notesDirectory)
         )
+    }
+
+    func ensureServicesInitialized(settings: AppSettings, coordinator: AppCoordinator) {
+        guard !didInitializeServices else { return }
+        didInitializeServices = true
+
+        let services = makeServices(settings: settings, coordinator: coordinator)
+        coordinator.transcriptionEngine = services.transcriptionEngine
+        coordinator.transcriptLogger = services.transcriptLogger
+        coordinator.refinementEngine = services.refinementEngine
+        coordinator.audioRecorder = services.audioRecorder
     }
 
     func seedIfNeeded(coordinator: AppCoordinator) async {

@@ -263,13 +263,15 @@ struct ContentView: View {
                 showOnboarding = true
             }
             if knowledgeBase == nil {
-                let services = runtime.makeServices(settings: settings, coordinator: coordinator)
-                knowledgeBase = services.knowledgeBase
-                suggestionEngine = services.suggestionEngine
-                coordinator.transcriptionEngine = services.transcriptionEngine
-                coordinator.transcriptLogger = services.transcriptLogger
-                coordinator.refinementEngine = services.refinementEngine
-                coordinator.audioRecorder = services.audioRecorder
+                runtime.ensureServicesInitialized(settings: settings, coordinator: coordinator)
+                let kb = KnowledgeBase(settings: settings)
+                let se = SuggestionEngine(
+                    transcriptStore: coordinator.transcriptStore,
+                    knowledgeBase: kb,
+                    settings: settings
+                )
+                knowledgeBase = kb
+                suggestionEngine = se
             }
             overlayManager.defaults = runtime.defaults
             await runtime.seedIfNeeded(coordinator: coordinator)
