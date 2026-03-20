@@ -59,7 +59,7 @@ export function WaveformVisualizer({
       ctx.clearRect(0, 0, width, height);
 
       if (!isActive || normalizedLevel < 0.02) {
-        // Draw flat line when inactive
+        // Draw flat line when inactive — intentionally uses colors.border regardless of color prop
         ctx.strokeStyle = `${colors.border}`;
         ctx.lineWidth = 2;
         ctx.beginPath();

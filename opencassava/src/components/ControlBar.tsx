@@ -282,7 +282,7 @@ export function ControlBar({
             {formatDuration(duration)}
           </span>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: spacing[1] }}>
             <WaveformVisualizer level={audioLevel} isActive={isRunning} />
             <WaveformVisualizer
               level={audioLevelThem}
