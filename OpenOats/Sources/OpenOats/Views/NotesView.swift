@@ -560,7 +560,6 @@ struct NotesView: View {
 
             loadedNotes = notes
             loadedTranscript = transcript
-            detailViewMode = notes != nil ? .notes : .transcript
 
             let session = coordinator.sessionHistory.first { $0.id == sessionID }
             if let snapID = session?.templateSnapshot?.id {
