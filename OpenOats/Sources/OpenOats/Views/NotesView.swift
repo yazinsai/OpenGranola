@@ -293,13 +293,11 @@ struct NotesView: View {
                 .zIndex(detailViewMode == .transcript ? 1 : 0)
                 .opacity(detailViewMode == .transcript ? 1 : 0)
                 .allowsHitTesting(detailViewMode == .transcript)
-                .accessibilityHidden(detailViewMode != .transcript)
 
             notesTab(sessionID: sessionID)
                 .zIndex(detailViewMode == .notes ? 1 : 0)
                 .opacity(detailViewMode == .notes ? 1 : 0)
                 .allowsHitTesting(detailViewMode == .notes)
-                .accessibilityHidden(detailViewMode != .notes)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
