@@ -6,6 +6,10 @@ actor SessionStore {
     private var currentFile: URL?
     private var fileHandle: FileHandle?
     private let encoder = JSONEncoder()
+    private var hasReportedWriteError = false
+
+    /// Called on the first write failure per session. Set by the coordinator.
+    var onWriteError: (@Sendable (String) -> Void)?
 
     /// The filename stem of the current session (e.g. "session_2026-03-18_14-30-00").
     private(set) var currentSessionID: String?
@@ -23,20 +27,33 @@ actor SessionStore {
         encoder.dateEncodingStrategy = .iso8601
     }
 
+    func setWriteErrorHandler(_ handler: (@Sendable (String) -> Void)?) {
+        onWriteError = handler
+    }
+
     func startSession(templateID: UUID? = nil) {
+        hasReportedWriteError = false
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let stem = "session_\(formatter.string(from: Date()))"
         currentSessionID = stem
         let filename = "\(stem).jsonl"
-        currentFile = sessionsDirectory.appendingPathComponent(filename)
+        let file = sessionsDirectory.appendingPathComponent(filename)
+        currentFile = file
 
-        FileManager.default.createFile(atPath: currentFile!.path, contents: nil)
-        fileHandle = try? FileHandle(forWritingTo: currentFile!)
+        FileManager.default.createFile(atPath: file.path, contents: nil)
+        do {
+            fileHandle = try FileHandle(forWritingTo: file)
+        } catch {
+            reportWriteError("Failed to open session file: \(error.localizedDescription)")
+        }
     }
 
     func appendRecord(_ record: SessionRecord) {
-        guard let fileHandle else { return }
+        guard let fileHandle else {
+            reportWriteError("Session recording interrupted: file is not writable.")
+            return
+        }
 
         do {
             let data = try encoder.encode(record)
@@ -44,7 +61,15 @@ actor SessionStore {
             fileHandle.write(data)
             fileHandle.write("\n".data(using: .utf8)!)
         } catch {
-            print("SessionStore: failed to write record: \(error)")
+            reportWriteError("Failed to write transcript record: \(error.localizedDescription)")
+        }
+    }
+
+    private func reportWriteError(_ message: String) {
+        diagLog("[SESSION-STORE] \(message)")
+        if !hasReportedWriteError {
+            hasReportedWriteError = true
+            onWriteError?(message)
         }
     }
 
