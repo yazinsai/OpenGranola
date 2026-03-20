@@ -5,7 +5,6 @@ use std::sync::{
     Arc,
 };
 use std::sync::mpsc;
-use std::thread;
 
 pub type OnFinal = Box<dyn Fn(String) + Send + 'static>;
 pub type OnVolatile = Box<dyn Fn(String) + Send + 'static>;
@@ -65,7 +64,12 @@ impl StreamingTranscriber {
         let model_path = self.model_path.clone();
         let stop_signal = self.stop_signal.clone();
 
-        let transcribe_thread = thread::spawn(move || {
+        // Run Whisper on a blocking thread-pool thread so that joining it is
+        // async-friendly. Using std::thread::join() inside an async fn would
+        // block a tokio worker, causing handle.await in stop_transcription to
+        // return before the drain completes and letting is_running flip to
+        // false while segments are still being transcribed.
+        let whisper_task = tokio::task::spawn_blocking(move || {
             if let Some(path) = model_path {
                 match crate::transcription::whisper::WhisperManager::new(&path, &language) {
                     Ok(manager) => {
@@ -179,7 +183,7 @@ impl StreamingTranscriber {
         }
 
         drop(seg_tx);
-        let _ = transcribe_thread.join();
+        let _ = whisper_task.await;
     }
 }
 
