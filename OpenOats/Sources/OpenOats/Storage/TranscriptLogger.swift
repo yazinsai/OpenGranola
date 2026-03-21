@@ -7,6 +7,10 @@ actor TranscriptLogger {
     private var fileHandle: FileHandle?
     private var sessionHeader: String = ""
 
+    /// Called (once) when a write error occurs during the session.
+    private var onWriteError: (@Sendable (String) -> Void)?
+    private var hasReportedWriteError = false
+
     init(directory: URL? = nil) {
         self.directory = directory ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Documents/OpenOats", isDirectory: true)
@@ -33,21 +37,30 @@ actor TranscriptLogger {
         let fileFmt = DateFormatter()
         fileFmt.dateFormat = "yyyy-MM-dd_HH-mm"
         let filename = "\(fileFmt.string(from: now)).txt"
-        currentFile = directory.appendingPathComponent(filename)
+        let file = directory.appendingPathComponent(filename)
+        currentFile = file
+        hasReportedWriteError = false
 
         let headerFmt = DateFormatter()
         headerFmt.dateStyle = .medium
         headerFmt.timeStyle = .short
         sessionHeader = "OpenOats - \(headerFmt.string(from: now))\n\n"
 
-        FileManager.default.createFile(atPath: currentFile!.path, contents: sessionHeader.data(using: .utf8),
+        FileManager.default.createFile(atPath: file.path, contents: sessionHeader.data(using: .utf8),
                                        attributes: [.posixPermissions: 0o600])
-        fileHandle = try? FileHandle(forWritingTo: currentFile!)
-        fileHandle?.seekToEndOfFile()
+        do {
+            fileHandle = try FileHandle(forWritingTo: file)
+            fileHandle?.seekToEndOfFile()
+        } catch {
+            reportWriteError("Failed to open transcript file: \(error.localizedDescription)")
+        }
     }
 
     func append(speaker: String, text: String, timestamp: Date, refinedText: String? = nil) {
-        guard let fileHandle else { return }
+        guard let fileHandle else {
+            reportWriteError("No file handle available for transcript write")
+            return
+        }
         let timeFmt = DateFormatter()
         timeFmt.dateFormat = "HH:mm:ss"
         let displayText = refinedText ?? text
@@ -62,5 +75,17 @@ actor TranscriptLogger {
         try? fileHandle?.close()
         fileHandle = nil
         currentFile = nil
+    }
+
+    /// Register a callback invoked once per session when a write error occurs.
+    func setWriteErrorHandler(_ handler: @escaping @Sendable (String) -> Void) {
+        onWriteError = handler
+    }
+
+    private func reportWriteError(_ message: String) {
+        print("TranscriptLogger: \(message)")
+        guard !hasReportedWriteError else { return }
+        hasReportedWriteError = true
+        onWriteError?(message)
     }
 }

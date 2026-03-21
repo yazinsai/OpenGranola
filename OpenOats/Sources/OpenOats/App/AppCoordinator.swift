@@ -84,6 +84,12 @@ final class AppCoordinator {
         set { withMutation(keyPath: \.state) { _state = newValue } }
     }
 
+    @ObservationIgnored nonisolated(unsafe) private var _lastStorageError: String?
+    var lastStorageError: String? {
+        get { access(keyPath: \.lastStorageError); return _lastStorageError }
+        set { withMutation(keyPath: \.lastStorageError) { _lastStorageError = newValue } }
+    }
+
     var transcriptLogger: TranscriptLogger?
     var transcriptionEngine: TranscriptionEngine?
     var refinementEngine: TranscriptRefinementEngine?
@@ -192,7 +198,15 @@ final class AppCoordinator {
 
     private func startTranscription(metadata: MeetingMetadata, settings: AppSettings?) async {
         lastEndedSession = nil
+        lastStorageError = nil
         transcriptStore.clear()
+
+        // Wire storage error reporting so UI can surface write failures
+        await sessionStore.setWriteErrorHandler { [weak self] message in
+            Task { @MainActor [weak self] in
+                self?.lastStorageError = message
+            }
+        }
 
         // Freeze template choice at start time
         if let template = selectedTemplate {

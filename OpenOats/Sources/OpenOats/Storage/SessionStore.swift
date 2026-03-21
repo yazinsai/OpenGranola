@@ -14,6 +14,10 @@ actor SessionStore {
     private var pendingWrites = 0
     private var pendingWriteWaiters: [CheckedContinuation<Void, Never>] = []
 
+    /// Called (once) when a write error occurs during the session.
+    private var onWriteError: (@Sendable (String) -> Void)?
+    private var hasReportedWriteError = false
+
     init(rootDirectory: URL? = nil) {
         let baseDirectory: URL
         if let rootDirectory {
@@ -43,16 +47,25 @@ actor SessionStore {
         formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let stem = "session_\(formatter.string(from: Date()))"
         currentSessionID = stem
+        hasReportedWriteError = false
         let filename = "\(stem).jsonl"
-        currentFile = sessionsDirectory.appendingPathComponent(filename)
+        let file = sessionsDirectory.appendingPathComponent(filename)
+        currentFile = file
 
-        FileManager.default.createFile(atPath: currentFile!.path, contents: nil,
+        FileManager.default.createFile(atPath: file.path, contents: nil,
                                        attributes: [.posixPermissions: 0o600])
-        fileHandle = try? FileHandle(forWritingTo: currentFile!)
+        do {
+            fileHandle = try FileHandle(forWritingTo: file)
+        } catch {
+            reportWriteError("Failed to open session file: \(error.localizedDescription)")
+        }
     }
 
     func appendRecord(_ record: SessionRecord) {
-        guard let fileHandle else { return }
+        guard let fileHandle else {
+            reportWriteError("No file handle available for session write")
+            return
+        }
 
         do {
             let data = try encoder.encode(record)
@@ -60,7 +73,7 @@ actor SessionStore {
             fileHandle.write(data)
             fileHandle.write("\n".data(using: .utf8)!)
         } catch {
-            print("SessionStore: failed to write record: \(error)")
+            reportWriteError("Failed to write record: \(error.localizedDescription)")
         }
     }
 
@@ -215,6 +228,18 @@ actor SessionStore {
         fileHandle = nil
         currentFile = nil
         currentSessionID = nil
+    }
+
+    /// Register a callback invoked once per session when a write error occurs.
+    func setWriteErrorHandler(_ handler: @escaping @Sendable (String) -> Void) {
+        onWriteError = handler
+    }
+
+    private func reportWriteError(_ message: String) {
+        print("SessionStore: \(message)")
+        guard !hasReportedWriteError else { return }
+        hasReportedWriteError = true
+        onWriteError?(message)
     }
 
     // MARK: - Sidecar
