@@ -1,8 +1,10 @@
+import Sparkle
 import SwiftUI
 
 struct MenuBarPopoverView: View {
     let coordinator: AppCoordinator
     let settings: AppSettings
+    let updater: SPUUpdater
     let onShowMainWindow: () -> Void
     let onQuit: () -> Void
 
@@ -34,6 +36,16 @@ struct MenuBarPopoverView: View {
             Button(action: onShowMainWindow) {
                 HStack {
                     Text("Show OpenOats")
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            Button(action: { updater.checkForUpdates() }) {
+                HStack {
+                    Text("Check for Updates…")
                     Spacer()
                 }
             }

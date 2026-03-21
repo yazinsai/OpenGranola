@@ -36,6 +36,7 @@ public struct OpenOatsRootApp: App {
                         appDelegate.setupMenuBarIfNeeded(
                             coordinator: coordinator,
                             settings: settings,
+                            updater: updaterController.updater,
                             showMainWindow: { [self] in showMainWindow() }
                         )
                     }
@@ -129,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func setupMenuBarIfNeeded(
         coordinator: AppCoordinator,
         settings: AppSettings,
+        updater: SPUUpdater,
         showMainWindow: @escaping () -> Void
     ) {
         guard menuBarController == nil else { return }
@@ -137,7 +139,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let controller = MenuBarController(
             coordinator: coordinator,
-            settings: settings
+            settings: settings,
+            updater: updater
         )
         controller.onShowMainWindow = showMainWindow
         controller.onQuitApp = { [weak self] in
