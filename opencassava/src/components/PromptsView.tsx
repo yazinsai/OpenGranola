@@ -7,6 +7,8 @@ interface EditState {
   id: string | null; // null = new template
   name: string;
   system_prompt: string;
+  is_built_in: boolean;
+  icon: string;
 }
 
 type Section = "notes" | "suggestions";
@@ -63,12 +65,12 @@ function NotePromptsSection() {
   }, []);
 
   const startNew = () => {
-    setEditState({ id: null, name: "", system_prompt: "" });
+    setEditState({ id: null, name: "", system_prompt: "", is_built_in: false, icon: "doc.text" });
     setError(null);
   };
 
   const startEdit = (t: MeetingTemplate) => {
-    setEditState({ id: t.id, name: t.name, system_prompt: t.system_prompt });
+    setEditState({ id: t.id, name: t.name, system_prompt: t.system_prompt, is_built_in: t.is_built_in, icon: t.icon });
     setError(null);
   };
 
@@ -94,9 +96,9 @@ function NotePromptsSection() {
       const template: MeetingTemplate = {
         id: editState.id ?? crypto.randomUUID(),
         name: editState.name.trim(),
-        icon: "doc.text",
+        icon: editState.icon,
         system_prompt: editState.system_prompt.trim(),
-        is_built_in: false,
+        is_built_in: editState.is_built_in,
       };
       await invoke("save_template", { template });
       load();
@@ -111,6 +113,15 @@ function NotePromptsSection() {
   const deleteTemplate = async (id: string) => {
     try {
       await invoke("delete_template", { id });
+      load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const resetTemplate = async (id: string) => {
+    try {
+      await invoke("reset_template", { id });
       load();
     } catch (e) {
       setError(String(e));
@@ -201,7 +212,7 @@ function NotePromptsSection() {
         <SectionLabel>Built-in</SectionLabel>
         <div style={{ display: "flex", flexDirection: "column", gap: spacing[2] }}>
           {builtIns.map((t) => (
-            <TemplateCard key={t.id} template={t} />
+            <TemplateCard key={t.id} template={t} onEdit={() => startEdit(t)} onReset={() => resetTemplate(t.id)} />
           ))}
         </div>
       </section>
@@ -215,23 +226,28 @@ const SUGGESTION_PROMPT_FIELDS: { key: keyof Pick<AppSettings, "kbSurfacingSyste
   {
     key: "kbSurfacingSystemPrompt",
     label: "KB Surfacing Gate",
-    description: "Instructs the LLM when to surface a knowledge base suggestion. Must return valid JSON.",
+    description: "Decides when to surface a knowledge base suggestion. Must return valid JSON.",
   },
   {
     key: "suggestionSynthesisSystemPrompt",
     label: "Suggestion Synthesis",
-    description: "Instructs the LLM how to write the actual suggestion text shown to the user.",
+    description: "Writes the actual suggestion text shown to the user.",
   },
   {
     key: "smartQuestionSystemPrompt",
     label: "Smart Question Gate",
-    description: "Instructs the LLM when to surface a clarifying question. Must return valid JSON.",
+    description: "Decides when to surface a clarifying question. Must return valid JSON.",
   },
 ];
 
+interface DefaultSuggestionPrompts {
+  kb_surfacing_system_prompt: string;
+  suggestion_synthesis_system_prompt: string;
+  smart_question_system_prompt: string;
+}
+
 function SuggestionPromptsSection() {
   const [prompts, setPrompts] = useState<Pick<AppSettings, "kbSurfacingSystemPrompt" | "suggestionSynthesisSystemPrompt" | "smartQuestionSystemPrompt"> | null>(null);
-  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -245,22 +261,30 @@ function SuggestionPromptsSection() {
     );
   }, []);
 
-  const save = async () => {
-    if (!prompts) return;
-    setSaving(true);
-    setError(null);
-    setSaved(false);
+  const saveField = async (updated: typeof prompts) => {
+    if (!updated) return;
     try {
       const current = await invoke<AppSettings>("get_settings");
-      await invoke("save_settings", {
-        settings: { ...current, ...prompts },
-      });
+      await invoke("save_settings", { newSettings: { ...current, ...updated } });
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      setTimeout(() => setSaved(false), 1500);
     } catch (e) {
       setError(String(e));
-    } finally {
-      setSaving(false);
+    }
+  };
+
+  const resetToDefault = async () => {
+    try {
+      const defaults = await invoke<DefaultSuggestionPrompts>("get_default_suggestion_prompts");
+      const reset = {
+        kbSurfacingSystemPrompt: defaults.kb_surfacing_system_prompt,
+        suggestionSynthesisSystemPrompt: defaults.suggestion_synthesis_system_prompt,
+        smartQuestionSystemPrompt: defaults.smart_question_system_prompt,
+      };
+      setPrompts(reset);
+      await saveField(reset);
+    } catch (e) {
+      setError(String(e));
     }
   };
 
@@ -272,37 +296,47 @@ function SuggestionPromptsSection() {
 
   return (
     <div style={{ padding: spacing[4], display: "flex", flexDirection: "column", gap: spacing[4] }}>
-      <div>
-        <h2 style={{ margin: 0, fontSize: typography["2xl"], fontWeight: 700, color: colors.text }}>Suggestion Prompts</h2>
-        <p style={{ margin: `${spacing[1]}px 0 0`, fontSize: typography.sm, color: colors.textMuted }}>
-          Configure the system instructions sent to the LLM during live suggestion generation.
-        </p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: typography["2xl"], fontWeight: 700, color: colors.text }}>Suggestion Prompts</h2>
+          <p style={{ margin: `${spacing[1]}px 0 0`, fontSize: typography.sm, color: colors.textMuted }}>
+            Configure the system instructions sent to the LLM during live suggestion generation.
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: spacing[2] }}>
+          {saved && <span style={{ fontSize: typography.sm, color: colors.success }}>Saved</span>}
+          <button onClick={resetToDefault} style={styles.buttonSecondary}>
+            Reset to Default
+          </button>
+        </div>
       </div>
 
       {error && <div style={{ color: colors.error, fontSize: typography.md }}>{error}</div>}
 
       {SUGGESTION_PROMPT_FIELDS.map(({ key, label, description }) => (
-        <div key={key} style={{ display: "flex", flexDirection: "column", gap: spacing[1] }}>
-          <label style={{ fontSize: typography.md, fontWeight: 600, color: colors.text }}>{label}</label>
-          <p style={{ margin: 0, fontSize: typography.sm, color: colors.textMuted }}>{description}</p>
-          <textarea
-            value={prompts[key]}
-            onChange={(e) => setPrompts((p) => p && { ...p, [key]: e.target.value })}
-            style={{ ...styles.input, minHeight: 80, resize: "vertical", lineHeight: 1.5, fontFamily: "monospace" }}
-          />
+        <div
+          key={key}
+          style={{
+            background: colors.surface,
+            border: `1px solid ${colors.border}`,
+            borderRadius: radius.lg,
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: `${spacing[2]}px ${spacing[3]}px`, borderBottom: `1px solid ${colors.border}` }}>
+            <span style={{ fontSize: typography.md, fontWeight: 600, color: colors.text }}>{label}</span>
+            <p style={{ margin: `${spacing[1]}px 0 0`, fontSize: typography.sm, color: colors.textMuted }}>{description}</p>
+          </div>
+          <div style={{ padding: spacing[3], background: colors.surfaceElevated }}>
+            <textarea
+              value={prompts[key]}
+              onChange={(e) => setPrompts((p) => p && { ...p, [key]: e.target.value })}
+              onBlur={() => saveField(prompts)}
+              style={{ ...styles.input, minHeight: 100, resize: "vertical", lineHeight: 1.6, fontFamily: "monospace", fontSize: typography.sm }}
+            />
+          </div>
         </div>
       ))}
-
-      <div style={{ display: "flex", alignItems: "center", gap: spacing[2] }}>
-        <button
-          onClick={save}
-          disabled={saving}
-          style={{ ...styles.button, opacity: saving ? 0.6 : 1, cursor: saving ? "not-allowed" : "pointer" }}
-        >
-          {saving ? "Saving..." : "Save"}
-        </button>
-        {saved && <span style={{ fontSize: typography.sm, color: colors.success }}>Saved</span>}
-      </div>
     </div>
   );
 }
@@ -330,10 +364,12 @@ function TemplateCard({
   template,
   onEdit,
   onDelete,
+  onReset,
 }: {
   template: MeetingTemplate;
   onEdit?: () => void;
   onDelete?: () => void;
+  onReset?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -376,6 +412,14 @@ function TemplateCard({
               style={{ ...styles.buttonSecondary, padding: `${spacing[1]}px ${spacing[2]}px`, fontSize: typography.sm }}
             >
               Edit
+            </button>
+          )}
+          {onReset && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onReset(); }}
+              style={{ ...styles.buttonSecondary, padding: `${spacing[1]}px ${spacing[2]}px`, fontSize: typography.sm }}
+            >
+              Reset to Default
             </button>
           )}
           {onDelete && (

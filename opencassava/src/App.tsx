@@ -137,6 +137,7 @@ function App() {
   const [audioLevelThem, setAudioLevelThem] = useState(0);
   const [isSettingUpStt, setIsSettingUpStt] = useState(false);
   const [sttSetupMessage, setSttSetupMessage] = useState("");
+  const [installLogLines, setInstallLogLines] = useState<string[]>([]);
   const [stopStatusMessage, setStopStatusMessage] = useState<string | null>(null);
   // Load settings on mount
   useEffect(() => {
@@ -232,6 +233,7 @@ function App() {
         setModelError(null);
         setIsSettingUpStt(false);
         setSttSetupMessage("");
+        setInstallLogLines([]);
         refreshSttStatus().catch(console.error);
       }),
 
@@ -241,6 +243,12 @@ function App() {
 
       listen<SttSetupStatusEvent>("stt-setup-status", (e) => {
         setSttSetupMessage(e.payload.message);
+      }),
+
+      listen<string>("stt-install-log", (e) => {
+        const line = e.payload.trim();
+        if (!line) return;
+        setInstallLogLines((prev) => [...prev.slice(-2), line]);
       }),
 
       listen<{ id: string; kind?: "knowledge_base" | "smart_question"; text: string; kbHits?: any[] }>("suggestion", (e) => {
@@ -447,6 +455,13 @@ function App() {
             <p style={{ color: colors.textMuted, fontSize: 12, marginTop: 10, lineHeight: 1.5 }}>
               {sttSetupMessage}
             </p>
+          )}
+          {installLogLines.length > 0 && (
+            <div style={{ marginTop: 8, textAlign: "left", fontFamily: "monospace", fontSize: 10, color: colors.textMuted, background: colors.surfaceElevated, borderRadius: 4, padding: "6px 8px", lineHeight: 1.6, wordBreak: "break-all" }}>
+              {installLogLines.map((line, i) => (
+                <div key={i}>{line}</div>
+              ))}
+            </div>
           )}
         </div>
       </div>

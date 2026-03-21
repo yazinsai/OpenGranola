@@ -216,7 +216,7 @@ impl MeetingTemplate {
         vec![
             Self {
                 id: Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap(),
-                name: "Generic".into(),
+                name: "Summary".into(),
                 icon: "doc.text".into(),
                 system_prompt: GENERIC_PROMPT.into(),
                 is_built_in: true,

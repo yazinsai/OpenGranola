@@ -42,6 +42,8 @@ pub fn run() {
             engine::list_templates,
             engine::save_template,
             engine::delete_template,
+            engine::reset_template,
+            engine::get_default_suggestion_prompts,
             engine::list_sessions,
             engine::load_session,
             engine::load_session_notes,

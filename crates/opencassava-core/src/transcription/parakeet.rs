@@ -62,7 +62,10 @@ impl ParakeetConfig {
     }
 }
 
-pub fn install_runtime(config: &ParakeetConfig) -> Result<(), String> {
+pub fn install_runtime<F>(config: &ParakeetConfig, on_line: F) -> Result<(), String>
+where
+    F: Fn(&str) + Send + Clone + 'static,
+{
     config.ensure_files()?;
     let _lock = SetupLock::acquire(config)?;
     if !config.python_path().exists() {
@@ -74,6 +77,7 @@ pub fn install_runtime(config: &ParakeetConfig) -> Result<(), String> {
                 .arg("venv")
                 .arg(&config.venv_path),
             "create parakeet virtual environment",
+            on_line.clone(),
         )?;
     }
 
@@ -86,6 +90,7 @@ pub fn install_runtime(config: &ParakeetConfig) -> Result<(), String> {
             .arg("--upgrade")
             .arg("pip"),
         "upgrade pip for parakeet",
+        on_line.clone(),
     )?;
 
     run_command(
@@ -96,6 +101,7 @@ pub fn install_runtime(config: &ParakeetConfig) -> Result<(), String> {
             .arg("-r")
             .arg(&config.requirements_path),
         "install parakeet runtime dependencies",
+        on_line,
     )?;
 
     fs::write(config.install_stamp_path(), REQUIREMENTS).map_err(|e| e.to_string())?;
@@ -115,11 +121,14 @@ pub fn health_check(config: &ParakeetConfig) -> Result<(), String> {
     Ok(())
 }
 
-pub fn ensure_model(config: &ParakeetConfig) -> Result<(), String> {
+pub fn ensure_model<F>(config: &ParakeetConfig, on_line: F) -> Result<(), String>
+where
+    F: Fn(&str) + Send + 'static,
+{
     if !config.is_installed() {
-        install_runtime(config)?;
+        install_runtime(config, |_| {})?;
     }
-    let mut worker = ParakeetWorker::spawn(config)?;
+    let mut worker = ParakeetWorker::spawn_with_log(config, on_line)?;
     worker.ensure_model()?;
     fs::write(config.model_stamp_path(), &config.model).map_err(|e| e.to_string())?;
     let _ = worker.shutdown();
@@ -136,6 +145,13 @@ pub struct ParakeetWorker {
 
 impl ParakeetWorker {
     pub fn spawn(config: &ParakeetConfig) -> Result<Self, String> {
+        Self::spawn_with_log(config, |_| {})
+    }
+
+    pub fn spawn_with_log<F>(config: &ParakeetConfig, on_line: F) -> Result<Self, String>
+    where
+        F: Fn(&str) + Send + 'static,
+    {
         config.ensure_files()?;
         if !config.is_installed() {
             return Err("parakeet runtime is not installed.".into());
@@ -163,7 +179,7 @@ impl ParakeetWorker {
             .take()
             .ok_or_else(|| "Failed to open stderr for parakeet worker.".to_string())?;
         let stderr_tail = Arc::new(Mutex::new(String::new()));
-        pump_stderr(stderr, Arc::clone(&stderr_tail));
+        pump_stderr(stderr, Arc::clone(&stderr_tail), on_line);
 
         Ok(Self {
             child,
@@ -212,17 +228,23 @@ impl ParakeetWorker {
             .and_then(|_| self.stdin.flush())
             .map_err(|e| format!("Failed to write to parakeet worker: {e}"))?;
 
-        let mut response = String::new();
-        self.stdout
-            .read_line(&mut response)
-            .map_err(|e| format!("Failed to read parakeet worker response: {e}"))?;
-        if response.trim().is_empty() {
-            let stderr = self.stderr_snapshot();
-            let status = self.child.try_wait().ok().flatten();
-            return Err(format_worker_exit_error(status, &stderr));
-        }
-        let json: serde_json::Value = serde_json::from_str(response.trim())
-            .map_err(|e| format!("Invalid parakeet worker response: {e}"))?;
+        let json = loop {
+            let mut response = String::new();
+            self.stdout
+                .read_line(&mut response)
+                .map_err(|e| format!("Failed to read parakeet worker response: {e}"))?;
+            if response.trim().is_empty() {
+                let stderr = self.stderr_snapshot();
+                let status = self.child.try_wait().ok().flatten();
+                return Err(format_worker_exit_error(status, &stderr));
+            }
+            let trimmed = response.trim();
+            if trimmed.starts_with('{') {
+                break serde_json::from_str::<serde_json::Value>(trimmed)
+                    .map_err(|e| format!("Invalid parakeet worker response: {e}"))?;
+            }
+            log::warn!("[parakeet][stdout] {trimmed}");
+        };
         if json["ok"].as_bool().unwrap_or(false) {
             Ok(json["result"].clone())
         } else {
@@ -247,11 +269,15 @@ impl Drop for ParakeetWorker {
     }
 }
 
-fn pump_stderr(stderr: impl Read + Send + 'static, tail: Arc<Mutex<String>>) {
+fn pump_stderr<F>(stderr: impl Read + Send + 'static, tail: Arc<Mutex<String>>, on_line: F)
+where
+    F: Fn(&str) + Send + 'static,
+{
     thread::spawn(move || {
         let reader = BufReader::new(stderr);
         for line in reader.lines().map_while(Result::ok) {
             log::warn!("[parakeet] {line}");
+            on_line(&line);
             if let Ok(mut buffer) = tail.lock() {
                 if !buffer.is_empty() {
                     buffer.push('\n');
@@ -278,21 +304,56 @@ fn format_worker_exit_error(status: Option<std::process::ExitStatus>, stderr: &s
     message
 }
 
-fn run_command(command: &mut Command, description: &str) -> Result<(), String> {
+fn run_command<F>(command: &mut Command, description: &str, on_line: F) -> Result<(), String>
+where
+    F: Fn(&str) + Send + Clone + 'static,
+{
     log::info!("[parakeet] Starting {description}");
-    let output = command
-        .output()
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| format!("Failed to {description}: {e}"))?;
-    if output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.trim().is_empty() {
-            log::info!("[parakeet] {description} stderr: {}", stderr.trim());
+
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+
+    let on_line_stdout = on_line.clone();
+    let stdout_thread = thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        let mut buf = Vec::new();
+        for line in reader.lines().map_while(Result::ok) {
+            log::info!("[parakeet] {}", line);
+            on_line_stdout(&line);
+            buf.extend_from_slice(line.as_bytes());
+            buf.push(b'\n');
         }
+        buf
+    });
+    let stderr_thread = thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        let mut buf = Vec::new();
+        for line in reader.lines().map_while(Result::ok) {
+            log::info!("[parakeet] {}", line);
+            on_line(&line);
+            buf.extend_from_slice(line.as_bytes());
+            buf.push(b'\n');
+        }
+        buf
+    });
+
+    let status = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for {description}: {e}"))?;
+    let stdout_buf = stdout_thread.join().unwrap_or_default();
+    let stderr_buf = stderr_thread.join().unwrap_or_default();
+
+    if status.success() {
         return Ok(());
     }
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&stderr_buf);
+    let stdout = String::from_utf8_lossy(&stdout_buf);
     let mut message = format!("Failed to {description}.");
     if !stderr.trim().is_empty() {
         message.push_str(" stderr: ");

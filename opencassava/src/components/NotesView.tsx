@@ -5,7 +5,7 @@ import type { EnhancedNotes, MeetingTemplate } from "../types";
 import { colors, typography, spacing } from "../theme";
 
 const FALLBACK_TEMPLATES: MeetingTemplate[] = [
-  { id: "00000000-0000-0000-0000-000000000000", name: "Generic", icon: "doc.text", system_prompt: "", is_built_in: true },
+  { id: "00000000-0000-0000-0000-000000000000", name: "Summary", icon: "doc.text", system_prompt: "", is_built_in: true },
 ];
 
 const REGEN_INTERVALS = [
@@ -46,7 +46,7 @@ export function NotesView({ sessionId, initialNotes, onNotesChange, isRunning }:
 
   // Auto-regenerate state
   const [autoRegen, setAutoRegen] = useState(false);
-  const [regenIntervalSec, setRegenIntervalSec] = useState(60);
+  const [regenIntervalSec, setRegenIntervalSec] = useState(30);
   const [summaryHistory, setSummaryHistory] = useState<SummarySnapshot[]>([]);
   const [previousMarkdown, setPreviousMarkdown] = useState<string>("");
   const [lastRegenAt, setLastRegenAt] = useState<Date | null>(null);
@@ -63,6 +63,45 @@ export function NotesView({ sessionId, initialNotes, onNotesChange, isRunning }:
   selectedTemplateRef.current = selectedTemplate;
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
+
+  // Ref to hold the latest trigger function (avoids stale closures in effects)
+  const triggerAutoRegenRef = useRef<() => Promise<void>>(async () => {});
+  const autoRegenTrigger = async () => {
+    if (isGeneratingRef.current || !sessionIdRef.current) return;
+    const currentMarkdown = markdownRef.current;
+    if (currentMarkdown) {
+      setPreviousMarkdown(currentMarkdown);
+      setSummaryHistory((prev) => [
+        ...prev.slice(-9),
+        { timestamp: new Date().toISOString(), markdown: currentMarkdown },
+      ]);
+    }
+    setMarkdown("");
+    setIsGenerating(true);
+    setError(null);
+    setShowThoughts(false);
+    setLastRegenAt(new Date());
+    setSecondsSinceRegen(0);
+    try {
+      await invoke("generate_notes", {
+        sessionId: sessionIdRef.current,
+        templateId: selectedTemplateRef.current,
+      });
+      const persistedNotes = await invoke<EnhancedNotes | null>("load_session_notes", {
+        id: sessionIdRef.current,
+      });
+      if (persistedNotes) {
+        setMarkdown(persistedNotes.markdown);
+        setSelectedTemplate(persistedNotes.template.id);
+        onNotesChange?.(persistedNotes);
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+  triggerAutoRegenRef.current = autoRegenTrigger;
 
   useEffect(() => {
     invoke<MeetingTemplate[]>("list_templates").then((ts) => {
@@ -107,10 +146,6 @@ export function NotesView({ sessionId, initialNotes, onNotesChange, isRunning }:
 
     setError(null);
     setShowThoughts(false);
-    setSummaryHistory([]);
-    setPreviousMarkdown("");
-    setLastRegenAt(null);
-    setShowHistory(false);
     setHistoryViewIndex(null);
   }, [sessionId, initialNotes]);
 
@@ -121,50 +156,15 @@ export function NotesView({ sessionId, initialNotes, onNotesChange, isRunning }:
     }
   }, [isRunning]);
 
+
   // Auto-regen interval
   useEffect(() => {
     if (!autoRegen || !isRunning || !sessionId) return;
 
-    const intervalId = window.setInterval(async () => {
-      if (isGeneratingRef.current || !sessionIdRef.current) return;
-
-      const currentMarkdown = markdownRef.current;
-      if (currentMarkdown) {
-        setPreviousMarkdown(currentMarkdown);
-        setSummaryHistory((prev) => [
-          ...prev.slice(-9),
-          { timestamp: new Date().toISOString(), markdown: currentMarkdown },
-        ]);
-      }
-
-      setMarkdown("");
-      setIsGenerating(true);
-      setError(null);
-      setShowThoughts(false);
-      try {
-        await invoke("generate_notes", {
-          sessionId: sessionIdRef.current,
-          templateId: selectedTemplateRef.current,
-        });
-        const persistedNotes = await invoke<EnhancedNotes | null>("load_session_notes", {
-          id: sessionIdRef.current,
-        });
-        if (persistedNotes) {
-          setMarkdown(persistedNotes.markdown);
-          setSelectedTemplate(persistedNotes.template.id);
-          onNotesChange?.(persistedNotes);
-          setLastRegenAt(new Date());
-          setSecondsSinceRegen(0);
-        }
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setIsGenerating(false);
-      }
-    }, regenIntervalSec * 1000);
+    const intervalId = window.setInterval(() => triggerAutoRegenRef.current(), regenIntervalSec * 1000);
 
     return () => clearInterval(intervalId);
-  }, [autoRegen, isRunning, sessionId, regenIntervalSec, onNotesChange]);
+  }, [autoRegen, isRunning, sessionId, regenIntervalSec]);
 
   // Countdown ticker
   useEffect(() => {
@@ -210,9 +210,9 @@ export function NotesView({ sessionId, initialNotes, onNotesChange, isRunning }:
   const historyEntry = historyViewIndex !== null ? summaryHistory[historyViewIndex] : null;
   const historyParsed = historyEntry ? parseGeneratedNotes(historyEntry.markdown) : null;
 
-  const nextRegenIn =
-    autoRegen && isRunning && lastRegenAt !== null && secondsSinceRegen !== null
-      ? Math.max(0, regenIntervalSec - secondsSinceRegen)
+  const nextRegenAt =
+    autoRegen && isRunning && lastRegenAt !== null
+      ? new Date(lastRegenAt.getTime() + regenIntervalSec * 1000)
       : null;
 
   return (
@@ -285,7 +285,12 @@ export function NotesView({ sessionId, initialNotes, onNotesChange, isRunning }:
             }}
           >
             <div
-              onClick={() => isRunning && setAutoRegen((v) => !v)}
+              onClick={() => {
+                if (!isRunning) return;
+                const enabling = !autoRegen;
+                setAutoRegen(enabling);
+                if (enabling) triggerAutoRegenRef.current();
+              }}
               style={{
                 width: 36,
                 height: 20,
@@ -337,20 +342,34 @@ export function NotesView({ sessionId, initialNotes, onNotesChange, isRunning }:
             </select>
           )}
 
-          {/* Status / countdown */}
+          {/* Status / countdown + force button */}
           <div style={{ flex: 1 }} />
           {autoRegen && isRunning && (
-            <span style={{ fontSize: typography.sm, color: colors.textMuted }}>
-              {isGenerating
-                ? "Updating..."
-                : nextRegenIn !== null
-                ? lastRegenAt === null
-                  ? `First summary in ${nextRegenIn}s`
-                  : `Next in ${nextRegenIn}s`
-                : lastRegenAt
-                ? "Running"
-                : "Waiting..."}
-            </span>
+            <>
+              <span style={{ fontSize: typography.sm, color: colors.textMuted }}>
+                {isGenerating
+                  ? "Updating..."
+                  : nextRegenAt
+                  ? `Next at ${nextRegenAt.toLocaleTimeString()}`
+                  : "Starting..."}
+              </span>
+              <button
+                onClick={() => triggerAutoRegenRef.current()}
+                disabled={isGenerating}
+                style={{
+                  padding: `${spacing[1]}px ${spacing[2]}px`,
+                  background: "transparent",
+                  color: isGenerating ? colors.textMuted : colors.accent,
+                  border: `1px solid ${isGenerating ? colors.border : colors.accent}`,
+                  borderRadius: 4,
+                  cursor: isGenerating ? "not-allowed" : "pointer",
+                  fontSize: typography.sm,
+                  opacity: isGenerating ? 0.5 : 1,
+                }}
+              >
+                Run now
+              </button>
+            </>
           )}
 
           {/* Last updated */}

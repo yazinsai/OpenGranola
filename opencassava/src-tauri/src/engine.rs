@@ -179,10 +179,8 @@ impl AppState {
         let settings = AppSettings::load();
         // Derive KB cache path from the stable OpenCassava data dir.
         let kb_cache = Self::persistent_data_dir().join("kb_cache.json");
-        let kb_fingerprint = format!(
-            "{}:{}",
-            settings.embedding_provider, settings.ollama_embed_model
-        );
+        let (embed_url, _, embed_model) = embed_config(&settings);
+        let kb_fingerprint = format!("{}:{}", embed_url, embed_model);
         Self {
             knowledge_base: AsyncMutex::new(KnowledgeBase::new(kb_cache, kb_fingerprint)),
             suggestion_engine: AsyncMutex::new(SuggestionEngine::new()),
@@ -584,6 +582,23 @@ pub fn get_stt_status(
 #[tauri::command]
 pub fn get_settings(state: tauri::State<'_, Arc<AppState>>) -> AppSettings {
     state.settings.lock().unwrap().clone()
+}
+
+#[derive(serde::Serialize)]
+pub struct DefaultSuggestionPrompts {
+    pub kb_surfacing_system_prompt: String,
+    pub suggestion_synthesis_system_prompt: String,
+    pub smart_question_system_prompt: String,
+}
+
+#[tauri::command]
+pub fn get_default_suggestion_prompts() -> DefaultSuggestionPrompts {
+    let defaults = AppSettings::default();
+    DefaultSuggestionPrompts {
+        kb_surfacing_system_prompt: defaults.kb_surfacing_system_prompt,
+        suggestion_synthesis_system_prompt: defaults.suggestion_synthesis_system_prompt,
+        smart_question_system_prompt: defaults.smart_question_system_prompt,
+    }
 }
 
 #[tauri::command]
@@ -1275,7 +1290,10 @@ pub async fn download_stt_model(
             },
         )
         .ok();
-        parakeet::install_runtime(&config)?;
+        let app_log = app.clone();
+        parakeet::install_runtime(&config, move |line| {
+            app_log.emit("stt-install-log", line).ok();
+        })?;
         app.emit("model-download-progress", 35).ok();
         app.emit(
             "stt-setup-status",
@@ -1295,7 +1313,10 @@ pub async fn download_stt_model(
             },
         )
         .ok();
-        parakeet::ensure_model(&config)?;
+        let app_log2 = app.clone();
+        parakeet::ensure_model(&config, move |line| {
+            app_log2.emit("stt-install-log", line).ok();
+        })?;
         app.emit("model-download-progress", 100).ok();
         app.emit(
             "stt-setup-status",
@@ -1607,6 +1628,13 @@ pub fn save_template(
 pub fn delete_template(id: String, state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
     let uuid = uuid::Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     state.template_store.lock().unwrap().delete(uuid);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn reset_template(id: String, state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
+    let uuid = uuid::Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    state.template_store.lock().unwrap().reset_to_default(uuid);
     Ok(())
 }
 
