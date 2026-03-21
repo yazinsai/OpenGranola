@@ -1,0 +1,44 @@
+name: validate-swift
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-swift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-swift:
+    runs-on: macos-26
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: OpenOats
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.app || sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+          swift --version
+
+      - name: Resolve package dependencies
+        run: swift package resolve
+
+      - name: Build debug
+        run: swift build -c debug
+
+      - name: Build release
+        run: swift build -c release
+
+      - name: Run Swift tests
+        run: swift test

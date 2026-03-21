@@ -105,6 +105,7 @@ private func parseBullets(_ text: String) -> [ParsedBullet] {
 private struct BulletRow: View {
     let bullet: ParsedBullet
     @State private var isExpanded = false
+    @State private var isHovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -121,7 +122,12 @@ private struct BulletRow: View {
                     .foregroundStyle(.primary)
                     .textSelection(.enabled)
             }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(bullet.detail != nil && isHovering ? Color.primary.opacity(0.04) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
             .contentShape(Rectangle())
+            .onHover { hovering in isHovering = hovering }
             .onTapGesture {
                 if bullet.detail != nil {
                     withAnimation(.easeOut(duration: 0.15)) {

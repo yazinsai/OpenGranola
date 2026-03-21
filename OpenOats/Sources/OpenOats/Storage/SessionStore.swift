@@ -18,13 +18,28 @@ actor SessionStore {
     private var pendingWrites = 0
     private var pendingWriteWaiters: [CheckedContinuation<Void, Never>] = []
 
-    init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        sessionsDirectory = appSupport.appendingPathComponent("OpenOats/sessions", isDirectory: true)
+    init(rootDirectory: URL? = nil) {
+        let baseDirectory: URL
+        if let rootDirectory {
+            baseDirectory = rootDirectory
+        } else {
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            baseDirectory = appSupport.appendingPathComponent("OpenOats", isDirectory: true)
+        }
+        sessionsDirectory = baseDirectory.appendingPathComponent("sessions", isDirectory: true)
 
         try? FileManager.default.createDirectory(at: sessionsDirectory, withIntermediateDirectories: true)
+        Self.dropMetadataNeverIndex(in: sessionsDirectory)
 
         encoder.dateEncodingStrategy = .iso8601
+    }
+
+    /// Place a .metadata_never_index sentinel so Spotlight skips this directory.
+    private static func dropMetadataNeverIndex(in directory: URL) {
+        let sentinel = directory.appendingPathComponent(".metadata_never_index")
+        if !FileManager.default.fileExists(atPath: sentinel.path) {
+            FileManager.default.createFile(atPath: sentinel.path, contents: nil)
+        }
     }
 
     func setWriteErrorHandler(_ handler: (@Sendable (String) -> Void)?) {
@@ -41,7 +56,8 @@ actor SessionStore {
         let file = sessionsDirectory.appendingPathComponent(filename)
         currentFile = file
 
-        FileManager.default.createFile(atPath: file.path, contents: nil)
+        FileManager.default.createFile(atPath: file.path, contents: nil,
+                                       attributes: [.posixPermissions: 0o600])
         do {
             fileHandle = try FileHandle(forWritingTo: file)
         } catch {
@@ -77,6 +93,7 @@ actor SessionStore {
     /// The actor tracks in-flight delayed writes so `awaitPendingWrites()` can drain them.
     func appendRecordDelayed(
         baseRecord: SessionRecord,
+        utteranceID: UUID? = nil,
         suggestionEngine: SuggestionEngine?,
         transcriptStore: TranscriptStore?
     ) {
@@ -91,6 +108,14 @@ actor SessionStore {
             let latestSuggestion = await suggestionEngine?.suggestions.first
             let summary = await transcriptStore?.conversationState.shortSummary
 
+            // Capture refined text from transcript store (may have been updated by refinement engine)
+            let refinedText: String?
+            if let utteranceID, let store = transcriptStore {
+                refinedText = await store.utterances.first(where: { $0.id == utteranceID })?.refinedText
+            } else {
+                refinedText = baseRecord.refinedText
+            }
+
             let enrichedRecord = SessionRecord(
                 speaker: baseRecord.speaker,
                 text: baseRecord.text,
@@ -99,7 +124,8 @@ actor SessionStore {
                 kbHits: latestSuggestion?.kbHits.map { $0.sourceFile },
                 suggestionDecision: decision,
                 surfacedSuggestionText: decision?.shouldSurface == true ? latestSuggestion?.text : nil,
-                conversationStateSummary: summary?.isEmpty == false ? summary : nil
+                conversationStateSummary: summary?.isEmpty == false ? summary : nil,
+                refinedText: refinedText
             )
 
             await self.appendRecord(enrichedRecord)
@@ -127,6 +153,88 @@ actor SessionStore {
         }
     }
 
+    /// Backfill refined text into the current session's JSONL from the in-memory TranscriptStore.
+    func backfillRefinedText(from utterances: [Utterance]) {
+        guard let currentFile else { return }
+
+        try? fileHandle?.close()
+        fileHandle = nil
+
+        rewriteJSONLWithRefinedText(file: currentFile, utterances: utterances)
+
+        fileHandle = try? FileHandle(forWritingTo: currentFile)
+    }
+
+    /// Backfill refined text into a past session's JSONL.
+    func backfillRefinedText(sessionID: String, from utterances: [Utterance]) {
+        rewriteJSONLWithRefinedText(file: jsonlURL(for: sessionID), utterances: utterances)
+    }
+
+    @discardableResult
+    private func rewriteJSONLWithRefinedText(file: URL, utterances: [Utterance]) -> Bool {
+        guard let content = try? String(contentsOf: file, encoding: .utf8) else { return false }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let lines = content.components(separatedBy: "\n").filter { !$0.isEmpty }
+        guard !lines.isEmpty else { return false }
+
+        let iso8601Formatter = ISO8601DateFormatter()
+        iso8601Formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var refinedLookup: [String: String] = [:]
+        for utterance in utterances {
+            guard let refined = utterance.refinedText else { continue }
+            let key = "\(iso8601Formatter.string(from: utterance.timestamp))|\(utterance.speaker.rawValue)"
+            refinedLookup[key] = refined
+        }
+
+        guard !refinedLookup.isEmpty else { return false }
+
+        var updatedLines: [String] = []
+        var anyUpdated = false
+
+        for line in lines {
+            guard let data = line.data(using: .utf8),
+                  var record = try? decoder.decode(SessionRecord.self, from: data) else {
+                updatedLines.append(line)
+                continue
+            }
+
+            if record.refinedText == nil {
+                let key = "\(iso8601Formatter.string(from: record.timestamp))|\(record.speaker.rawValue)"
+                if let refined = refinedLookup[key] {
+                    record = SessionRecord(
+                        speaker: record.speaker,
+                        text: record.text,
+                        timestamp: record.timestamp,
+                        suggestions: record.suggestions,
+                        kbHits: record.kbHits,
+                        suggestionDecision: record.suggestionDecision,
+                        surfacedSuggestionText: record.surfacedSuggestionText,
+                        conversationStateSummary: record.conversationStateSummary,
+                        refinedText: refined
+                    )
+                    anyUpdated = true
+                }
+            }
+
+            if let encoded = try? encoder.encode(record),
+               let jsonString = String(data: encoded, encoding: .utf8) {
+                updatedLines.append(jsonString)
+            } else {
+                updatedLines.append(line)
+            }
+        }
+
+        if anyUpdated {
+            let newContent = updatedLines.joined(separator: "\n") + "\n"
+            try? newContent.write(to: file, atomically: true, encoding: .utf8)
+        }
+
+        return anyUpdated
+    }
+
     func endSession() {
         try? fileHandle?.close()
         fileHandle = nil
@@ -152,6 +260,7 @@ actor SessionStore {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(sidecar)
             try data.write(to: url, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         } catch {
             print("SessionStore: failed to write sidecar: \(error)")
         }
@@ -275,7 +384,9 @@ actor SessionStore {
                 templateSnapshot: idx.templateSnapshot,
                 title: idx.title,
                 utteranceCount: idx.utteranceCount,
-                hasNotes: true
+                hasNotes: true,
+                meetingApp: idx.meetingApp,
+                engine: idx.engine
             ),
             notes: notes
         )
@@ -283,5 +394,111 @@ actor SessionStore {
         writeSidecar(sidecar)
     }
 
+    func deleteSession(sessionID: String) {
+        let fm = FileManager.default
+        try? fm.removeItem(at: jsonlURL(for: sessionID))
+        try? fm.removeItem(at: sidecarURL(for: sessionID))
+    }
+
+    func renameSession(sessionID: String, newTitle: String) {
+        let url = sidecarURL(for: sessionID)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        guard let data = try? Data(contentsOf: url),
+              var sidecar = try? decoder.decode(SessionSidecar.self, from: data) else { return }
+
+        let idx = sidecar.index
+        sidecar = SessionSidecar(
+            index: SessionIndex(
+                id: idx.id,
+                startedAt: idx.startedAt,
+                endedAt: idx.endedAt,
+                templateSnapshot: idx.templateSnapshot,
+                title: newTitle.isEmpty ? nil : newTitle,
+                utteranceCount: idx.utteranceCount,
+                hasNotes: idx.hasNotes,
+                meetingApp: idx.meetingApp,
+                engine: idx.engine
+            ),
+            notes: sidecar.notes
+        )
+
+        writeSidecar(sidecar)
+    }
+
     var sessionsDirectoryURL: URL { sessionsDirectory }
+
+    func seedSession(
+        id: String,
+        records: [SessionRecord],
+        startedAt: Date,
+        endedAt: Date? = nil,
+        templateSnapshot: TemplateSnapshot? = nil,
+        title: String? = nil,
+        notes: EnhancedNotes? = nil
+    ) {
+        let jsonl = jsonlURL(for: id)
+        let sidecar = SessionSidecar(
+            index: SessionIndex(
+                id: id,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                templateSnapshot: templateSnapshot,
+                title: title,
+                utteranceCount: records.count,
+                hasNotes: notes != nil
+            ),
+            notes: notes
+        )
+
+        do {
+            var payload = Data()
+            for record in records {
+                payload.append(try encoder.encode(record))
+                payload.append(Data("\n".utf8))
+            }
+            try payload.write(to: jsonl, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: jsonl.path)
+        } catch {
+            print("SessionStore: failed to seed transcript: \(error)")
+        }
+
+        writeSidecar(sidecar)
+    }
+
+    // MARK: - Recently Deleted
+
+    private var recentlyDeletedDirectory: URL {
+        sessionsDirectory.appendingPathComponent(".recently-deleted", isDirectory: true)
+    }
+
+    /// Move a session's JSONL and sidecar files to .recently-deleted/.
+    func moveToRecentlyDeleted(sessionID: String) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: recentlyDeletedDirectory, withIntermediateDirectories: true)
+
+        let jsonl = jsonlURL(for: sessionID)
+        let sidecar = sidecarURL(for: sessionID)
+
+        if fm.fileExists(atPath: jsonl.path) {
+            let dest = recentlyDeletedDirectory.appendingPathComponent(jsonl.lastPathComponent)
+            try? fm.moveItem(at: jsonl, to: dest)
+        }
+        if fm.fileExists(atPath: sidecar.path) {
+            let dest = recentlyDeletedDirectory.appendingPathComponent(sidecar.lastPathComponent)
+            try? fm.moveItem(at: sidecar, to: dest)
+        }
+    }
+
+    /// Permanently remove all files in the .recently-deleted/ folder.
+    func purgeRecentlyDeleted() {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(at: recentlyDeletedDirectory, includingPropertiesForKeys: nil) else {
+            return
+        }
+        for file in files {
+            try? fm.removeItem(at: file)
+        }
+    }
 }

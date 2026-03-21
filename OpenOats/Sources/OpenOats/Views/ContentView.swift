@@ -1,44 +1,138 @@
 import SwiftUI
-import Combine
+import CoreAudio
 
 struct ContentView: View {
+    private enum ControlBarAction {
+        case toggle
+        case confirmDownload
+    }
+
+    private struct ViewState {
+        var isRunning = false
+        var lastEndedSession: SessionIndex?
+        var lastSessionHasNotes = false
+        var modelDisplayName = ""
+        var transcriptionPrompt = ""
+        var statusMessage: String?
+        var errorMessage: String?
+        var needsDownload = false
+        var kbIndexingProgress = ""
+        var suggestions: [Suggestion] = []
+        var isGeneratingSuggestions = false
+        var showLiveTranscript = true
+        var utterances: [Utterance] = []
+        var volatileYouText = ""
+        var volatileThemText = ""
+        var kbFolderPath = ""
+        var notesFolderPath = ""
+        var voyageApiKey = ""
+        var transcriptionModel: TranscriptionModel = .parakeetV2
+        var inputDeviceID: AudioDeviceID = 0
+    }
+
     @Bindable var settings: AppSettings
+    @Environment(AppRuntime.self) private var runtime
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(\.openWindow) private var openWindow
-    @State private var transcriptStore = TranscriptStore()
     @State private var knowledgeBase: KnowledgeBase?
-    @State private var transcriptionEngine: TranscriptionEngine?
     @State private var suggestionEngine: SuggestionEngine?
-    @State private var transcriptLogger: TranscriptLogger?
     @State private var overlayManager = OverlayManager()
     @AppStorage("isTranscriptExpanded") private var isTranscriptExpanded = true
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var showOnboarding = false
     @State private var showConsentSheet = false
     @State private var audioLevel: Float = 0
+    @State private var viewState = ViewState()
+    @State private var pendingControlBarAction: ControlBarAction?
+    @State private var observedUtteranceCount = 0
+    @State private var observedIsRunning = false
+    @State private var observedPendingExternalCommandID: UUID?
+    @State private var observedKBFolderPath = ""
+    @State private var observedNotesFolderPath = ""
+    @State private var observedVoyageApiKey = ""
+    @State private var observedTranscriptionModel: TranscriptionModel = .parakeetV2
+    @State private var observedInputDeviceID: AudioDeviceID = 0
 
     var body: some View {
-        VStack(spacing: 0) {
+        bodyWithModifiers
+    }
+
+    private var rootContent: some View {
+        let viewState = viewState
+
+        return VStack(spacing: 0) {
             // Compact header
-            topBar
+            HStack {
+                Text("OpenOats")
+                    .font(.system(size: 13, weight: .semibold))
+
+                Spacer()
+
+                // KB indexing status (subtle, read-only)
+                if !viewState.kbIndexingProgress.isEmpty {
+                    Text(viewState.kbIndexingProgress)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Button {
+                    openWindow(id: "notes")
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "note.text")
+                            .font(.system(size: 11))
+                        Text("Past Meetings")
+                            .font(.system(size: 11))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                // Avoid hover-driven local state here. On macOS 26 / Swift 6.2,
+                // the onHover closure triggers a view body re-evaluation outside
+                // the MainActor executor context, which crashes in
+                // swift_getObjectType when checking @Observable actor isolation.
+                // Same class of bug fixed in ControlBar (b9625e7).
+                .help("View past meeting notes")
+                .accessibilityIdentifier("app.pastMeetingsButton")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
 
             Divider()
 
             // Post-session banner
-            if let lastSession = coordinator.lastEndedSession, lastSession.utteranceCount > 0 {
+            if let lastSession = viewState.lastEndedSession, lastSession.utteranceCount > 0 {
                 HStack {
                     Text("Session ended \u{00B7} \(lastSession.utteranceCount) utterances")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("app.sessionEndedBanner")
                     Spacer()
-                    Button {
-                        openWindow(id: "notes")
-                    } label: {
-                        Label("Generate Notes", systemImage: "sparkles")
-                            .font(.system(size: 12))
+                    if viewState.lastSessionHasNotes {
+                        Button {
+                            openWindow(id: "notes")
+                        } label: {
+                            Label("View Notes", systemImage: "doc.text")
+                                .font(.system(size: 12))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityIdentifier("app.viewNotesButton")
+                    } else {
+                        Button {
+                            openWindow(id: "notes")
+                        } label: {
+                            Label("Generate Notes", systemImage: "sparkles")
+                                .font(.system(size: 12))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .accessibilityIdentifier("app.generateNotesButton")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -49,67 +143,95 @@ struct ContentView: View {
 
             // Main content: Suggestions
             VStack(alignment: .leading, spacing: 0) {
-                sectionHeader("SUGGESTIONS")
+                Text("SUGGESTIONS")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .tracking(1.5)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 4)
                 SuggestionsView(
-                    suggestions: suggestionEngine?.suggestions ?? [],
-                    isGenerating: suggestionEngine?.isGenerating ?? false
+                    suggestions: viewState.suggestions,
+                    isGenerating: viewState.isGeneratingSuggestions
                 )
             }
 
             Divider()
 
-            // Collapsible transcript
-            DisclosureGroup(isExpanded: $isTranscriptExpanded) {
-                TranscriptView(
-                    utterances: transcriptStore.utterances,
-                    volatileYouText: transcriptStore.volatileYouText,
-                    volatileThemText: transcriptStore.volatileThemText
-                )
-                .frame(height: 150)
-            } label: {
-                HStack(spacing: 6) {
-                    Text("Transcript")
-                        .font(.system(size: 12, weight: .medium))
-                    if !transcriptStore.utterances.isEmpty {
-                        Text("(\(transcriptStore.utterances.count))")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
-                    }
-                    Spacer()
-                    if isTranscriptExpanded && !transcriptStore.utterances.isEmpty {
-                        Button {
-                            copyTranscript()
-                        } label: {
-                            Image(systemName: "doc.on.doc")
+            // Collapsible transcript (hidden when live transcript is disabled)
+            if viewState.showLiveTranscript {
+                DisclosureGroup(isExpanded: $isTranscriptExpanded) {
+                    TranscriptView(
+                        utterances: viewState.utterances,
+                        volatileYouText: viewState.volatileYouText,
+                        volatileThemText: viewState.volatileThemText
+                    )
+                    .frame(height: 150)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Transcript")
+                            .font(.system(size: 12, weight: .medium))
+                        if !viewState.utterances.isEmpty {
+                            Text("(\(viewState.utterances.count))")
                                 .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.tertiary)
                         }
-                        .buttonStyle(.plain)
-                        .help("Copy transcript")
+                        Spacer()
+                        if isTranscriptExpanded && !viewState.utterances.isEmpty {
+                            Button {
+                                copyTranscript()
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .padding(4)
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                            }
+                            .buttonStyle(.plain)
+                            // Same hover executor crash as the Past Meetings button
+                            // and ControlBar toggle (b9625e7). Remove onHover to
+                            // avoid EXC_BAD_ACCESS in swift_getObjectType.
+                            .help("Copy transcript")
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
 
             Divider()
 
             // Bottom bar: live indicator + model
             ControlBar(
-                isRunning: isRunning,
+                isRunning: viewState.isRunning,
                 audioLevel: audioLevel,
-                modelDisplayName: settings.activeModelDisplay,
-                transcriptionPrompt: settings.transcriptionModel.downloadPrompt,
-                statusMessage: transcriptionEngine?.assetStatus,
-                errorMessage: transcriptionEngine?.lastError,
-                needsDownload: transcriptionEngine?.needsModelDownload ?? false,
-                onToggle: isRunning ? stopSession : startSession,
-                onConfirmDownload: confirmDownloadAndStart
+                modelDisplayName: viewState.modelDisplayName,
+                transcriptionPrompt: viewState.transcriptionPrompt,
+                statusMessage: viewState.statusMessage,
+                errorMessage: viewState.errorMessage,
+                needsDownload: viewState.needsDownload,
+                onToggle: {
+                    pendingControlBarAction = .toggle
+                },
+                onConfirmDownload: {
+                    pendingControlBarAction = .confirmDownload
+                }
             )
         }
-        .frame(minWidth: 360, maxWidth: 600, minHeight: 400)
-        .background(.ultraThinMaterial)
-        .overlay {
+    }
+
+    private var bodyWithModifiers: some View {
+        contentWithEventHandlers
+    }
+
+    private var sizedRootContent: some View {
+        rootContent
+            .frame(minWidth: 360, maxWidth: 600, minHeight: 400)
+            .background(.ultraThinMaterial)
+    }
+
+    private var contentWithOverlay: some View {
+        sizedRootContent.overlay {
             if showOnboarding {
                 OnboardingView(isPresented: $showOnboarding)
                     .transition(.opacity)
@@ -122,14 +244,17 @@ struct ContentView: View {
                 .transition(.opacity)
             }
         }
-        .onChange(of: showOnboarding) {
-            if !showOnboarding {
+    }
+
+    private var contentWithLifecycle: some View {
+        contentWithOverlay
+        .onChange(of: showOnboarding) { _, isShowing in
+            if !isShowing {
                 hasCompletedOnboarding = true
             }
         }
-        .onChange(of: showConsentSheet) {
-            // Auto-start session after consent is acknowledged
-            if !showConsentSheet && settings.hasAcknowledgedRecordingConsent && !isRunning {
+        .onChange(of: showConsentSheet) { _, isShowing in
+            if !isShowing && settings.hasAcknowledgedRecordingConsent && !viewState.isRunning {
                 startSession()
             }
         }
@@ -138,196 +263,62 @@ struct ContentView: View {
                 showOnboarding = true
             }
             if knowledgeBase == nil {
+                runtime.ensureServicesInitialized(settings: settings, coordinator: coordinator)
                 let kb = KnowledgeBase(settings: settings)
-                knowledgeBase = kb
-                transcriptionEngine = TranscriptionEngine(
-                    transcriptStore: transcriptStore,
-                    settings: settings
-                )
-                suggestionEngine = SuggestionEngine(
-                    transcriptStore: transcriptStore,
+                let se = SuggestionEngine(
+                    transcriptStore: coordinator.transcriptStore,
                     knowledgeBase: kb,
                     settings: settings
                 )
-                transcriptLogger = TranscriptLogger(
-                    directory: URL(fileURLWithPath: settings.notesFolderPath)
-                )
+                knowledgeBase = kb
+                suggestionEngine = se
             }
+            overlayManager.defaults = runtime.defaults
+            await runtime.seedIfNeeded(coordinator: coordinator)
+            refreshViewState()
             indexKBIfNeeded()
+            handlePendingExternalCommandIfPossible()
+
+            // Purge recently deleted sessions older than 24h
+            await coordinator.sessionStore.purgeRecentlyDeleted()
+
+            // Setup meeting detection if enabled
+            if settings.meetingAutoDetectEnabled {
+                coordinator.setupMeetingDetection(settings: settings)
+                await coordinator.evaluateImmediate()
+            }
         }
-        .onChange(of: settings.kbFolderPath) {
-            if settings.kbFolderPath.isEmpty {
-                knowledgeBase?.clear()
+        .onChange(of: settings.meetingAutoDetectEnabled) {
+            if settings.meetingAutoDetectEnabled {
+                coordinator.setupMeetingDetection(settings: settings)
+                Task {
+                    await coordinator.evaluateImmediate()
+                }
             } else {
-                indexKBIfNeeded()
+                coordinator.teardownMeetingDetection()
             }
         }
-        .onChange(of: settings.notesFolderPath) {
-            Task {
-                await transcriptLogger?.updateDirectory(
-                    URL(fileURLWithPath: settings.notesFolderPath)
-                )
-            }
-        }
-        .onChange(of: settings.voyageApiKey) {
-            indexKBIfNeeded()
-        }
-        .onChange(of: settings.transcriptionModel) {
-            transcriptionEngine?.refreshModelAvailability()
-        }
-        .onChange(of: settings.inputDeviceID) {
-            if isRunning {
-                transcriptionEngine?.restartMic(inputDeviceID: settings.inputDeviceID)
-            }
-        }
-        .onChange(of: transcriptStore.utterances.count) {
-            handleNewUtterance()
-        }
+    }
+
+    private var contentWithEventHandlers: some View {
+        contentWithLifecycle
         .onKeyPress(.escape) {
             overlayManager.hide()
             return .handled
         }
-        .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
-            guard let engine = transcriptionEngine else {
-                if audioLevel != 0 { audioLevel = 0 }
-                return
-            }
-            if engine.isRunning {
-                audioLevel = engine.audioLevel
-            } else if audioLevel != 0 {
-                audioLevel = 0
-            }
-        }
-    }
+        .task {
+            refreshViewState()
+            synchronizeDerivedState()
 
-    // MARK: - Top Bar
-
-    private var topBar: some View {
-        VStack(spacing: 6) {
-            // Row 1: App name + KB folder
-            HStack {
-                Text("OpenOats")
-                    .font(.system(size: 13, weight: .semibold))
-
-                Spacer()
-
-                // KB status
-                if let kb = knowledgeBase {
-                    if !kb.indexingProgress.isEmpty {
-                        Text(kb.indexingProgress)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    } else if kb.isIndexed {
-                        HStack(spacing: 4) {
-                            Image(systemName: "folder")
-                                .font(.system(size: 10))
-                            Text("\(kb.fileCount) files")
-                                .font(.system(size: 11))
-                        }
-                        .foregroundStyle(.secondary)
-                    }
-                }
-
-                if settings.kbFolderPath.isEmpty {
-                    Button("Set KB Folder...") {
-                        chooseKBFolder()
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.accentTeal)
-                } else {
-                    HStack(spacing: 4) {
-                        Button {
-                            NSWorkspace.shared.open(URL(fileURLWithPath: settings.kbFolderPath))
-                        } label: {
-                            Image(systemName: "folder")
-                                .font(.system(size: 10))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .help("Open in Finder")
-
-                        Button("Change...") {
-                            chooseKBFolder()
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.accentTeal)
-                    }
-                }
-            }
-
-            // Row 2: Template picker
-            HStack {
-                @Bindable var coord = coordinator
-                Menu {
-                    Button {
-                        coordinator.selectedTemplate = nil
-                    } label: {
-                        HStack {
-                            Text("None")
-                            if coordinator.selectedTemplate == nil {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                    Divider()
-                    ForEach(coordinator.templateStore.templates) { template in
-                        Button {
-                            coordinator.selectedTemplate = template
-                        } label: {
-                            Label(template.name, systemImage: template.icon)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        if let template = coordinator.selectedTemplate {
-                            Image(systemName: template.icon)
-                                .font(.system(size: 10))
-                            Text(template.name)
-                                .font(.system(size: 11))
-                        } else {
-                            Image(systemName: "doc.text")
-                                .font(.system(size: 10))
-                            Text("Template")
-                                .font(.system(size: 11))
-                        }
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 8))
-                    }
-                    .foregroundStyle(.secondary)
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-
-                Spacer()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(100))
+                refreshViewState()
+                synchronizeDerivedState()
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-    }
-
-    private var isRunning: Bool {
-        transcriptionEngine?.isRunning ?? false
-    }
-
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 10, weight: .bold, design: .monospaced))
-            .foregroundStyle(.tertiary)
-            .tracking(1.5)
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 4)
     }
 
     // MARK: - Actions
-
-    private func confirmDownloadAndStart() {
-        transcriptionEngine?.downloadConfirmed = true
-        startSession()
-    }
 
     private func startSession() {
         // Gate recording behind consent acknowledgment
@@ -338,55 +329,21 @@ struct ContentView: View {
             return
         }
 
-        Task {
-            suggestionEngine?.clear()
-            await coordinator.startSession(transcriptStore: transcriptStore)
-
-            // Wire transcript logger error callback
-            await transcriptLogger?.setWriteErrorHandler { [weak coordinator] message in
-                Task { @MainActor in
-                    coordinator?.lastStorageError = message
-                }
-            }
-            await transcriptLogger?.startSession()
-
-            await transcriptionEngine?.start(
-                locale: settings.locale,
-                inputDeviceID: settings.inputDeviceID,
-                transcriptionModel: settings.transcriptionModel
-            )
-        }
+        suggestionEngine?.clear()
+        coordinator.handle(.userStarted(.manual()), settings: settings)
     }
 
     private func stopSession() {
-        Task {
-            await coordinator.finalizeSession(
-                transcriptStore: transcriptStore,
-                transcriptionEngine: transcriptionEngine,
-                transcriptLogger: transcriptLogger
-            )
-        }
+        coordinator.handle(.userStopped, settings: settings)
     }
 
     private func toggleOverlay() {
         let content = OverlayContent(
-            suggestions: suggestionEngine?.suggestions ?? [],
-            isGenerating: suggestionEngine?.isGenerating ?? false,
-            volatileThemText: transcriptStore.volatileThemText
+            suggestions: viewState.suggestions,
+            isGenerating: viewState.isGeneratingSuggestions,
+            volatileThemText: viewState.volatileThemText
         )
         overlayManager.toggle(content: content)
-    }
-
-    private func chooseKBFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.message = "Choose your knowledge base folder"
-
-        if panel.runModal() == .OK, let url = panel.url {
-            settings.kbFolderPath = url.path
-        }
     }
 
     private func indexKBIfNeeded() {
@@ -400,24 +357,59 @@ struct ContentView: View {
     private func copyTranscript() {
         let timeFmt = DateFormatter()
         timeFmt.dateFormat = "HH:mm:ss"
-        let lines = transcriptStore.utterances.map { u in
-            "[\(timeFmt.string(from: u.timestamp))] \(u.speaker == .you ? "You" : "Them"): \(u.text)"
+        let lines = viewState.utterances.map { u in
+            "[\(timeFmt.string(from: u.timestamp))] \(u.speaker == .you ? "You" : "Them"): \(u.displayText)"
         }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
     }
 
-    private func handleNewUtterance() {
-        let utterances = transcriptStore.utterances
-        guard let last = utterances.last else { return }
+    private func handlePendingExternalCommandIfPossible() {
+        guard let request = coordinator.pendingExternalCommand else { return }
+        let handled: Bool
+
+        switch request.command {
+        case .startSession:
+            guard coordinator.transcriptionEngine != nil, suggestionEngine != nil, coordinator.transcriptLogger != nil else {
+                return
+            }
+            if !viewState.isRunning {
+                startSession()
+            }
+            handled = true
+        case .stopSession:
+            guard viewState.isRunning else { return }
+            stopSession()
+            handled = true
+        case .openNotes(let sessionID):
+            coordinator.queueSessionSelection(sessionID)
+            openWindow(id: "notes")
+            handled = true
+        }
+
+        if handled {
+            coordinator.completeExternalCommand(request.id)
+        }
+    }
+
+    private func handleNewUtterance(_ last: Utterance) {
+        // Reset silence timer for auto-detected sessions
+        coordinator.noteUtterance()
 
         // Persist to transcript log
         Task {
-            await transcriptLogger?.append(
+            await coordinator.transcriptLogger?.append(
                 speaker: last.speaker == .you ? "You" : "Them",
                 text: last.text,
                 timestamp: last.timestamp
             )
+        }
+
+        // Trigger transcript refinement if enabled
+        if settings.enableTranscriptRefinement, let engine = coordinator.refinementEngine {
+            Task {
+                await engine.refine(last)
+            }
         }
 
         // Trigger suggestions on THEM utterance
@@ -433,8 +425,9 @@ struct ContentView: View {
             Task {
                 await coordinator.sessionStore.appendRecordDelayed(
                     baseRecord: baseRecord,
+                    utteranceID: last.id,
                     suggestionEngine: suggestionEngine,
-                    transcriptStore: transcriptStore
+                    transcriptStore: coordinator.transcriptStore
                 )
             }
         } else {
@@ -446,6 +439,138 @@ struct ContentView: View {
                     timestamp: last.timestamp
                 ))
             }
+        }
+    }
+
+    private func handleNewUtterances(startingAt startIndex: Int) {
+        let utterances = coordinator.transcriptStore.utterances
+        guard startIndex < utterances.count else { return }
+
+        for utterance in utterances[startIndex...] {
+            handleNewUtterance(utterance)
+        }
+    }
+
+    @MainActor
+    private func refreshViewState() {
+        let lastEndedSession = coordinator.lastEndedSession
+        let lastSessionHasNotes = lastEndedSession.flatMap { lastSession in
+            coordinator.sessionHistory.first { $0.id == lastSession.id }?.hasNotes
+        } ?? false
+
+        let activeModelRaw = switch settings.llmProvider {
+        case .openRouter: settings.selectedModel
+        case .ollama: settings.ollamaLLMModel
+        case .openAICompatible: settings.openAILLMModel
+        case .mlx: settings.mlxModel
+        }
+
+        var nextViewState = ViewState()
+        nextViewState.isRunning = coordinator.transcriptionEngine?.isRunning ?? false
+        nextViewState.lastEndedSession = lastEndedSession
+        nextViewState.lastSessionHasNotes = lastSessionHasNotes
+        nextViewState.modelDisplayName = activeModelRaw.split(separator: "/").last.map(String.init) ?? activeModelRaw
+        nextViewState.transcriptionPrompt = settings.transcriptionModel.downloadPrompt
+        nextViewState.statusMessage = coordinator.transcriptionEngine?.assetStatus
+        nextViewState.errorMessage = coordinator.transcriptionEngine?.lastError
+        nextViewState.needsDownload = coordinator.transcriptionEngine?.needsModelDownload ?? false
+        nextViewState.kbIndexingProgress = knowledgeBase?.indexingProgress ?? ""
+        nextViewState.suggestions = suggestionEngine?.suggestions ?? []
+        nextViewState.isGeneratingSuggestions = suggestionEngine?.isGenerating ?? false
+        nextViewState.showLiveTranscript = settings.showLiveTranscript
+        nextViewState.utterances = coordinator.transcriptStore.utterances
+        nextViewState.volatileYouText = coordinator.transcriptStore.volatileYouText
+        nextViewState.volatileThemText = coordinator.transcriptStore.volatileThemText
+        nextViewState.kbFolderPath = settings.kbFolderPath
+        nextViewState.notesFolderPath = settings.notesFolderPath
+        nextViewState.voyageApiKey = settings.voyageApiKey
+        nextViewState.transcriptionModel = settings.transcriptionModel
+        nextViewState.inputDeviceID = settings.inputDeviceID
+
+        viewState = nextViewState
+    }
+
+    @MainActor
+    private func synchronizeDerivedState() {
+        let currentViewState = viewState
+
+        if currentViewState.kbFolderPath != observedKBFolderPath {
+            observedKBFolderPath = currentViewState.kbFolderPath
+            if currentViewState.kbFolderPath.isEmpty {
+                knowledgeBase?.clear()
+            } else {
+                indexKBIfNeeded()
+            }
+        }
+
+        if currentViewState.notesFolderPath != observedNotesFolderPath {
+            observedNotesFolderPath = currentViewState.notesFolderPath
+            let url = URL(fileURLWithPath: currentViewState.notesFolderPath)
+            Task {
+                await coordinator.transcriptLogger?.updateDirectory(url)
+            }
+            coordinator.audioRecorder?.updateDirectory(url)
+        }
+
+        if currentViewState.voyageApiKey != observedVoyageApiKey {
+            observedVoyageApiKey = currentViewState.voyageApiKey
+            indexKBIfNeeded()
+        }
+
+        if currentViewState.transcriptionModel != observedTranscriptionModel {
+            observedTranscriptionModel = currentViewState.transcriptionModel
+            coordinator.transcriptionEngine?.refreshModelAvailability()
+        }
+
+        if currentViewState.inputDeviceID != observedInputDeviceID {
+            observedInputDeviceID = currentViewState.inputDeviceID
+            if currentViewState.isRunning {
+                Task {
+                    coordinator.transcriptionEngine?.restartMic(inputDeviceID: currentViewState.inputDeviceID)
+                }
+            }
+        }
+
+        let utteranceCount = currentViewState.utterances.count
+        if utteranceCount > observedUtteranceCount {
+            handleNewUtterances(startingAt: observedUtteranceCount)
+        }
+        observedUtteranceCount = utteranceCount
+
+        if currentViewState.isRunning != observedIsRunning {
+            observedIsRunning = currentViewState.isRunning
+        }
+
+        let pendingExternalCommandID = coordinator.pendingExternalCommand?.id
+        if pendingExternalCommandID != observedPendingExternalCommandID {
+            observedPendingExternalCommandID = pendingExternalCommandID
+            handlePendingExternalCommandIfPossible()
+        }
+
+        if let action = pendingControlBarAction {
+            pendingControlBarAction = nil
+            handleControlBarAction(action)
+        }
+
+        if currentViewState.isRunning {
+            audioLevel = coordinator.transcriptionEngine?.audioLevel ?? 0
+        } else if audioLevel != 0 {
+            audioLevel = 0
+        }
+    }
+
+    @MainActor
+    private func handleControlBarAction(_ action: ControlBarAction) {
+        switch action {
+        case .toggle:
+            if viewState.isRunning {
+                stopSession()
+            } else {
+                startSession()
+            }
+        case .confirmDownload:
+            coordinator.transcriptionEngine?.downloadConfirmed = true
+            startSession()
         }
     }
 }

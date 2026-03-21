@@ -30,14 +30,14 @@ final class SystemAudioCapture: @unchecked Sendable {
         let systemAudio: AsyncStream<AVAudioPCMBuffer>
     }
 
-    func bufferStream() async throws -> CaptureStreams {
+    func bufferStream(outputDeviceID: AudioDeviceID? = nil) async throws -> CaptureStreams {
         await stop()
 
         let sysStream = AsyncStream<AVAudioPCMBuffer> { continuation in
             self._sysContinuation.withLock { $0 = continuation }
         }
 
-        let outputDeviceID = try Self.defaultSystemOutputDeviceID()
+        let outputDeviceID = try (outputDeviceID ?? Self.defaultOutputDeviceID())
         let outputUID = try Self.deviceUID(for: outputDeviceID)
         let tapUUID = UUID()
 
@@ -271,8 +271,8 @@ final class SystemAudioCapture: @unchecked Sendable {
         return processObjectID
     }
 
-    private static func defaultSystemOutputDeviceID() throws -> AudioDeviceID {
-        var address = propertyAddress(selector: kAudioHardwarePropertyDefaultSystemOutputDevice)
+    static func defaultOutputDeviceID() throws -> AudioDeviceID {
+        var address = propertyAddress(selector: kAudioHardwarePropertyDefaultOutputDevice)
         var deviceID = AudioDeviceID(kAudioObjectUnknown)
         var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
 
@@ -286,7 +286,7 @@ final class SystemAudioCapture: @unchecked Sendable {
         )
 
         guard status == noErr, deviceID != AudioDeviceID(kAudioObjectUnknown) else {
-            throw CaptureError.noSystemOutputDevice
+            throw CaptureError.noOutputDevice
         }
         return deviceID
     }
@@ -396,7 +396,7 @@ final class SystemAudioCapture: @unchecked Sendable {
     }
 
     enum CaptureError: LocalizedError {
-        case noSystemOutputDevice
+        case noOutputDevice
         case outputDeviceUIDUnavailable(OSStatus)
         case tapCreationFailed(OSStatus)
         case aggregateDeviceCreationFailed(OSStatus)
@@ -407,8 +407,8 @@ final class SystemAudioCapture: @unchecked Sendable {
 
         var errorDescription: String? {
             switch self {
-            case .noSystemOutputDevice:
-                return "No system output device is currently available."
+            case .noOutputDevice:
+                return "No audio output device is currently available."
             case .outputDeviceUIDUnavailable(let status):
                 return "Unable to inspect the system output device (OSStatus \(status))."
             case .tapCreationFailed(let status):

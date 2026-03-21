@@ -5,12 +5,36 @@ import Observation
 @Observable
 @MainActor
 final class NotesEngine {
-    private(set) var isGenerating = false
-    private(set) var generatedMarkdown = ""
-    private(set) var error: String?
+    enum Mode {
+        case live
+        case scripted(markdown: String)
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _isGenerating = false
+    private(set) var isGenerating: Bool {
+        get { access(keyPath: \.isGenerating); return _isGenerating }
+        set { withMutation(keyPath: \.isGenerating) { _isGenerating = newValue } }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _generatedMarkdown = ""
+    private(set) var generatedMarkdown: String {
+        get { access(keyPath: \.generatedMarkdown); return _generatedMarkdown }
+        set { withMutation(keyPath: \.generatedMarkdown) { _generatedMarkdown = newValue } }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _error: String?
+    private(set) var error: String? {
+        get { access(keyPath: \.error); return _error }
+        set { withMutation(keyPath: \.error) { _error = newValue } }
+    }
 
     private let client = OpenRouterClient()
     private var currentTask: Task<Void, Never>?
+    private let mode: Mode
+
+    init(mode: Mode = .live) {
+        self.mode = mode
+    }
 
     /// Streams note generation from the LLM, updating `generatedMarkdown` in real time.
     func generate(
@@ -22,6 +46,12 @@ final class NotesEngine {
         isGenerating = true
         generatedMarkdown = ""
         error = nil
+
+        if case .scripted(let markdown) = mode {
+            generatedMarkdown = markdown
+            isGenerating = false
+            return
+        }
 
         let apiKey: String?
         let baseURL: URL?
@@ -35,13 +65,28 @@ final class NotesEngine {
         case .ollama:
             apiKey = nil
             let base = settings.ollamaBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            baseURL = URL(string: base + "/v1/chat/completions")
+            guard let ollamaURL = URL(string: base + "/v1/chat/completions") else {
+                error = "Invalid Ollama URL: \(settings.ollamaBaseURL)"
+                isGenerating = false
+                return
+            }
+            baseURL = ollamaURL
             model = settings.ollamaLLMModel
         case .openAICompatible:
             apiKey = settings.openAILLMApiKey.isEmpty ? nil : settings.openAILLMApiKey
             let base = settings.openAILLMBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             baseURL = URL(string: base + "/v1/chat/completions")
             model = settings.openAILLMModel
+        case .mlx:
+            apiKey = nil
+            let base = settings.mlxBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard let mlxURL = URL(string: base + "/v1/chat/completions") else {
+                error = "Invalid MLX URL: \(settings.mlxBaseURL)"
+                isGenerating = false
+                return
+            }
+            baseURL = mlxURL
+            model = settings.mlxModel
         }
 
         let transcriptText = formatTranscript(transcript)
@@ -92,7 +137,8 @@ final class NotesEngine {
 
         for record in records {
             let label = record.speaker == .you ? "You" : "Them"
-            let line = "[\(timeFmt.string(from: record.timestamp))] \(label): \(record.text)"
+            let bestText = record.refinedText ?? record.text
+            let line = "[\(timeFmt.string(from: record.timestamp))] \(label): \(bestText)"
             totalChars += line.count
             lines.append(line)
         }

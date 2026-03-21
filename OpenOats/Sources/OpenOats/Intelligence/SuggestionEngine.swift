@@ -7,11 +7,24 @@ import Observation
 @Observable
 @MainActor
 final class SuggestionEngine {
-    private(set) var suggestions: [Suggestion] = []
-    private(set) var isGenerating = false
+    @ObservationIgnored nonisolated(unsafe) private var _suggestions: [Suggestion] = []
+    private(set) var suggestions: [Suggestion] {
+        get { access(keyPath: \.suggestions); return _suggestions }
+        set { withMutation(keyPath: \.suggestions) { _suggestions = newValue } }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _isGenerating = false
+    private(set) var isGenerating: Bool {
+        get { access(keyPath: \.isGenerating); return _isGenerating }
+        set { withMutation(keyPath: \.isGenerating) { _isGenerating = newValue } }
+    }
 
     /// The latest suggestion decision, even if it didn't surface (for logging).
-    private(set) var lastDecision: SuggestionDecision?
+    @ObservationIgnored nonisolated(unsafe) private var _lastDecision: SuggestionDecision?
+    private(set) var lastDecision: SuggestionDecision? {
+        get { access(keyPath: \.lastDecision); return _lastDecision }
+        set { withMutation(keyPath: \.lastDecision) { _lastDecision = newValue } }
+    }
 
     private let client = OpenRouterClient()
     private var currentTask: Task<Void, Never>?
@@ -49,19 +62,32 @@ final class SuggestionEngine {
         case .ollama: nil
         case .openAICompatible:
             settings.openAILLMApiKey.isEmpty ? nil : settings.openAILLMApiKey
+        case .mlx: nil
         }
     }
 
     /// Returns the base URL for the current LLM provider (nil uses the default OpenRouter URL).
+    /// Throws a fatal error for Ollama if the URL is invalid, preventing silent fallback to OpenRouter.
     private var llmBaseURL: URL? {
         switch settings.llmProvider {
         case .openRouter: return nil
         case .ollama:
             let base = settings.ollamaBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            return URL(string: base + "/v1/chat/completions")
+            guard let url = URL(string: base + "/v1/chat/completions") else {
+                print("[SuggestionEngine] Invalid Ollama URL: \(settings.ollamaBaseURL)")
+                return nil
+            }
+            return url
         case .openAICompatible:
             let base = settings.openAILLMBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             return URL(string: base + "/v1/chat/completions")
+        case .mlx:
+            let base = settings.mlxBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard let url = URL(string: base + "/v1/chat/completions") else {
+                print("[SuggestionEngine] Invalid MLX URL: \(settings.mlxBaseURL)")
+                return nil
+            }
+            return url
         }
     }
 
@@ -71,6 +97,7 @@ final class SuggestionEngine {
         case .openRouter: settings.selectedModel
         case .ollama: settings.ollamaLLMModel
         case .openAICompatible: settings.openAILLMModel
+        case .mlx: settings.mlxModel
         }
     }
 
@@ -87,9 +114,11 @@ final class SuggestionEngine {
         case .openRouter:
             guard !settings.openRouterApiKey.isEmpty else { return }
         case .ollama:
-            break // No API key needed
+            guard llmBaseURL != nil else { return }
         case .openAICompatible:
             break // API key is optional for local endpoints
+        case .mlx:
+            guard llmBaseURL != nil else { return }
         }
 
         currentTask = Task {
@@ -193,7 +222,7 @@ final class SuggestionEngine {
         let recentThem = transcriptStore.recentThemUtterances.suffix(3)
         for recent in recentThem {
             if recent.id == utterance.id { continue }
-            if textSimilarity(text, recent.text) > 0.8 { return false }
+            if TextSimilarity.jaccard(text, recent.text) > 0.8 { return false }
         }
 
         return true
@@ -640,15 +669,5 @@ final class SuggestionEngine {
             s = String(s.dropLast(3))
         }
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// Simple word-overlap similarity (Jaccard) for near-duplicate detection.
-    private func textSimilarity(_ a: String, _ b: String) -> Double {
-        let setA = Set(a.lowercased().split(separator: " "))
-        let setB = Set(b.lowercased().split(separator: " "))
-        guard !setA.isEmpty || !setB.isEmpty else { return 1.0 }
-        let intersection = setA.intersection(setB).count
-        let union = setA.union(setB).count
-        return Double(intersection) / Double(union)
     }
 }

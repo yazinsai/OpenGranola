@@ -10,10 +10,12 @@ final class MicCapture: @unchecked Sendable {
     private var engine = AVAudioEngine()
     private var hasTapInstalled = false
     private let _audioLevel = AudioLevel()
+    private let _hasCapturedFrames = SyncBool()
     private let _error = SyncString()
     private let _streamContinuation = OSAllocatedUnfairLock<AsyncStream<AVAudioPCMBuffer>.Continuation?>(uncheckedState: nil)
 
     var audioLevel: Float { _audioLevel.value }
+    var hasCapturedFrames: Bool { _hasCapturedFrames.value }
     var captureError: String? { _error.value }
 
     /// Set a specific input device by its AudioDeviceID. Pass nil to use system default.
@@ -31,58 +33,100 @@ final class MicCapture: @unchecked Sendable {
         )
     }
 
-    func bufferStream(deviceID: AudioDeviceID? = nil) -> AsyncStream<AVAudioPCMBuffer> {
+    func bufferStream(deviceID: AudioDeviceID? = nil, echoCancellation: Bool = false) -> AsyncStream<AVAudioPCMBuffer> {
+        // Defensive cleanup of any prior state
+        _streamContinuation.withLock { $0?.finish(); $0 = nil }
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+
         let level = _audioLevel
         let errorHolder = _error
 
         return AsyncStream { continuation in
             self._streamContinuation.withLock { $0 = continuation }
             errorHolder.value = nil
+            self._hasCapturedFrames.value = false
 
             diagLog("[MIC-1] bufferStream called, deviceID=\(String(describing: deviceID))")
 
             let engine = self.makeFreshEngine()
+            diagLog("[MIC-1a] fresh engine created")
+
+            let inputNode = engine.inputNode
+            diagLog("[MIC-1b] input node ready")
+
+            // Enable voice processing (AEC + noise suppression) if requested
+            if echoCancellation {
+                do {
+                    try inputNode.setVoiceProcessingEnabled(true)
+                    diagLog("[MIC-1c] voice processing (AEC) enabled")
+                } catch {
+                    diagLog("[MIC-1c] failed to enable voice processing: \(error.localizedDescription)")
+                }
+            }
 
             // Set input device before accessing inputNode format
+            var resolvedDeviceID: AudioDeviceID?
             if let id = deviceID {
-                let inputNode = engine.inputNode
-                let audioUnit = inputNode.audioUnit!
+                guard let inAU = inputNode.audioUnit else {
+                    let msg = "inputNode has no audio unit after prepare"
+                    diagLog("[MIC-2-FAIL] \(msg)")
+                    errorHolder.value = msg
+                    continuation.finish()
+                    return
+                }
                 var devID = id
-                let status = AudioUnitSetProperty(
-                    audioUnit,
+                let inStatus = AudioUnitSetProperty(
+                    inAU,
                     kAudioOutputUnitProperty_CurrentDevice,
                     kAudioUnitScope_Global,
                     0,
                     &devID,
                     UInt32(MemoryLayout<AudioDeviceID>.size)
                 )
-                diagLog("[MIC-2] setInputDevice status=\(status) (0=ok)")
+                diagLog("[MIC-2] setInputDevice status=\(inStatus) (0=ok)")
+                resolvedDeviceID = id
             } else {
                 diagLog("[MIC-2] no deviceID, using system default")
+                resolvedDeviceID = Self.defaultInputDeviceID()
             }
 
-            let inputNode = engine.inputNode
             let format = inputNode.outputFormat(forBus: 0)
 
-            diagLog("[MIC-3] inputNode format: sr=\(format.sampleRate) ch=\(format.channelCount) interleaved=\(format.isInterleaved) commonFormat=\(format.commonFormat.rawValue)")
+            // The inputNode format may lag behind a device switch (e.g. USB mic at 48 kHz
+            // while the engine still reports 44.1 kHz). Query the hardware sample rate
+            // directly and prefer it when it differs from the inputNode format.
+            var sampleRate = format.sampleRate
+            if let devID = resolvedDeviceID,
+               let hwRate = Self.deviceNominalSampleRate(for: devID),
+               hwRate > 0, hwRate != sampleRate {
+                diagLog("[MIC-3] hardware sr=\(hwRate) differs from inputNode sr=\(sampleRate), using hardware rate")
+                sampleRate = hwRate
+            }
 
-            guard format.sampleRate > 0 && format.channelCount > 0 else {
-                let msg = "Invalid audio format: sr=\(format.sampleRate) ch=\(format.channelCount)"
+            diagLog("[MIC-3] inputNode format: sr=\(format.sampleRate) ch=\(format.channelCount) interleaved=\(format.isInterleaved) commonFormat=\(format.commonFormat.rawValue), effective sr=\(sampleRate)")
+
+            guard sampleRate > 0 && format.channelCount > 0 else {
+                let msg = "Invalid audio format: sr=\(sampleRate) ch=\(format.channelCount)"
                 diagLog("[MIC-3-FAIL] \(msg)")
                 errorHolder.value = msg
                 continuation.finish()
                 return
             }
 
-            guard let tapFormat = AVAudioFormat(
-                standardFormatWithSampleRate: format.sampleRate,
-                channels: format.channelCount
-            ) else {
-                let msg = "Failed to build tap format from input format"
-                diagLog("[MIC-4-FAIL] \(msg)")
-                errorHolder.value = msg
-                continuation.finish()
-                return
+            // Try multiple tap formats — some devices report formats that don't
+            // round-trip through AVAudioFormat(standardFormat:). Fall back to the
+            // native input format as a last resort.
+            let tapFormat: AVAudioFormat
+            if let f = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: format.channelCount) {
+                tapFormat = f
+            } else if sampleRate != format.sampleRate,
+                      let f = AVAudioFormat(standardFormatWithSampleRate: format.sampleRate, channels: format.channelCount) {
+                diagLog("[MIC-4] hardware-rate format failed, using node rate \(format.sampleRate)")
+                tapFormat = f
+            } else {
+                diagLog("[MIC-4] standard formats failed, using native input format")
+                tapFormat = format
             }
 
             diagLog("[MIC-4] tapFormat: sr=\(tapFormat.sampleRate) ch=\(tapFormat.channelCount)")
@@ -90,6 +134,7 @@ final class MicCapture: @unchecked Sendable {
             var tapCallCount = 0
             inputNode.installTap(onBus: 0, bufferSize: 4096, format: tapFormat) { buffer, _ in
                 tapCallCount += 1
+                self._hasCapturedFrames.value = true
                 let rms = Self.normalizedRMS(from: buffer)
                 level.value = min(rms * 25, 1.0)
 
@@ -110,7 +155,6 @@ final class MicCapture: @unchecked Sendable {
             }
 
             do {
-                engine.prepare()
                 diagLog("[MIC-7] engine prepared, starting...")
                 try engine.start()
                 diagLog("[MIC-8] engine started successfully, isRunning=\(engine.isRunning)")
@@ -137,7 +181,9 @@ final class MicCapture: @unchecked Sendable {
             hasTapInstalled = false
         }
         engine.stop()
+        engine.reset()
         _audioLevel.value = 0
+        _hasCapturedFrames.value = false
     }
 
     private func makeFreshEngine() -> AVAudioEngine {
@@ -301,6 +347,19 @@ final class MicCapture: @unchecked Sendable {
         return uid.takeRetainedValue() as String
     }
 
+    /// Query the nominal sample rate of a CoreAudio device directly from hardware.
+    static func deviceNominalSampleRate(for deviceID: AudioDeviceID) -> Double? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyNominalSampleRate,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var sampleRate: Float64 = 0
+        var size = UInt32(MemoryLayout<Float64>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &sampleRate)
+        return status == noErr ? sampleRate : nil
+    }
+
     static func defaultInputDeviceID() -> AudioDeviceID? {
         var propertyAddress = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
@@ -318,6 +377,7 @@ final class MicCapture: @unchecked Sendable {
         )
         return status == noErr ? deviceID : nil
     }
+
 }
 
 /// Simple thread-safe float holder for audio level.
@@ -337,6 +397,17 @@ final class SyncString: @unchecked Sendable {
     private let lock = NSLock()
 
     var value: String? {
+        get { lock.withLock { _value } }
+        set { lock.withLock { _value = newValue } }
+    }
+}
+
+/// Simple thread-safe bool holder.
+final class SyncBool: @unchecked Sendable {
+    private var _value = false
+    private let lock = NSLock()
+
+    var value: Bool {
         get { lock.withLock { _value } }
         set { lock.withLock { _value = newValue } }
     }

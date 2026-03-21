@@ -1,6 +1,6 @@
 cask "openoats" do
-  version "1.10.2"
-  sha256 "5b5682b3a34ac96e37b12addf59b40dfdfa397050845abab8e04d7462c275107"
+  version "1.12.7"
+  sha256 "0e044389281a2043760591cc91c6c6ac8d1aacde22dac51001bab66ce0378df8"
 
   url "https://github.com/yazinsai/OpenOats/releases/download/v#{version}/OpenOats.dmg"
   name "OpenOats"
@@ -19,6 +19,10 @@ cask "openoats" do
 
   zap trash: [
     "~/Library/Application Support/OpenOats",
+    "~/Library/Caches/com.openoats.app",
+    "~/Library/HTTPStorages/com.openoats.app",
+    "~/Library/Preferences/com.openoats.app.plist",
+    "~/Library/Saved Application State/com.openoats.app.savedState",
     "~/Library/Caches/com.opengranola.app",
     "~/Library/HTTPStorages/com.opengranola.app",
     "~/Library/Preferences/com.opengranola.app.plist",

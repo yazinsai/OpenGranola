@@ -15,11 +15,21 @@ actor TranscriptLogger {
         self.directory = directory ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Documents/OpenOats", isDirectory: true)
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
+        Self.dropMetadataNeverIndex(in: self.directory)
     }
 
     func updateDirectory(_ url: URL) {
         self.directory = url
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        Self.dropMetadataNeverIndex(in: url)
+    }
+
+    /// Place a .metadata_never_index sentinel so Spotlight skips this directory.
+    private static func dropMetadataNeverIndex(in directory: URL) {
+        let sentinel = directory.appendingPathComponent(".metadata_never_index")
+        if !FileManager.default.fileExists(atPath: sentinel.path) {
+            FileManager.default.createFile(atPath: sentinel.path, contents: nil)
+        }
     }
 
     func setWriteErrorHandler(_ handler: (@Sendable (String) -> Void)?) {
@@ -40,7 +50,8 @@ actor TranscriptLogger {
         headerFmt.timeStyle = .short
         sessionHeader = "OpenOats - \(headerFmt.string(from: now))\n\n"
 
-        FileManager.default.createFile(atPath: file.path, contents: sessionHeader.data(using: .utf8))
+        FileManager.default.createFile(atPath: file.path, contents: sessionHeader.data(using: .utf8),
+                                       attributes: [.posixPermissions: 0o600])
         do {
             fileHandle = try FileHandle(forWritingTo: file)
             fileHandle?.seekToEndOfFile()
@@ -49,14 +60,15 @@ actor TranscriptLogger {
         }
     }
 
-    func append(speaker: String, text: String, timestamp: Date) {
+    func append(speaker: String, text: String, timestamp: Date, refinedText: String? = nil) {
         guard let fileHandle else {
             reportWriteError("Transcript logging interrupted: file is not writable.")
             return
         }
         let timeFmt = DateFormatter()
         timeFmt.dateFormat = "HH:mm:ss"
-        let line = "[\(timeFmt.string(from: timestamp))] \(speaker): \(text)\n"
+        let displayText = refinedText ?? text
+        let line = "[\(timeFmt.string(from: timestamp))] \(speaker): \(displayText)\n"
         if let data = line.data(using: .utf8) {
             fileHandle.seekToEndOfFile()
             fileHandle.write(data)

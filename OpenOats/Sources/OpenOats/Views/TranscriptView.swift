@@ -54,7 +54,7 @@ private struct UtteranceBubble: View {
                 .foregroundStyle(utterance.speaker == .you ? Color.youColor : Color.themColor)
                 .frame(width: 36, alignment: .trailing)
 
-            Text(utterance.text)
+            Text(utterance.displayText)
                 .font(.system(size: 13))
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)

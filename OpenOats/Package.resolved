@@ -1,5 +1,5 @@
 {
-  "originHash" : "a3d5441852186709698c02923d4f349c1a5ac93e0c7266aa2b6aa8fca0bf5d48",
+  "originHash" : "2667d5a93982448518cc3cc6e02783fb3d177aee6c807203ecbc56b5c9855cda",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -11,12 +11,30 @@
       }
     },
     {
+      "identity" : "launchatlogin-modern",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sindresorhus/LaunchAtLogin-Modern.git",
+      "state" : {
+        "revision" : "a04ec1c363be3627734f6dad757d82f5d4fa8fcc",
+        "version" : "1.1.0"
+      }
+    },
+    {
       "identity" : "sparkle",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sparkle-project/Sparkle",
       "state" : {
         "revision" : "21d8df80440b1ca3b65fa82e40782f1e5a9e6ba2",
         "version" : "2.9.0"
+      }
+    },
+    {
+      "identity" : "swift-argument-parser",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-argument-parser.git",
+      "state" : {
+        "revision" : "c5d11a805e765f52ba34ec7284bd4fcd6ba68615",
+        "version" : "1.7.0"
       }
     },
     {
@@ -62,6 +80,15 @@
       "state" : {
         "revision" : "150169bfba0889c229a2ce7494cf8949f18e6906",
         "version" : "1.1.9"
+      }
+    },
+    {
+      "identity" : "whisperkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/argmaxinc/WhisperKit.git",
+      "state" : {
+        "revision" : "26577ce3017aae8c9edfd9a0dd17851bd248c731",
+        "version" : "0.17.0"
       }
     },
     {

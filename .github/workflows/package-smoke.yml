@@ -1,0 +1,39 @@
+name: package-smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-smoke:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.app || sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+          swift --version
+
+      - name: Build and assemble app bundle (no sign, no install)
+        run: SKIP_SIGN=1 SKIP_INSTALL=1 ./scripts/build_swift_app.sh
+
+      - name: Verify app bundle structure
+        run: |
+          test -f dist/OpenOats.app/Contents/MacOS/OpenOats
+          test -f dist/OpenOats.app/Contents/Info.plist
+          test -f dist/OpenOats.app/Contents/PkgInfo
+          echo "App bundle structure verified"

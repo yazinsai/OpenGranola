@@ -104,6 +104,85 @@ Works well with meeting prep docs, research notes, pitch decks, competitive anal
 - The app window is hidden from screen sharing by default
 - Transcripts are saved locally to `~/Documents/OpenOats/`
 
+### Cloud mode: what data leaves your Mac
+
+When using cloud providers, OpenOats makes the following network requests. **No audio is ever sent** — only text. In fully-local mode (Ollama for both LLM and embeddings), nothing touches the network at all.
+
+#### 1. Knowledge base indexing — Voyage AI (`api.voyageai.com/v1/embeddings`)
+
+**When:** Each time you index your knowledge base folder (on launch or when files change).
+
+**What is sent:**
+- Text chunks from your `.md` / `.txt` knowledge base files (split by markdown headings, 80–500 words each, with the header breadcrumb prepended)
+- Model name (`voyage-4-lite`) and requested output dimensions (`256`)
+- Input type (`document`)
+
+Chunks are sent in batches of 32. Only new or changed files are embedded — unchanged files use a local cache.
+
+#### 2. Knowledge base search — Voyage AI (`api.voyageai.com/v1/embeddings`)
+
+**When:** Each time the suggestion pipeline runs (triggered by a substantive utterance from the other speaker, subject to a 90-second cooldown).
+
+**What is sent:**
+- 1–4 short query strings derived from the conversation: the latest utterance text, the current conversation topic, a short conversation summary, and the top open question
+- Model name, dimensions, and input type (`query`)
+
+#### 3. Knowledge base reranking — Voyage AI (`api.voyageai.com/v1/rerank`)
+
+**When:** Immediately after step 2, if Voyage AI is the embedding provider.
+
+**What is sent:**
+- The primary search query (the latest utterance text)
+- Up to 10 candidate KB chunk texts (from your own notes) for reranking
+- Model name (`rerank-2.5-lite`)
+
+#### 4. Conversation state update — OpenRouter (`openrouter.ai/api/v1/chat/completions`)
+
+**When:** Periodically during a session when the conversation state needs refreshing.
+
+**What is sent (as an LLM prompt):**
+- The previous conversation state (topic, summary, open questions, tensions, recent decisions, goals — all derived from earlier LLM calls)
+- Recent transcript utterances (both speakers, text only — labeled "You" / "Them")
+- The latest utterance from the other speaker
+- A system prompt instructing the model to update the conversation state
+
+#### 5. Surfacing gate — OpenRouter (`openrouter.ai/api/v1/chat/completions`)
+
+**When:** After the KB search returns relevant results, to decide whether a suggestion is worth showing.
+
+**What is sent (as an LLM prompt):**
+- The latest utterance from the other speaker
+- Recent transcript exchange (both speakers, text only)
+- Current conversation state (topic, summary, open questions, tensions)
+- The detected trigger type and excerpt
+- Up to 5 KB evidence chunks (text from your notes, with source file and header, plus relevance scores)
+- Recently shown suggestion angles (short strings, to avoid repeats)
+
+#### 6. Suggestion generation — OpenRouter (`openrouter.ai/api/v1/chat/completions`)
+
+**When:** Only if the surfacing gate approves (all quality scores above threshold).
+
+**What is sent (as an LLM prompt):**
+- The latest utterance from the other speaker
+- Current conversation state (topic and summary)
+- The gate's reasoning string
+- Up to 3 KB evidence chunks (text from your notes, with source file and header)
+
+#### 7. Meeting notes generation — OpenRouter (`openrouter.ai/api/v1/chat/completions`)
+
+**When:** When you click "Generate Notes" after a session.
+
+**What is sent (as an LLM prompt):**
+- The full session transcript (both speakers, with timestamps, labeled "You" / "Them") — truncated to ~60,000 characters if very long
+- The meeting template's system prompt (e.g., instructions for formatting notes)
+
+#### What is never sent
+
+- **Audio** — transcription is always on-device via Apple Speech
+- **File paths or filenames from your system** (only KB source filenames appear in prompts)
+- **Your API keys to anyone other than the respective provider** (OpenRouter key to OpenRouter, Voyage key to Voyage)
+- **Any data when using Ollama** — all requests go to your local machine
+
 ## Build
 
 ```bash
