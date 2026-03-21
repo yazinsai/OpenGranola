@@ -28,6 +28,7 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
     case qwen3ASR06B
     case whisperBase
     case whisperSmall
+    case mlxQwen3ASR
 
     var id: String { rawValue }
 
@@ -38,6 +39,7 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         case .qwen3ASR06B: "Qwen3 ASR 0.6B"
         case .whisperBase: "Whisper Base"
         case .whisperSmall: "Whisper Small"
+        case .mlxQwen3ASR: "MLX Qwen3 ASR 1.7B"
         }
     }
 
@@ -51,12 +53,14 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
             "Whisper Base requires a one-time model download (~142 MB)."
         case .whisperSmall:
             "Whisper Small requires a one-time model download (~244 MB)."
+        case .mlxQwen3ASR:
+            "MLX Qwen3 ASR 1.7B requires a one-time model download (~1.7 GB)."
         }
     }
 
     var supportsExplicitLanguageHint: Bool {
         switch self {
-        case .qwen3ASR06B:
+        case .qwen3ASR06B, .mlxQwen3ASR:
             true
         case .parakeetV2, .parakeetV3, .whisperBase, .whisperSmall:
             false
@@ -65,7 +69,7 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
 
     var localeFieldTitle: String {
         switch self {
-        case .qwen3ASR06B:
+        case .qwen3ASR06B, .mlxQwen3ASR:
             "Language Hint"
         case .parakeetV2, .parakeetV3, .whisperBase, .whisperSmall:
             "Locale"
@@ -80,6 +84,8 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
             "Parakeet TDT v3 auto-detects among its supported languages. Locale changes do not affect this model."
         case .qwen3ASR06B:
             "Optional. Used as a language hint for Qwen3 ASR. Enter a locale such as en-US, fr-FR, or ja-JP. Applies when a new session starts."
+        case .mlxQwen3ASR:
+            "Optional. Used as a language hint for MLX Qwen3 ASR. Enter a locale such as en-US, fr-FR, or ja-JP. Applies when a new session starts."
         case .whisperBase, .whisperSmall:
             "Whisper auto-detects the spoken language. Locale changes do not affect this model."
         }
@@ -101,6 +107,7 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         case .qwen3ASR06B: return Qwen3Backend()
         case .whisperBase: return WhisperKitBackend(variant: .base)
         case .whisperSmall: return WhisperKitBackend(variant: .small)
+        case .mlxQwen3ASR: return MLXBackend()
         }
     }
 }
