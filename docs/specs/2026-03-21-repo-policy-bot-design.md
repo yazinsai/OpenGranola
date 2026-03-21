@@ -15,8 +15,13 @@ An npm package (`repo-policy-bot`) that scaffolds an autonomous repo maintainer 
 - Multi-provider support (Codex, Gemini) — v1 is Claude-only, though the policy format is provider-agnostic
 - Custom label taxonomies — the label system is opinionated and fixed
 - Web dashboard or hosted service
-- GitHub App packaging — workflows are simpler
 - Replacing CI — this orchestrates around existing CI, doesn't replace it
+
+## Prerequisites
+
+**GitHub App required.** The workflow chaining model (Triage labels → Implementation triggers, Triage labels → Gate Runner triggers) requires that label/PR events created by one workflow can trigger another. GitHub suppresses workflow triggers for events created by `GITHUB_TOKEN`. To solve this, the `init` CLI guides users through creating a dedicated GitHub App (or using a PAT) and storing its credentials as repo secrets. All workflows authenticate with this App token instead of `GITHUB_TOKEN` when performing actions that must trigger downstream workflows (labeling, PR creation).
+
+This is a one-time setup cost. The `init` CLI automates as much as possible (generates the App manifest, provides installation instructions).
 
 ## Architecture
 
@@ -40,34 +45,45 @@ An npm package (`repo-policy-bot`) that scaffolds an autonomous repo maintainer 
 
 The AI layer is split into two workflows for security: a low-privilege **Triage Agent** that handles untrusted input (issues, comments, PR reviews) and a higher-privilege **Implementation Agent** that only runs on trusted triggers (labels applied by the Triage Agent or maintainers).
 
+### Workflow Chaining via GitHub App Token
+
+All workflows that need to trigger downstream workflows use a GitHub App token (generated at the start of each workflow run via `actions/create-github-app-token`). This ensures:
+- Labels applied by the Triage Agent trigger the Implementation Agent and Gate Runner
+- PRs created by the Implementation Agent trigger the Triage Agent for review
+- Labels applied by the Gate Runner (post-merge) trigger appropriate cleanup
+
+Each workflow has a distinct App installation, giving each a unique `sender.login` for loop prevention. The Triage Agent's App is `repo-policy-triage[bot]`, the Implementation Agent's is `repo-policy-implement[bot]`, and the Gate Runner's is `repo-policy-gate[bot]`. This eliminates the ambiguity of all workflows sharing `github-actions[bot]`.
+
 #### 1. Triage Agent (low privilege)
 
 **Trigger:**
 - `issues` (opened, reopened, labeled, unlabeled, closed) — new issues, state changes, label repairs
-- `pull_request_target` (opened, synchronize, labeled, unlabeled, reopened, closed) — new/updated PRs and state changes. Uses `pull_request_target` instead of `pull_request` so that fork PRs get write tokens for labeling/commenting. The workflow checks out `github.event.pull_request.merge_commit_sha` (the safe merge ref) rather than the PR head, preventing untrusted code execution.
+- `pull_request_target` (opened, synchronize, labeled, unlabeled, reopened, closed) — new/updated PRs and state changes. Uses `pull_request_target` instead of `pull_request` so that fork PRs get write tokens for labeling/commenting. The workflow does NOT check out PR code — the Triage Agent reads code via GitHub API (`gh api` / `gh pr diff`), never via local checkout. This prevents untrusted code execution entirely.
 - `issue_comment` (created) — two modes:
-  - Items in `state:needs-info`, `state:needs-repro`, or `state:awaiting-human`: trigger on comments from repo collaborators only (filtered via `if: github.event.comment.author_association in ['OWNER', 'MEMBER', 'COLLABORATOR']`). This prevents abuse from arbitrary commenters on public repos.
-  - All other items: trigger only when comment contains `@claude` AND commenter is a collaborator (filtered in workflow YAML)
+  - Items in `state:needs-info`, `state:needs-repro`, or `state:awaiting-human`: trigger on comments from the issue author OR repo collaborators (filtered via `if: github.event.comment.author_association in ['OWNER', 'MEMBER', 'COLLABORATOR'] || github.event.comment.user.login == <issue-author>`). This allows the original reporter to respond to info requests while still preventing abuse from random users.
+  - All other items: trigger only when comment contains `@claude` AND commenter is a collaborator
+- `pull_request_review` (submitted, dismissed) — re-evaluate when human reviews are submitted or dismissed
+- `pull_request_review_comment` (created) — capture inline diff comments from reviewers
 
 **Guards:**
-- Skip if trigger is `labeled`/`unlabeled` and the event's `sender.login` matches the workflow's bot user. Loop prevention uses the event sender identity, not `github-actions[bot]` actor matching, because multiple workflows share the same bot actor. Each workflow sets a unique bot user via a GitHub App or uses workflow-specific metadata in the label event to distinguish itself.
+- Skip if trigger is `labeled`/`unlabeled` and `github.event.sender.login` matches `repo-policy-triage[bot]` (the Triage Agent's own App identity). Each workflow's App has a distinct login, so this is unambiguous.
 - Concurrency: `concurrency: { group: triage-${{ github.event.issue.number || github.event.pull_request.number }} }` — one run per item. GitHub allows one running + one pending; handlers are idempotent so dropped intermediate triggers are safe.
 
 **How it works:**
 - Calls `anthropics/claude-code-action@<pinned-sha>` in automation mode. The workflow template pins to a specific commit SHA of the action (not `@v1`) for supply-chain security. The `init` CLI resolves the latest SHA at scaffold time.
 - The prompt is assembled as: `system-prompt-triage.md` content + contents of `.github/repo-policy.md` + GitHub event context
 - Passed via the `prompt` input of `claude-code-action`
-- Tool overrides via `claude_args`: `--allowedTools Read Grep Glob Bash(gh:*) --max-turns 15`
-- **No file editing, no git write access** — triage is read-only + GitHub API via `gh`
+- Tool overrides via `claude_args`: `--allowedTools Read Grep Glob --max-turns 15`
+- **No Bash access at all** — the Triage Agent uses only `Read`, `Grep`, and `Glob` for code analysis. All GitHub interactions (labeling, commenting, searching issues) are performed by the `claude-code-action` built-in GitHub MCP tools, not via `Bash(gh:*)`. This eliminates the `gh` extension/alias attack vector entirely.
 - For `synchronize` events (new commits pushed to PR): the agent stores the last-reviewed commit SHA in a hidden HTML comment in its PR comment (e.g., `<!-- last-reviewed: abc123 -->`). On subsequent runs, it reads this marker and reviews only commits since that SHA, preventing missed or duplicate reviews when GitHub drops intermediate concurrency events.
 
 **Permissions:** `issues: write`, `pull-requests: write`, `contents: read`, `actions: read`
 
 **What it does:**
-- Triages new issues (classify kind, assess risk, check for duplicates via `gh` and `git log`)
-- Reviews PRs (code review, risk assessment, label normalization)
+- Triages new issues (classify kind, assess risk, check for duplicates via GitHub search API)
+- Reviews PRs (code review via `gh pr diff`, risk assessment, label normalization)
 - Normalizes labels: if multiple labels exist in a namespace, keeps the highest-severity one and removes others
-- Applies labels as the state machine progresses
+- Applies labels as the state machine progresses (using App token so downstream workflows trigger)
 - Comments with reasoning and status updates
 - Runs adversarial input checks on submissions
 - Escalates `risk:high` items by labeling `state:awaiting-human`
@@ -75,44 +91,49 @@ The AI layer is split into two workflows for security: a low-privilege **Triage 
 - On `reopened`: re-evaluates state, removes terminal `resolution:*` label, sets `state:new`
 - On `unlabeled`: checks label invariant (one per namespace), repairs if violated
 - On `closed` (by human, not by Gate Runner): applies `state:done` and appropriate `resolution:*`
-- **Fork PRs:** Review-only. The Triage Agent reviews and labels fork PRs but never attempts to push code to fork branches. Uses `pull_request_target` for write access to labels/comments. If the fork PR is accepted, the system prompt instructs the agent to note this and optionally re-implement on a base-repo branch.
-- Resumes work when collaborators reply to `needs-info`/`needs-repro`/`awaiting-human` items
+- On `pull_request_review` (dismissed): re-evaluates whether `state:ready-to-merge` should be re-applied if the dismissed review was the only blocker
+- **Fork PRs:** Review-only. The Triage Agent reviews and labels fork PRs but never attempts to push code to fork branches. Reads PR diff via API, not local checkout. If the fork PR is accepted, the system prompt instructs the agent to note this and optionally re-implement on a base-repo branch.
+- Resumes work when the original reporter or collaborators reply to `needs-info`/`needs-repro`/`awaiting-human` items
 
 #### 2. Implementation Agent (write privilege)
 
 **Trigger:**
 - `issues` (labeled) — only when `state:planned` is applied
 
-The Implementation Agent triggers **only on issues**, never on PRs. This prevents the agent from running write-capable code in response to external PR content. When `state:in-progress` is applied to a PR (by the Triage Agent during review), no implementation workflow fires — the Triage Agent handles PR review, and the Implementation Agent handles issue-driven code generation.
+The Implementation Agent triggers **only on issues**, never on PRs. This prevents the agent from running write-capable code in response to external PR content.
+
+**Handling PR revisions:** When a bot-authored PR receives review feedback or fails CI, the Triage Agent sets `state:in-progress` on the PR and adds a comment summarizing what needs to change. It then also labels the **parent issue** back to `state:planned`, which re-triggers the Implementation Agent. The Implementation Agent checks for an existing open PR on the `bot/{issue-number}-*` branch, and if found, pushes additional commits to that branch rather than creating a new PR.
 
 **Guards:**
 - Skip unless the label that triggered the event is `state:planned`
-- Skip if the event sender matches the Implementation Agent's own bot identity (prevent loops). Uses the same sender-identity mechanism as the Triage Agent.
+- Skip if `github.event.sender.login` matches `repo-policy-implement[bot]` (prevent loops)
 - Skip if item has `risk:high` (requires human implementation)
 - Concurrency: `concurrency: { group: implement-${{ github.event.issue.number }} }` — one run per item, idempotent handlers
 
 **How it works:**
 - Calls `anthropics/claude-code-action@<pinned-sha>` in automation mode
-- Tool overrides via `claude_args`: `--allowedTools Edit Read Write Grep Glob Bash(gh:*) Bash(git:*) --max-turns 40`
+- Tool overrides via `claude_args`: `--allowedTools Edit Read Write Grep Glob Bash(git:*) --max-turns 40`
 - **Full write access** — can edit files, create branches, push commits
-- After claude-code-action completes, a post-step creates the PR via `gh pr create` if the action pushed commits but didn't open a PR (claude-code-action prepares branches but may not auto-open PRs)
+- GitHub interactions (creating PRs, applying labels) are done via a post-step using the App token and `gh` CLI, not by the agent itself. This keeps the agent's Bash access limited to `git` only.
+- After claude-code-action completes, a post-step creates the PR via `gh pr create` (using App token) if the action pushed commits but didn't open a PR
 
 **Permissions:** `contents: write`, `issues: write`, `pull-requests: write`, `actions: read`
 
 **Prompt injection mitigation:** The Implementation Agent reads issue content, which is untrusted. This is an inherent risk of any AI code agent. Mitigations:
 - The system prompt includes explicit adversarial input defense instructions
-- The agent runs in a sandboxed GitHub Actions runner (no access to secrets beyond `ANTHROPIC_API_KEY`)
+- The agent's Bash access is limited to `git` commands only — no `gh`, no arbitrary shell
+- The agent runs in a sandboxed GitHub Actions runner (no access to secrets beyond `ANTHROPIC_API_KEY` and the App token)
 - `risk:high` items are excluded (the most security-sensitive work requires human implementation)
 - All generated code goes through a PR → Triage Agent review → Gate Runner pipeline before merging
 - The Triage Agent re-reviews the implementation as a second AI pass on the generated code
 
 **What it does:**
 - Implements `risk:low` and `risk:medium` fixes
-- Creates a branch named `bot/{issue-number}-{slug}`
+- Creates a branch named `bot/{issue-number}-{slug}` (or pushes to existing branch if revising)
 - Edits files, pushes commits
-- Post-step: opens PR via `gh pr create --body "Fixes #{issue}" ...`
+- Post-step (using App token): opens PR via `gh pr create --body "Fixes #{issue}" ...` or updates existing PR
 - Links the PR to the issue via `Fixes #N` in the PR body
-- Applies initial labels to the PR (`kind:*` from issue, `risk:*` from issue, `state:in-progress`, `resolution:none`, `release:*` based on scope)
+- Post-step applies initial labels to the PR (`kind:*` from issue, `risk:*` from issue, `state:in-progress`, `resolution:none`, `release:*` based on scope)
 
 **Issue/PR linkage:**
 - The **issue** is the parent; the **PR** is the child
@@ -126,27 +147,31 @@ The Implementation Agent triggers **only on issues**, never on PRs. This prevent
 
 **Trigger:**
 - `pull_request_target` (labeled) — when `state:ready-to-merge` is applied. Uses `pull_request_target` for consistent permissions on fork PRs.
-- `check_suite` (completed) — re-evaluate when CI finishes (a PR may have been labeled `ready-to-merge` before CI completed)
-- `pull_request_review` (submitted) — re-evaluate when a human review is submitted
+- `status` (completed) — re-evaluate when commit statuses update. Unlike `check_suite`, the `status` event payload does not need PR mapping — the workflow queries open PRs with `state:ready-to-merge` label and checks each.
+- `pull_request_review` (submitted, dismissed) — re-evaluate when a human review is submitted or dismissed
 
 **How it works:** Pure shell/JS logic, no AI. No AI API calls — cost is zero. Triggers when conditions might have changed.
+
+**PR discovery on `status` events:** The `status` event does not carry a PR number. Instead, the Gate Runner queries all open PRs with the `state:ready-to-merge` label (`gh pr list --label "state:ready-to-merge" --state open`) and evaluates merge conditions for each. This is cheap (usually 0-2 PRs) and handles the case where CI finishes after labeling.
 
 **Merge conditions (all must be true):**
 - PR has `state:ready-to-merge` label
 - PR does NOT have `risk:high` label
 - No merge conflicts
-- Combined commit status is `success` (checked via `GET /repos/{owner}/{repo}/commits/{ref}/status` — the combined status API aggregates all status checks and check runs regardless of whether they come from branch protection, rulesets, or third-party providers)
-- No unresolved human reviews requesting changes (agent reviews are tracked via labels, not GitHub review API since claude-code-action cannot submit formal reviews)
+- All checks pass: queries both the combined commit status API (`GET /repos/{owner}/{repo}/commits/{ref}/status`) AND the check runs API (`GET /repos/{owner}/{repo}/commits/{ref}/check-runs`). Both must show success/neutral. This covers legacy status checks AND modern GitHub Actions check runs.
+- No unresolved human reviews requesting changes (checked via `GET /repos/{owner}/{repo}/pulls/{number}/reviews` — only considers reviews with `state: CHANGES_REQUESTED` that have not been dismissed)
 - PR body is non-empty (contains user-facing summary)
 - `resolution` label is `resolution:none` (the literal label, meaning active/unresolved). If resolution is anything else, the item is already terminal — skip silently.
 
+**Handling "CI not ready yet":** If the only failing condition is that checks are pending (not failed), the Gate Runner does NOT remove `state:ready-to-merge` or set `state:in-progress`. It simply exits without merging. The next `status` event will re-trigger evaluation. This prevents the deadlock where removing the label means CI completion can never trigger a re-check.
+
 **Merge strategy:** Read from `.github/repo-policy.yml` (machine-readable config, see below). Defaults to squash merge. Supports `merge` and `rebase`.
 
-**Action:** Merge the PR via GitHub API using configured strategy. Apply `resolution:merged` and `state:done` labels to PR. Close linked issues and apply `state:done` + `resolution:merged` to them.
+**Action:** Merge the PR via GitHub API (using App token) using configured strategy. Apply `resolution:merged` and `state:done` labels to PR. Close linked issues and apply `state:done` + `resolution:merged` to them.
 
-**Failure:** If any gate fails, post a comment explaining which gate blocked, remove `state:ready-to-merge`, apply `state:in-progress`.
+**Failure:** If a gate fails for a non-transient reason (conflicts, failing checks, blocking review), post a comment explaining which gate blocked, remove `state:ready-to-merge`, apply `state:in-progress`.
 
-**Concurrency:** `concurrency: { group: gate-${{ github.event.pull_request.number }} }` — idempotent, safe to re-run.
+**Concurrency:** `concurrency: { group: gate-${{ github.event.pull_request.number || 'status-check' }} }` — idempotent, safe to re-run. Status events use a shared group since they evaluate all ready PRs.
 
 #### 4. Release Runner
 
@@ -215,7 +240,7 @@ planned → awaiting-human  (new info changes risk assessment)
 planned → done            (superseded or no longer needed)
 
 in-progress → awaiting-human  (hit a decision point)
-in-progress → planned         (blocked, returning to queue)
+in-progress → planned         (blocked, returning to queue; also used to re-trigger implementation after PR revision)
 in-progress → done            (resolved without PR, e.g. config change)
 
 awaiting-human → planned      (human approves/decides)
@@ -238,7 +263,7 @@ awaiting-human → in-progress  (human approves and review resumes)
 awaiting-human → done         (human declines)
 
 ready-to-merge → done         (merged by Gate Runner)
-ready-to-merge → in-progress  (gate failed, needs more work)
+ready-to-merge → in-progress  (gate failed for non-transient reason)
 ```
 
 Note: PRs skip `planned` (they're already concrete work) and can go directly from `new → in-progress`.
@@ -331,17 +356,19 @@ npx repo-policy-bot labels
 
 1. Detect repo root (find `.git/`)
 2. Check for `gh` CLI availability
-3. Resolve latest commit SHA of `anthropics/claude-code-action` for pinning
-4. Auto-detect CI workflow name from existing `.github/workflows/*.yml` files
-5. Create `.github/workflows/triage-agent.yml` — **skip if exists**, print warning
-6. Create `.github/workflows/implement-agent.yml` — **skip if exists**, print warning
-7. Create `.github/workflows/gate-runner.yml` — **skip if exists**, print warning
-8. Create `.github/workflows/release-runner.yml` — **skip if exists**, print warning
-9. Create `.github/repo-policy.md` (starter template) — **skip if exists**, print warning
-10. Create `.github/repo-policy.yml` (machine config with detected CI name) — **skip if exists**, print warning
-11. Create labels via `gh label create` (skip existing, update descriptions on existing)
-12. Check for `ANTHROPIC_API_KEY` repo secret — prompt user to add if missing
-13. Print summary of what was created vs. skipped
+3. Guide user through GitHub App creation (or PAT setup) for workflow chaining
+4. Resolve latest commit SHA of `anthropics/claude-code-action` for pinning
+5. Auto-detect CI workflow name from existing `.github/workflows/*.yml` files
+6. Create `.github/workflows/triage-agent.yml` — **skip if exists**, print warning
+7. Create `.github/workflows/implement-agent.yml` — **skip if exists**, print warning
+8. Create `.github/workflows/gate-runner.yml` — **skip if exists**, print warning
+9. Create `.github/workflows/release-runner.yml` — **skip if exists**, print warning
+10. Create `.github/repo-policy.md` (starter template) — **skip if exists**, print warning
+11. Create `.github/repo-policy.yml` (machine config with detected CI name) — **skip if exists**, print warning
+12. Create labels via `gh label create` (skip existing, update descriptions on existing)
+13. Check for `ANTHROPIC_API_KEY` repo secret — prompt user to add if missing
+14. Check for App credentials repo secrets — prompt user to add if missing
+15. Print summary of what was created vs. skipped
 
 ### `labels` Flow
 
@@ -359,7 +386,7 @@ repo-policy-bot/
 ├── bin/cli.js                    # CLI entry point
 ├── src/
 │   ├── commands/
-│   │   ├── init.ts               # Scaffold workflows + policy + labels
+│   │   ├── init.ts               # Scaffold workflows + policy + labels + App setup
 │   │   └── labels.ts             # Sync labels
 │   ├── templates/
 │   │   ├── triage-agent.yml      # Workflow template (low privilege)
@@ -368,7 +395,8 @@ repo-policy-bot/
 │   │   ├── release-runner.yml    # Workflow template
 │   │   ├── repo-policy.md        # Starter policy (for AI)
 │   │   ├── repo-policy.yml       # Starter config (for runners)
-│   │   └── system-prompt.md      # Built-in agent instructions
+│   │   ├── system-prompt-triage.md    # Triage agent instructions
+│   │   └── system-prompt-implement.md # Implementation agent instructions
 │   └── labels.ts                 # Label taxonomy definition
 └── README.md
 ```
@@ -386,17 +414,18 @@ The system prompt is the core IP. It's what turns `claude-code-action` into a re
 - When to act autonomously vs. escalate to human
 - Fork PR handling (review-only, never push to fork branches)
 - Issue/PR linkage rules (`Fixes #N` convention)
+- PR revision loop (how to update existing PRs after feedback)
 
 Two variants ship in the package:
-- `system-prompt-triage.md` — read-only instructions, no implementation guidance
-- `system-prompt-implement.md` — full implementation instructions, branching conventions, PR creation
+- `system-prompt-triage.md` — read-only instructions, duplicate detection via GitHub search API (not `git log`), no implementation guidance
+- `system-prompt-implement.md` — full implementation instructions, branching conventions, PR creation/update
 
 Both are **generic** — they reference only the label taxonomy, state machine, and decision framework. They contain no repo-specific CI check names, languages, or tools. All repo-specific behavior comes from the user's policy file.
 
 ## Cost and Rate Limiting
 
 - **Concurrency:** Each workflow uses `concurrency` groups keyed by issue/PR number. GitHub allows one running + one pending run per group. Handlers are idempotent — if an intermediate trigger is dropped, the next run picks up the correct state from labels.
-- **Trigger filtering:** The Triage Agent skips bot-applied labels (via sender identity check). The Implementation Agent only fires on `state:planned` labels on issues. Comment triggers are filtered to collaborators only (prevents abuse on public repos).
+- **Trigger filtering:** The Triage Agent skips its own bot's labels. The Implementation Agent only fires on `state:planned` labels on issues. Comment triggers are filtered to issue author + collaborators for follow-up states, collaborators-only for `@claude` mentions.
 - **Model selection:** Workflow templates default to `claude-sonnet-4-6` via `claude_args: --model claude-sonnet-4-6`. Users can override in the workflow file.
 - **Max turns:** Triage Agent: `--max-turns 15`. Implementation Agent: `--max-turns 40`. Set via `claude_args`.
 - **Documentation:** README includes expected per-invocation cost estimates and guidance for high-traffic repos (e.g., limit triggers to `labeled` events only, disable Implementation Agent for cost control).
@@ -404,16 +433,17 @@ Both are **generic** — they reference only the label taxonomy, state machine, 
 ## Security Considerations
 
 - **Privilege separation:** Triage Agent has read-only repo access + label/comment write. Implementation Agent has full write access but only triggers on `state:planned` labels on issues — never on PR events, never on raw comments.
+- **No Bash for Triage:** Triage Agent uses only `Read`, `Grep`, `Glob` tools. No `Bash` access at all. GitHub interactions use `claude-code-action`'s built-in GitHub MCP tools. This eliminates `gh` extension/alias attack vectors.
+- **Limited Bash for Implementation:** Implementation Agent's Bash access is `Bash(git:*)` only — no `gh`, no arbitrary shell. PR creation and labeling are done in post-steps using the App token.
 - **Action pinning:** Workflow templates pin `anthropics/claude-code-action` to a specific commit SHA, not a mutable tag like `@v1`. The `init` CLI resolves the SHA at scaffold time.
+- **Distinct bot identities:** Each workflow uses a separate GitHub App installation, giving each a unique `sender.login` for unambiguous loop prevention.
 - **API key management:** Stored as GitHub repo secret, never in code
 - **Permission scoping:** Each workflow requests minimum needed permissions. Triage gets `contents: read`, Implementation gets `contents: write`.
-- **Fork PR handling:** Uses `pull_request_target` for fork PRs with safe checkout (merge commit SHA, not PR head). This gives the Triage Agent write permissions for labels/comments without executing untrusted code.
+- **Fork PR handling:** Uses `pull_request_target` with NO local checkout of PR code. Triage Agent reads PR diffs via API only. This gives write permissions for labels/comments without any untrusted code execution risk.
 - **Adversarial input defense:** System prompt includes deception detection instructions. Triage Agent processes untrusted content but cannot write to the repo. Implementation Agent reads issue content (inherent prompt injection surface — see mitigations in Implementation Agent section), but all generated code goes through review before merge.
-- **Loop prevention:** Uses event sender identity (not actor display name) to distinguish which workflow applied a label. All workflows using `GITHUB_TOKEN` appear as `github-actions[bot]`, so sender identity is checked against the workflow run's metadata, not the actor string.
 - **Merge restrictions:** Agent cannot merge directly — Gate Runner is a separate, auditable workflow
 - **Risk escalation:** `risk:high` always requires human approval, enforced at both the Implementation Agent level (skips `risk:high`) and Gate Runner level (blocks merge)
-- **Comment filtering:** Non-`@claude` comment triggers are restricted to repo collaborators (`OWNER`, `MEMBER`, `COLLABORATOR` author associations). This prevents abuse where external users spam comments to burn API credits.
-- **No Bash on untrusted events:** Triage Agent's `Bash` access is limited to `gh` (GitHub CLI for label/comment operations). No `git` write access.
+- **Comment filtering:** Follow-up state triggers include the issue author (so reporters can respond to info requests) plus collaborators. `@claude` triggers are collaborator-only.
 - **No secrets in policy:** Policy file is committed to repo, should contain no secrets
 - **Declared permissions:** Workflows explicitly declare `actions: read` for CI inspection
 
@@ -421,15 +451,17 @@ Both are **generic** — they reference only the label taxonomy, state machine, 
 
 1. User discovers `repo-policy-bot` (README, blog post, word of mouth)
 2. Runs `npx repo-policy-bot init` in their repo
-3. Adds `ANTHROPIC_API_KEY` as repo secret
-4. Edits `.github/repo-policy.md` to describe their project's values and risk boundaries
-5. Optionally edits `.github/repo-policy.yml` for merge strategy and CI config
-6. Commits and pushes the workflow files
-7. Next issue or PR triggers the Triage Agent
-8. Triage Agent labels, reviews, and escalates as appropriate
-9. For `risk:low`/`risk:medium` issues labeled `state:planned`, Implementation Agent picks up work
-10. Implementation Agent creates branch, implements fix, opens PR
-11. Triage Agent reviews the PR, labels `state:ready-to-merge` if it passes
-12. Gate Runner auto-merges when all gates pass
-13. Release Runner cuts releases when CI completes on the default branch
-14. User intervenes only for `risk:high` or `release:major` items
+3. Creates a GitHub App (guided by `init`) and adds credentials as repo secrets
+4. Adds `ANTHROPIC_API_KEY` as repo secret
+5. Edits `.github/repo-policy.md` to describe their project's values and risk boundaries
+6. Optionally edits `.github/repo-policy.yml` for merge strategy and CI config
+7. Commits and pushes the workflow files
+8. Next issue or PR triggers the Triage Agent
+9. Triage Agent labels, reviews, and escalates as appropriate
+10. For `risk:low`/`risk:medium` issues labeled `state:planned`, Implementation Agent picks up work
+11. Implementation Agent creates branch, implements fix, opens PR
+12. Triage Agent reviews the PR, labels `state:ready-to-merge` if it passes
+13. If review feedback: Triage Agent re-labels parent issue as `state:planned`, Implementation Agent revises
+14. Gate Runner auto-merges when all gates pass (waits for pending CI without removing the label)
+15. Release Runner cuts releases when CI completes on the default branch
+16. User intervenes only for `risk:high` or `release:major` items
