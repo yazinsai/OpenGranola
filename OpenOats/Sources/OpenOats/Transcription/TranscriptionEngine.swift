@@ -17,6 +17,17 @@ func diagLog(_ msg: String) {
     }
 }
 
+enum TranscriptionEngineError: LocalizedError {
+    case transcriberNotInitialized
+
+    var errorDescription: String? {
+        switch self {
+        case .transcriberNotInitialized:
+            "Transcription engine is not initialized. Please check your audio settings."
+        }
+    }
+}
+
 /// Orchestrates dual StreamingTranscriber instances for mic (you) and system audio (them).
 @Observable
 @MainActor
