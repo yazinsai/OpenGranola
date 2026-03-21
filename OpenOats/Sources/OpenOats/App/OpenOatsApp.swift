@@ -41,7 +41,8 @@ public struct OpenOatsRootApp: App {
                 }
                 .onOpenURL { url in
                     guard let command = OpenOatsDeepLink.parse(url) else { return }
-                    showMainWindow()
+                    NSApp.setActivationPolicy(.regular)
+                    NSApp.activate(ignoringOtherApps: true)
                     switch command {
                     case .openNotes(let sessionID):
                         coordinator.queueSessionSelection(sessionID)
