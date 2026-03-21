@@ -32,11 +32,13 @@ public struct OpenOatsRootApp: App {
                     appDelegate.settings = settings
                     appDelegate.defaults = defaults
                     appDelegate.runtime = runtime
-                    appDelegate.setupMenuBarIfNeeded(
-                        coordinator: coordinator,
-                        settings: settings,
-                        showMainWindow: { [self] in showMainWindow() }
-                    )
+                    if case .live = runtime.mode {
+                        appDelegate.setupMenuBarIfNeeded(
+                            coordinator: coordinator,
+                            settings: settings,
+                            showMainWindow: { [self] in showMainWindow() }
+                        )
+                    }
                     settings.applyScreenShareVisibility()
                 }
                 .onOpenURL { url in
@@ -144,8 +146,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menuBarController = controller
     }
 
+    private var isUITest: Bool {
+        ProcessInfo.processInfo.environment["OPENOATS_UI_TEST"] != nil
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
+        if !isUITest {
+            NSApp.setActivationPolicy(.regular)
+        }
 
         let hidden = defaults.object(forKey: "hideFromScreenShare") == nil
             ? true
@@ -154,7 +162,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         for window in NSApp.windows {
             window.sharingType = sharingType
-            if window.identifier?.rawValue == OpenOatsRootApp.mainWindowID {
+        }
+
+        if !isUITest {
+            for window in NSApp.windows where window.identifier?.rawValue == OpenOatsRootApp.mainWindowID {
                 window.delegate = self
             }
         }
@@ -171,11 +182,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 let type: NSWindow.SharingType = hide ? .none : .readOnly
                 for window in NSApp.windows {
                     window.sharingType = type
-                    if window.identifier?.rawValue == OpenOatsRootApp.mainWindowID
-                        && (window.delegate == nil || window.delegate === self)
-                    {
-                        window.delegate = self
-                    }
                 }
             }
         }
@@ -220,12 +226,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
+        isUITest
     }
 
     // MARK: - NSWindowDelegate
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard !isUITest else { return true }
+
         let isMainWindow = sender.identifier?.rawValue == OpenOatsRootApp.mainWindowID
 
         if isMainWindow {
