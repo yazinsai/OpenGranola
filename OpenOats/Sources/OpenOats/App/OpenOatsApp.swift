@@ -41,8 +41,11 @@ public struct OpenOatsRootApp: App {
                 }
                 .onOpenURL { url in
                     guard let command = OpenOatsDeepLink.parse(url) else { return }
-                    NSApp.setActivationPolicy(.regular)
-                    NSApp.activate(ignoringOtherApps: true)
+                    // Restore visibility when app is in background mode (LSUIElement)
+                    if NSApp.activationPolicy() == .accessory {
+                        NSApp.setActivationPolicy(.regular)
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
                     switch command {
                     case .openNotes(let sessionID):
                         coordinator.queueSessionSelection(sessionID)
@@ -151,7 +154,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         for window in NSApp.windows {
             window.sharingType = sharingType
-            window.delegate = self
+            if window.identifier?.rawValue == OpenOatsRootApp.mainWindowID {
+                window.delegate = self
+            }
         }
 
         windowObserver = NotificationCenter.default.addObserver(
@@ -166,7 +171,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 let type: NSWindow.SharingType = hide ? .none : .readOnly
                 for window in NSApp.windows {
                     window.sharingType = type
-                    if window.delegate == nil || window.delegate === self {
+                    if window.identifier?.rawValue == OpenOatsRootApp.mainWindowID
+                        && (window.delegate == nil || window.delegate === self)
+                    {
                         window.delegate = self
                     }
                 }
