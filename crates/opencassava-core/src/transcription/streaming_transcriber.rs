@@ -31,6 +31,7 @@ pub struct StreamingTranscriber {
     on_volatile: Option<OnVolatile>,
     on_progress: Option<OnProgress>,
     stop_signal: Option<Arc<AtomicBool>>,
+    parakeet_worker: Option<crate::transcription::parakeet::ParakeetWorker>,
 }
 
 impl StreamingTranscriber {
@@ -42,6 +43,7 @@ impl StreamingTranscriber {
             on_volatile: None,
             on_progress: None,
             stop_signal: None,
+            parakeet_worker: None,
         }
     }
 
@@ -54,7 +56,14 @@ impl StreamingTranscriber {
             on_volatile: None,
             on_progress: None,
             stop_signal: None,
+            parakeet_worker: None,
         }
+    }
+
+    /// Attach a pre-warmed Parakeet worker so the model is already loaded when recording starts.
+    pub fn with_parakeet_worker(mut self, worker: crate::transcription::parakeet::ParakeetWorker) -> Self {
+        self.parakeet_worker = Some(worker);
+        self
     }
 
     /// Builder: attach a volatile (in-progress) speech callback.
@@ -86,6 +95,7 @@ impl StreamingTranscriber {
         let progress_for_backend = on_progress.clone();
         let language = self.language.clone();
         let backend = self.backend.clone();
+        let prewarmed_parakeet = self.parakeet_worker;
 
         // Run Whisper on a blocking thread-pool thread so that joining it is
         // async-friendly. Using std::thread::join() inside an async fn would
@@ -147,8 +157,20 @@ impl StreamingTranscriber {
                     }
                 }
                 SttBackend::Parakeet(config) => {
-                    match crate::transcription::parakeet::ParakeetWorker::spawn(&config) {
+                    let worker_result = if let Some(worker) = prewarmed_parakeet {
+                        log::info!("[parakeet] using pre-warmed worker");
+                        Ok(worker)
+                    } else {
+                        crate::transcription::parakeet::ParakeetWorker::spawn(&config)
+                    };
+                    match worker_result {
                         Ok(mut worker) => {
+                            // Eagerly load the model now (no-op if pre-warmed, otherwise loads
+                            // in parallel with audio capture so it's ready for the first segment).
+                            if let Err(e) = worker.ensure_model() {
+                                log::error!("parakeet ensure_model failed: {e}");
+                                return;
+                            }
                             for samples in seg_rx.iter() {
                                 match worker.transcribe(&samples) {
                                     Ok(text) if !text.is_empty() => {

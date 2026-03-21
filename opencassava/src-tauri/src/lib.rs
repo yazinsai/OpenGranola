@@ -10,6 +10,11 @@ pub fn run() {
     let state = Arc::new(engine::AppState::new());
     let setup_state = Arc::clone(&state);
 
+    // Pre-warm Parakeet workers in the background so the model is loaded before the
+    // user clicks record for the first time. The handle is retrieved inside setup
+    // where |app| is available.
+    let _warmup_state = Arc::clone(&state);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
@@ -61,6 +66,8 @@ pub fn run() {
                 setup_state.settings.lock().unwrap().hide_from_screen_share;
             engine::set_content_protection(app.handle().clone(), hide_from_screen_share)
                 .map_err(|err| std::io::Error::other(err))?;
+            // Pre-warm Parakeet workers so the model is loaded before the user first clicks record.
+            engine::warm_parakeet_workers(Arc::clone(&_warmup_state), app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())

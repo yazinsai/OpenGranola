@@ -71,6 +71,7 @@ export interface SttStatus {
   usingFallback: boolean;
   downloadRequired: boolean;
   message: string;
+  parakeetWarming: boolean;
 }
 
 export interface TranscriptionProgress {

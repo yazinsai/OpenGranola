@@ -22,7 +22,7 @@ use opencassava_core::{
     },
     transcription::{
         faster_whisper::{self, FasterWhisperConfig},
-        parakeet::{self, ParakeetConfig},
+        parakeet::{self, ParakeetConfig, ParakeetWorker},
         streaming_transcriber::{SegmentProgress, StreamingTranscriber, SttBackend},
     },
 };
@@ -113,6 +113,8 @@ pub struct SttStatusPayload {
     pub using_fallback: bool,
     pub download_required: bool,
     pub message: String,
+    /// True while Parakeet workers are pre-warming in the background.
+    pub parakeet_warming: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -165,6 +167,12 @@ pub struct AppState {
     pub sys_level: Arc<AtomicU32>,
     pub captured_segments: Arc<AtomicU32>,
     pub processed_segments: Arc<AtomicU32>,
+    /// Pre-warmed Parakeet worker for microphone audio (taken on record start, replaced after stop).
+    pub warmed_parakeet_mic: Mutex<Option<ParakeetWorker>>,
+    /// Pre-warmed Parakeet worker for system audio (taken on record start, replaced after stop).
+    pub warmed_parakeet_sys: Mutex<Option<ParakeetWorker>>,
+    /// True while Parakeet workers are being pre-warmed in the background.
+    pub parakeet_warming: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl AppState {
@@ -199,6 +207,9 @@ impl AppState {
             sys_level: Arc::new(AtomicU32::new(0)),
             captured_segments: Arc::new(AtomicU32::new(0)),
             processed_segments: Arc::new(AtomicU32::new(0)),
+            warmed_parakeet_mic: Mutex::new(None),
+            warmed_parakeet_sys: Mutex::new(None),
+            parakeet_warming: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -307,6 +318,74 @@ fn resolve_whisper_model(settings: &AppSettings) -> &'static str {
     }
 }
 
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ParakeetWarmupStatus {
+    ready: bool,
+    message: String,
+}
+
+/// Spawn background threads to pre-warm Parakeet workers so the model is loaded and ready
+/// before the user clicks record. Emits `parakeet-warmup-status` events so the UI can show
+/// a loading indicator. Safe to call at any time — does nothing if parakeet is not configured
+/// or not ready (not installed / model not downloaded).
+pub fn warm_parakeet_workers(state: Arc<AppState>, app: AppHandle) {
+    let settings = state.settings.lock().unwrap().clone();
+    if selected_stt_provider(&settings) != "parakeet" {
+        return;
+    }
+    let config = AppState::parakeet_config(&settings);
+    if !config.is_installed() || !parakeet::model_storage_exists(&config) {
+        return;
+    }
+    // Don't start a second warmup if one is already in progress.
+    if state.parakeet_warming.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    app.emit("parakeet-warmup-status", &ParakeetWarmupStatus {
+        ready: false,
+        message: "Parakeet engine loading...".into(),
+    }).ok();
+
+    // Counter: decremented by each thread; last one to finish emits "ready".
+    let remaining = Arc::new(std::sync::atomic::AtomicU32::new(2));
+
+    for slot_name in ["mic", "sys"] {
+        let state_clone = Arc::clone(&state);
+        let config_clone = config.clone();
+        let app_clone = app.clone();
+        let remaining_clone = Arc::clone(&remaining);
+        let name = slot_name;
+        std::thread::spawn(move || {
+            log::info!("[parakeet] pre-warming {name} worker...");
+            match ParakeetWorker::spawn(&config_clone) {
+                Ok(mut worker) => match worker.ensure_model() {
+                    Ok(_) => {
+                        let mut slot = if name == "mic" {
+                            state_clone.warmed_parakeet_mic.lock().unwrap()
+                        } else {
+                            state_clone.warmed_parakeet_sys.lock().unwrap()
+                        };
+                        *slot = Some(worker);
+                        log::info!("[parakeet] {name} worker pre-warmed and ready");
+                    }
+                    Err(e) => log::warn!("[parakeet] {name} worker ensure_model failed: {e}"),
+                },
+                Err(e) => log::warn!("[parakeet] failed to pre-warm {name} worker: {e}"),
+            }
+            // When the last thread finishes, clear the warming flag and notify the UI.
+            if remaining_clone.fetch_sub(1, Ordering::Relaxed) == 1 {
+                state_clone.parakeet_warming.store(false, Ordering::Relaxed);
+                app_clone.emit("parakeet-warmup-status", &ParakeetWarmupStatus {
+                    ready: true,
+                    message: "Parakeet engine ready".into(),
+                }).ok();
+                log::info!("[parakeet] all workers pre-warmed");
+            }
+        });
+    }
+}
+
 fn selected_stt_provider(settings: &AppSettings) -> &str {
     match settings.stt_provider.trim() {
         "faster-whisper" => "faster-whisper",
@@ -338,6 +417,7 @@ fn resolve_stt_status(app: &AppHandle, settings: &AppSettings) -> SttStatusPaylo
                 using_fallback: false,
                 download_required: false,
                 message: format!("faster-whisper is ready with {}.", config.model),
+                parakeet_warming: false,
             };
         }
 
@@ -352,6 +432,7 @@ fn resolve_stt_status(app: &AppHandle, settings: &AppSettings) -> SttStatusPaylo
                 using_fallback: true,
                 download_required: true,
                 message: "faster-whisper is unavailable. Falling back to whisper-rs.".into(),
+                parakeet_warming: false,
             };
         }
 
@@ -365,6 +446,7 @@ fn resolve_stt_status(app: &AppHandle, settings: &AppSettings) -> SttStatusPaylo
             using_fallback: false,
             download_required: true,
             message: "faster-whisper needs setup before transcription can start.".into(),
+            parakeet_warming: false,
         };
     }
 
@@ -384,6 +466,7 @@ fn resolve_stt_status(app: &AppHandle, settings: &AppSettings) -> SttStatusPaylo
                 using_fallback: false,
                 download_required: false,
                 message: format!("parakeet is ready with {}.", config.model),
+                parakeet_warming: false,
             };
         }
 
@@ -398,6 +481,7 @@ fn resolve_stt_status(app: &AppHandle, settings: &AppSettings) -> SttStatusPaylo
                 using_fallback: true,
                 download_required: true,
                 message: "parakeet is unavailable. Falling back to whisper-rs.".into(),
+                parakeet_warming: false,
             };
         }
 
@@ -411,6 +495,7 @@ fn resolve_stt_status(app: &AppHandle, settings: &AppSettings) -> SttStatusPaylo
             using_fallback: false,
             download_required: true,
             message: "parakeet needs setup before transcription can start.".into(),
+            parakeet_warming: false,
         };
     }
 
@@ -428,6 +513,7 @@ fn resolve_stt_status(app: &AppHandle, settings: &AppSettings) -> SttStatusPaylo
         } else {
             "whisper-rs model is missing and needs download.".into()
         },
+        parakeet_warming: false,
     }
 }
 
@@ -576,7 +662,9 @@ pub fn get_stt_status(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<SttStatusPayload, String> {
     let settings = state.settings.lock().unwrap().clone();
-    Ok(resolve_stt_status(&app, &settings))
+    let mut status = resolve_stt_status(&app, &settings);
+    status.parakeet_warming = state.parakeet_warming.load(Ordering::Relaxed);
+    Ok(status)
 }
 
 #[tauri::command]
@@ -667,7 +755,22 @@ pub fn start_transcription(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<String, String> {
     let settings = state.settings.lock().unwrap().clone();
+
+    // Prevent starting a Parakeet session while the model is still loading.
+    // Two processes loading NeMo simultaneously causes resource contention.
+    if selected_stt_provider(&settings) == "parakeet"
+        && state.parakeet_warming.load(Ordering::Relaxed)
+    {
+        return Err(
+            "Parakeet engine is still loading — please wait a moment and try again.".into(),
+        );
+    }
+
     let (backend, language, stt_status) = resolve_stt_backend(&app, &settings)?;
+
+    // Take any pre-warmed Parakeet workers so they can be handed to the transcribers.
+    let warmed_mic = state.warmed_parakeet_mic.lock().unwrap().take();
+    let warmed_sys = state.warmed_parakeet_sys.lock().unwrap().take();
 
     let mut running = state.is_running.lock().unwrap();
     if *running {
@@ -857,11 +960,14 @@ pub fn start_transcription(
                 }
                 emit_transcription_progress(&progress_app_them, &progress_state_them);
             });
-            let transcriber =
+            let mut transcriber =
                 StreamingTranscriber::new(them_backend, them_lang, Box::new(on_them))
                 .with_volatile(Box::new(on_them_vol))
                 .with_progress(on_them_progress)
                 .with_stop_signal(Arc::clone(&them_state.stop_requested));
+            if let Some(worker) = warmed_sys {
+                transcriber = transcriber.with_parakeet_worker(worker);
+            }
             transcriber.run(them_stream_leveled).await;
         });
         *state_clone.system_audio_task.lock().unwrap() = Some(them_handle);
@@ -1144,10 +1250,13 @@ pub fn start_transcription(
             }
             emit_transcription_progress(&progress_app_you, &progress_state_you);
         });
-        let transcriber = StreamingTranscriber::new(backend, language, Box::new(on_you))
+        let mut transcriber = StreamingTranscriber::new(backend, language, Box::new(on_you))
             .with_volatile(Box::new(on_you_vol))
             .with_progress(on_you_progress)
             .with_stop_signal(Arc::clone(&state_clone.stop_requested));
+        if let Some(worker) = warmed_mic {
+            transcriber = transcriber.with_parakeet_worker(worker);
+        }
         transcriber.run(mic_stream_leveled).await;
     });
 
@@ -1194,6 +1303,9 @@ pub async fn stop_transcription(
     state.mic_level.store(0u32, Ordering::Relaxed);
     state.sys_level.store(0u32, Ordering::Relaxed);
     emit_transcription_progress(&app, &state);
+
+    // Kick off background pre-warming so the next record press is instant.
+    warm_parakeet_workers(Arc::clone(&*state), app);
     Ok(())
 }
 

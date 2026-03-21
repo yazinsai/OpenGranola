@@ -75,7 +75,9 @@ function resolveWhisperModel(settings: AppSettings | null): Exclude<WhisperModel
 }
 
 function sttProviderLabel(provider: string): string {
-  return provider === "faster-whisper" ? "faster-whisper" : "whisper-rs";
+  if (provider === "faster-whisper") return "faster-whisper";
+  if (provider === "parakeet") return "parakeet";
+  return "whisper-rs";
 }
 
 function compactModelName(modelName: string): string {
@@ -139,6 +141,7 @@ function App() {
   const [sttSetupMessage, setSttSetupMessage] = useState("");
   const [installLogLines, setInstallLogLines] = useState<string[]>([]);
   const [stopStatusMessage, setStopStatusMessage] = useState<string | null>(null);
+  const [parakeetWarming, setParakeetWarming] = useState(false);
   // Load settings on mount
   useEffect(() => {
     invoke<AppSettings>("get_settings")
@@ -154,6 +157,7 @@ function App() {
     try {
       const status = await invoke<SttStatus>("get_stt_status");
       setSttStatus(status);
+      setParakeetWarming(status.parakeetWarming);
       setModelError(null);
       setModelState(status.ready ? "ready" : "missing");
     } catch (err) {
@@ -290,6 +294,10 @@ function App() {
 
       listen<TranscriptionProgress>("transcription-progress", (e) => {
         setTranscriptionProgress(e.payload);
+      }),
+
+      listen<{ ready: boolean; message: string }>("parakeet-warmup-status", (e) => {
+        setParakeetWarming(!e.payload.ready);
       }),
     ];
 
@@ -546,7 +554,7 @@ function App() {
         processedSegments={transcriptionProgress.processedSegments}
         onStart={handleStart}
         onStop={handleStop}
-        disabled={isStopping}
+        disabled={isStopping || (parakeetWarming && !isRunning)}
         kbConnected={kbConnected}
         kbFileCount={0}
         isSuggestionAnalyzing={isGeneratingSuggestion}
@@ -705,16 +713,25 @@ function App() {
           <span
             style={{
               padding: `${spacing[1]}px ${spacing[2]}px`,
-              background: colors.surface,
-              color: colors.them,
+              background: parakeetWarming && activeSttProvider === "parakeet"
+                ? `${colors.warning}18`
+                : colors.surface,
+              color: parakeetWarming && activeSttProvider === "parakeet"
+                ? colors.warning
+                : colors.them,
               borderRadius: 12,
               fontWeight: 500,
               fontFamily: "SF Mono, Monaco, monospace",
             }}
-            title="Active speech-to-text backend"
+            title={
+              parakeetWarming && activeSttProvider === "parakeet"
+                ? "Parakeet engine is loading — record will be available shortly"
+                : "Active speech-to-text backend"
+            }
           >
             {sttProviderLabel(activeSttProvider)} | {activeSttModel} | {transcriptionLocaleLabel(settings?.transcriptionLocale)}
             {sttStatus?.usingFallback ? " | fallback" : ""}
+            {parakeetWarming && activeSttProvider === "parakeet" ? " · loading..." : ""}
           </span>
         </div>
 
