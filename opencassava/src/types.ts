@@ -82,6 +82,14 @@ export interface SessionRecord {
   title: string | null;
 }
 
+export interface MeetingTemplate {
+  id: string;
+  name: string;
+  icon: string;
+  system_prompt: string;
+  is_built_in: boolean;
+}
+
 export interface TemplateSnapshot {
   id: string;
   name: string;

@@ -1216,14 +1216,14 @@ pub async fn generate_notes(
         return Err(format!("No transcript found for session `{session_id}`."));
     }
 
-    let template = template_id
-        .as_deref()
-        .and_then(|id| {
-            MeetingTemplate::built_ins()
-                .into_iter()
-                .find(|template| template.id.to_string() == id)
-        })
-        .unwrap_or_else(|| MeetingTemplate::built_ins().into_iter().next().unwrap());
+    let template = {
+        let store = state.template_store.lock().unwrap();
+        template_id
+            .as_deref()
+            .and_then(|id| uuid::Uuid::parse_str(id).ok())
+            .and_then(|uuid| store.get(uuid).cloned())
+            .unwrap_or_else(|| MeetingTemplate::built_ins().into_iter().next().unwrap())
+    };
     let (base_url, api_key) = llm_base_url_and_key(&settings);
     let model = if settings.llm_provider == "ollama" {
         settings.ollama_llm_model.clone()
