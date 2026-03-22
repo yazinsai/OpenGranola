@@ -1,18 +1,19 @@
 import SwiftUI
 
 struct TranscriptWindowView: View {
-    @Environment(AppCoordinator.self) private var coordinator
+    @Environment(LiveSessionController.self) private var liveSessionController
 
     var body: some View {
-        let store = coordinator.transcriptStore
+        let state = liveSessionController.state
+
         VStack(spacing: 0) {
             HStack {
                 Text("Live Transcript")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
-                if !store.utterances.isEmpty {
+                if !state.liveTranscript.isEmpty {
                     Button {
-                        copyTranscript(store.utterances)
+                        copyTranscript(state.liveTranscript)
                     } label: {
                         Label("Copy", systemImage: "doc.on.doc")
                             .font(.system(size: 11))
@@ -28,9 +29,9 @@ struct TranscriptWindowView: View {
             Divider()
 
             TranscriptView(
-                utterances: store.utterances,
-                volatileYouText: store.volatileYouText,
-                volatileThemText: store.volatileThemText,
+                utterances: state.liveTranscript,
+                volatileYouText: state.volatileYouText,
+                volatileThemText: state.volatileThemText,
                 showSearch: true
             )
         }
@@ -38,10 +39,10 @@ struct TranscriptWindowView: View {
     }
 
     private func copyTranscript(_ utterances: [Utterance]) {
-        let timeFmt = DateFormatter()
-        timeFmt.dateFormat = "HH:mm:ss"
-        let lines = utterances.map { u in
-            "[\(timeFmt.string(from: u.timestamp))] \(u.speaker.displayLabel): \(u.displayText)"
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        let lines = utterances.map { utterance in
+            "[\(formatter.string(from: utterance.timestamp))] \(utterance.speaker.displayLabel): \(utterance.displayText)"
         }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)

@@ -25,8 +25,7 @@ actor BatchTranscriptionEngine {
         sessionID: String,
         model: TranscriptionModel,
         locale: Locale,
-        sessionStore: SessionStore,
-        notesDirectory: URL,
+        sessionRepository: SessionRepository,
         enableDiarization: Bool = false,
         diarizationVariant: DiarizationVariant = .dihard3
     ) async {
@@ -40,8 +39,7 @@ actor BatchTranscriptionEngine {
                     sessionID: sessionID,
                     model: model,
                     locale: locale,
-                    sessionStore: sessionStore,
-                    notesDirectory: notesDirectory,
+                    sessionRepository: sessionRepository,
                     enableDiarization: enableDiarization,
                     diarizationVariant: diarizationVariant
                 )
@@ -75,8 +73,7 @@ actor BatchTranscriptionEngine {
         sessionID: String,
         model: TranscriptionModel,
         locale: Locale,
-        sessionStore: SessionStore,
-        notesDirectory: URL,
+        sessionRepository: SessionRepository,
         enableDiarization: Bool,
         diarizationVariant: DiarizationVariant
     ) async throws {
@@ -84,7 +81,7 @@ actor BatchTranscriptionEngine {
         status = .loading(model: model.displayName)
 
         // Load batch metadata
-        let urls = await sessionStore.batchAudioURLs(sessionID: sessionID)
+        let urls = await sessionRepository.batchAudioURLs(sessionID: sessionID)
         guard urls.mic != nil || urls.sys != nil else {
             batchLog.warning("No batch audio found for \(sessionID)")
             status = .failed("No audio files found")
@@ -92,7 +89,7 @@ actor BatchTranscriptionEngine {
         }
 
         // Load timing anchors
-        let anchors = await loadBatchMeta(sessionID: sessionID, sessionStore: sessionStore)
+        let anchors = await loadBatchMeta(sessionID: sessionID, sessionRepository: sessionRepository)
 
         // Create and prepare backend
         let backend = model.makeBackend()
@@ -177,24 +174,16 @@ actor BatchTranscriptionEngine {
 
         guard !allRecords.isEmpty else {
             batchLog.warning("Batch transcription produced no records for \(sessionID)")
-            await sessionStore.cleanupBatchAudio(sessionID: sessionID)
+            await sessionRepository.cleanupBatchAudio(sessionID: sessionID)
             status = .completed(sessionID: sessionID)
             return
         }
 
         // Atomic write
-        await sessionStore.writeBatchTranscript(sessionID: sessionID, records: allRecords)
-
-        // Update the Markdown file with the refined transcript
-        patchMarkdownTranscript(
-            sessionID: sessionID,
-            records: allRecords,
-            notesDirectory: notesDirectory,
-            sessionStore: sessionStore
-        )
+        await sessionRepository.saveFinalTranscript(sessionID: sessionID, records: allRecords)
 
         // Cleanup audio files
-        await sessionStore.cleanupBatchAudio(sessionID: sessionID)
+        await sessionRepository.cleanupBatchAudio(sessionID: sessionID)
 
         status = .completed(sessionID: sessionID)
         batchLog.info("Batch transcription completed for \(sessionID): \(allRecords.count) records")
@@ -448,9 +437,9 @@ actor BatchTranscriptionEngine {
 
     private func loadBatchMeta(
         sessionID: String,
-        sessionStore: SessionStore
+        sessionRepository: SessionRepository
     ) async -> ResolvedAnchors? {
-        guard let meta = await sessionStore.loadBatchMeta(sessionID: sessionID) else {
+        guard let meta = await sessionRepository.loadBatchMeta(sessionID: sessionID) else {
             return nil
         }
 
@@ -462,35 +451,4 @@ actor BatchTranscriptionEngine {
         )
     }
 
-    // MARK: - Markdown Patching
-
-    private nonisolated func patchMarkdownTranscript(
-        sessionID: String,
-        records: [SessionRecord],
-        notesDirectory: URL,
-        sessionStore: SessionStore
-    ) {
-        guard let fileURL = MarkdownMeetingWriter.findMarkdownFile(
-            sessionID: sessionID,
-            in: notesDirectory
-        ) else {
-            batchLog.info("No markdown file found for \(sessionID), skipping patch")
-            return
-        }
-
-        MarkdownMeetingWriter.patchTranscriptSection(
-            fileURL: fileURL,
-            records: records
-        )
-    }
-}
-
-// MARK: - JSONDecoder Extension
-
-extension JSONDecoder {
-    static let iso8601Decoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
-    }()
 }

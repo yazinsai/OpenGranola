@@ -1,84 +1,71 @@
 import Foundation
-import Observation
 
-enum UITestScenario: String {
-    case launchSmoke
-    case sessionSmoke
-    case notesSmoke
-}
-
-enum AppRuntimeMode {
-    case live
-    case uiTest(UITestScenario)
-}
-
-struct AppServices {
-    let knowledgeBase: KnowledgeBase
-    let suggestionEngine: SuggestionEngine
-    let transcriptionEngine: TranscriptionEngine
-    let transcriptLogger: TranscriptLogger
-    let refinementEngine: TranscriptRefinementEngine
-    let audioRecorder: AudioRecorder
-    let batchEngine: BatchTranscriptionEngine
-}
-
-struct AppLaunchContext {
-    let runtime: AppRuntime
-    let settings: AppSettings
-    let coordinator: AppCoordinator
+struct AppContainerBootstrap {
+    let container: AppContainer
     let updaterController: AppUpdaterController
 }
 
 @MainActor
-@Observable
-final class AppRuntime {
+final class AppContainer {
     static let notesSmokeSessionID = "session_ui_test_notes"
 
     let mode: AppRuntimeMode
     let defaults: UserDefaults
-    let appSupportDirectory: URL
-    let notesDirectory: URL
+
+    let settings: SettingsStore
+    let templateStore: TemplateStore
+    let repository: SessionRepository
+    let navigationState: AppNavigationState
+    let liveSessionController: LiveSessionController
+    let meetingDetectionController: MeetingDetectionController
+    let notesController: NotesController
 
     private var didSeedInitialData = false
-    private var didInitializeServices = false
+    private var didActivate = false
 
     init(
         mode: AppRuntimeMode,
         defaults: UserDefaults,
-        appSupportDirectory: URL,
-        notesDirectory: URL
+        settings: SettingsStore,
+        templateStore: TemplateStore,
+        repository: SessionRepository,
+        navigationState: AppNavigationState,
+        liveSessionController: LiveSessionController,
+        meetingDetectionController: MeetingDetectionController,
+        notesController: NotesController
     ) {
         self.mode = mode
         self.defaults = defaults
-        self.appSupportDirectory = appSupportDirectory
-        self.notesDirectory = notesDirectory
+        self.settings = settings
+        self.templateStore = templateStore
+        self.repository = repository
+        self.navigationState = navigationState
+        self.liveSessionController = liveSessionController
+        self.meetingDetectionController = meetingDetectionController
+        self.notesController = notesController
     }
 
-    static func bootstrap() -> AppLaunchContext {
+    static func bootstrap() -> AppContainerBootstrap {
         let environment = ProcessInfo.processInfo.environment
         let mode = runtimeMode(from: environment)
 
         switch mode {
         case .live:
-            let runtime = AppRuntime(
-                mode: .live,
-                defaults: .standard,
-                appSupportDirectory: FileManager.default.urls(
-                    for: .applicationSupportDirectory,
-                    in: .userDomainMask
-                ).first!.appendingPathComponent("OpenOats", isDirectory: true),
-                notesDirectory: FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent("Documents/OpenOats", isDirectory: true)
-            )
+            let defaults = UserDefaults.standard
+            let appSupportDirectory = FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first!.appendingPathComponent("OpenOats", isDirectory: true)
             let settings = AppSettings()
-            let coordinator = AppCoordinator()
             let updaterController = AppUpdaterController()
-            return AppLaunchContext(
-                runtime: runtime,
+            let container = makeContainer(
+                mode: mode,
+                defaults: defaults,
+                appSupportDirectory: appSupportDirectory,
                 settings: settings,
-                coordinator: coordinator,
-                updaterController: updaterController
+                notesEngine: NotesEngine()
             )
+            return AppContainerBootstrap(container: container, updaterController: updaterController)
 
         case .uiTest(let scenario):
             let runID = environment["OPENOATS_UI_TEST_RUN_ID"] ?? UUID().uuidString
@@ -111,79 +98,117 @@ final class AppRuntime {
                 runMigrations: false
             )
             let settings = AppSettings(storage: storage)
-            let notesEngine = NotesEngine(mode: .scripted(markdown: scriptedNotesMarkdown))
-            let coordinator = AppCoordinator(
-                sessionStore: SessionStore(rootDirectory: appSupportDirectory),
-                templateStore: TemplateStore(rootDirectory: appSupportDirectory),
-                notesEngine: notesEngine,
-                transcriptStore: TranscriptStore()
-            )
-            let runtime = AppRuntime(
+            let notesEngine = NotesEngine(mode: .scripted(markdown: Self.scriptedNotesMarkdown))
+            let updaterController = AppUpdaterController(startUpdater: false)
+            let container = makeContainer(
                 mode: .uiTest(scenario),
                 defaults: defaults,
                 appSupportDirectory: appSupportDirectory,
-                notesDirectory: notesDirectory
-            )
-            let updaterController = AppUpdaterController(startUpdater: false)
-            return AppLaunchContext(
-                runtime: runtime,
                 settings: settings,
-                coordinator: coordinator,
-                updaterController: updaterController
+                notesEngine: notesEngine
             )
+            return AppContainerBootstrap(container: container, updaterController: updaterController)
         }
     }
 
-    func makeServices(settings: AppSettings, coordinator: AppCoordinator) -> AppServices {
+    func activateIfNeeded() async {
+        guard !didActivate else { return }
+        didActivate = true
+
+        await seedIfNeeded()
+        await liveSessionController.activateIfNeeded()
+        await meetingDetectionController.activateIfNeeded()
+        await notesController.activateIfNeeded()
+    }
+
+    // MARK: - Private
+
+    private static func makeContainer(
+        mode: AppRuntimeMode,
+        defaults: UserDefaults,
+        appSupportDirectory: URL,
+        settings: SettingsStore,
+        notesEngine: NotesEngine
+    ) -> AppContainer {
+        let repository = SessionRepository(rootDirectory: appSupportDirectory)
+        let templateStore = TemplateStore(rootDirectory: appSupportDirectory)
+        let navigationState = AppNavigationState()
+        let transcriptStore = TranscriptStore()
         let knowledgeBase = KnowledgeBase(settings: settings)
         let suggestionEngine = SuggestionEngine(
-            transcriptStore: coordinator.transcriptStore,
+            transcriptStore: transcriptStore,
             knowledgeBase: knowledgeBase,
             settings: settings
         )
-
-        let transcriptionEngine: TranscriptionEngine
-        switch mode {
+        let transcriptionEngine = switch mode {
         case .live:
-            transcriptionEngine = TranscriptionEngine(
-                transcriptStore: coordinator.transcriptStore,
-                settings: settings
-            )
+            TranscriptionEngine(transcriptStore: transcriptStore, settings: settings)
         case .uiTest:
-            transcriptionEngine = TranscriptionEngine(
-                transcriptStore: coordinator.transcriptStore,
+            TranscriptionEngine(
+                transcriptStore: transcriptStore,
                 settings: settings,
                 mode: .scripted(Self.scriptedUtterances)
             )
         }
+        let refinementEngine = TranscriptRefinementEngine(
+            settings: settings,
+            transcriptStore: transcriptStore
+        )
+        let audioRecorder = AudioRecorder(
+            outputDirectory: appSupportDirectory.appendingPathComponent("sessions", isDirectory: true)
+        )
+        let batchEngine = BatchTranscriptionEngine()
+        let cleanupEngine = TranscriptCleanupEngine()
 
-        return AppServices(
+        let liveSessionController = LiveSessionController(
+            settings: settings,
+            repository: repository,
+            templateStore: templateStore,
+            transcriptStore: transcriptStore,
             knowledgeBase: knowledgeBase,
             suggestionEngine: suggestionEngine,
             transcriptionEngine: transcriptionEngine,
-            transcriptLogger: TranscriptLogger(directory: notesDirectory),
-            refinementEngine: TranscriptRefinementEngine(
-                settings: settings,
-                transcriptStore: coordinator.transcriptStore
-            ),
-            audioRecorder: AudioRecorder(outputDirectory: notesDirectory),
-            batchEngine: BatchTranscriptionEngine()
+            refinementEngine: refinementEngine,
+            audioRecorder: audioRecorder,
+            batchEngine: batchEngine
+        )
+        let meetingDetectionController = MeetingDetectionController(
+            settings: settings,
+            liveSessionController: liveSessionController
+        )
+        let notesController = NotesController(
+            settings: settings,
+            repository: repository,
+            templateStore: templateStore,
+            notesEngine: notesEngine,
+            cleanupEngine: cleanupEngine,
+            navigationState: navigationState
+        )
+
+        liveSessionController.onUtteranceFinalized = { [weak meetingDetectionController] _ in
+            meetingDetectionController?.noteUtterance()
+        }
+        liveSessionController.onRepositoryChanged = { [weak notesController] in
+            await notesController?.refreshSessions()
+        }
+        notesController.onRepositoryChanged = { [weak liveSessionController] in
+            await liveSessionController?.refreshRepositoryState()
+        }
+
+        return AppContainer(
+            mode: mode,
+            defaults: defaults,
+            settings: settings,
+            templateStore: templateStore,
+            repository: repository,
+            navigationState: navigationState,
+            liveSessionController: liveSessionController,
+            meetingDetectionController: meetingDetectionController,
+            notesController: notesController
         )
     }
 
-    func ensureServicesInitialized(settings: AppSettings, coordinator: AppCoordinator) {
-        guard !didInitializeServices else { return }
-        didInitializeServices = true
-
-        let services = makeServices(settings: settings, coordinator: coordinator)
-        coordinator.transcriptionEngine = services.transcriptionEngine
-        coordinator.transcriptLogger = services.transcriptLogger
-        coordinator.refinementEngine = services.refinementEngine
-        coordinator.audioRecorder = services.audioRecorder
-        coordinator.batchEngine = services.batchEngine
-    }
-
-    func seedIfNeeded(coordinator: AppCoordinator) async {
+    private func seedIfNeeded() async {
         guard !didSeedInitialData else { return }
         didSeedInitialData = true
 
@@ -210,18 +235,17 @@ final class AppRuntime {
             ),
         ]
 
-        await coordinator.sessionStore.seedSession(
+        await repository.seedSession(
             id: Self.notesSmokeSessionID,
             records: transcript,
             startedAt: startedAt,
             endedAt: startedAt.addingTimeInterval(90),
-            templateSnapshot: coordinator.templateStore.snapshot(
-                of: coordinator.templateStore.template(for: TemplateStore.genericID)
+            templateSnapshot: templateStore.snapshot(
+                of: templateStore.template(for: TemplateStore.genericID)
                     ?? TemplateStore.builtInTemplates.first!
             ),
             title: "UI Test Discovery Call"
         )
-        await coordinator.loadHistory()
     }
 
     private static func runtimeMode(from environment: [String: String]) -> AppRuntimeMode {

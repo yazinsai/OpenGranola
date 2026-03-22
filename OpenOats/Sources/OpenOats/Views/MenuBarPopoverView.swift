@@ -1,32 +1,29 @@
 import SwiftUI
 
 struct MenuBarPopoverView: View {
-    let coordinator: AppCoordinator
-    let settings: AppSettings
+    let liveSessionController: LiveSessionController
+    let meetingDetectionController: MeetingDetectionController
+    let settings: SettingsStore
     let onShowMainWindow: () -> Void
     let onCheckForUpdates: () -> Void
     let onQuit: () -> Void
 
-    @State private var elapsedSeconds: Int = 0
+    @State private var elapsedSeconds = 0
     @State private var timerTask: Task<Void, Never>?
 
-    private var recordingStartedAt: Date? {
-        if case .recording(let metadata) = coordinator.state {
-            return metadata.startedAt
-        }
-        return nil
-    }
-
     var body: some View {
+        let liveState = liveSessionController.state
+        let detectionState = meetingDetectionController.state
+
         VStack(alignment: .leading, spacing: 0) {
-            statusLine
+            statusLine(liveState: liveState, detectionState: detectionState)
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
                 .padding(.bottom, 10)
 
             Divider()
 
-            primaryAction
+            primaryAction(liveState: liveState)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
 
@@ -68,31 +65,29 @@ struct MenuBarPopoverView: View {
         }
         .frame(width: 280)
         .onAppear {
-            if coordinator.isRecording {
-                startTimer()
-            }
+            updateTimer(for: liveState)
         }
         .onDisappear {
             stopTimer()
         }
-        .onChange(of: coordinator.isRecording) { _, recording in
-            if recording {
-                startTimer()
-            } else {
-                stopTimer()
-            }
+        .onChange(of: liveState.sessionPhase) { _, newPhase in
+            updateTimer(for: newPhase)
         }
     }
 
-    private var statusLine: some View {
+    @ViewBuilder
+    private func statusLine(
+        liveState: LiveSessionController.State,
+        detectionState: MeetingDetectionController.State
+    ) -> some View {
         HStack(spacing: 6) {
-            if coordinator.isRecording {
+            if liveState.isRunning {
                 Circle()
                     .fill(.red)
                     .frame(width: 8, height: 8)
                 Text("Recording - \(formattedTime)")
                     .font(.system(size: 13, weight: .medium))
-            } else if settings.meetingAutoDetectEnabled {
+            } else if detectionState.isEnabled {
                 Circle()
                     .fill(.secondary)
                     .frame(width: 8, height: 8)
@@ -112,10 +107,10 @@ struct MenuBarPopoverView: View {
     }
 
     @ViewBuilder
-    private var primaryAction: some View {
-        if coordinator.isRecording {
+    private func primaryAction(liveState: LiveSessionController.State) -> some View {
+        if liveState.isRunning {
             Button(action: {
-                coordinator.handle(.userStopped, settings: settings)
+                liveSessionController.stopSession()
             }) {
                 Text("Stop Recording")
                     .font(.system(size: 13, weight: .medium))
@@ -130,7 +125,7 @@ struct MenuBarPopoverView: View {
                     onShowMainWindow()
                     return
                 }
-                coordinator.handle(.userStarted(.manual()), settings: settings)
+                liveSessionController.startManualSession()
             }) {
                 Text("Start Recording")
                     .font(.system(size: 13, weight: .medium))
@@ -147,23 +142,31 @@ struct MenuBarPopoverView: View {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
+    private func updateTimer(for phase: MeetingState) {
+        if case .recording(let metadata) = phase {
+            elapsedSeconds = max(0, Int(Date().timeIntervalSince(metadata.startedAt)))
+            startTimer()
+        } else {
+            stopTimer()
+        }
+    }
+
+    private func updateTimer(for state: LiveSessionController.State) {
+        updateTimer(for: state.sessionPhase)
+    }
+
     private func startTimer() {
-        updateElapsed()
         stopTimer()
         timerTask = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled else { break }
-                updateElapsed()
+                if let startedAt = liveSessionController.state.recordingStartedAt {
+                    elapsedSeconds = max(0, Int(Date().timeIntervalSince(startedAt)))
+                } else {
+                    elapsedSeconds = 0
+                }
             }
-        }
-    }
-
-    private func updateElapsed() {
-        if let start = recordingStartedAt {
-            elapsedSeconds = max(0, Int(Date().timeIntervalSince(start)))
-        } else {
-            elapsedSeconds = 0
         }
     }
 
