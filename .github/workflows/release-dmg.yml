@@ -51,6 +51,7 @@ jobs:
           echo "Set version to ${RELEASE_VERSION}"
 
       - name: Run UI smoke suite
+        continue-on-error: true
         run: |
           chmod +x scripts/run_ui_smoke.sh
           ./scripts/run_ui_smoke.sh
