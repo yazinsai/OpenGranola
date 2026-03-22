@@ -228,7 +228,7 @@ actor BatchTranscriptionEngine {
             for segment in speechSegments {
                 try Task.checkCancellation()
 
-                let text = try await backend.transcribe(segment.samples, locale: locale)
+                let text = try await backend.transcribe(segment.samples, locale: locale, previousContext: nil)
                 guard !text.isEmpty else { continue }
 
                 // Calculate timestamp from frame position
