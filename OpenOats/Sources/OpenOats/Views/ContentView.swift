@@ -29,6 +29,9 @@ struct ContentView: View {
             if let lastSession = state.lastEndedSession, lastSession.utteranceCount > 0 {
                 sessionBanner(for: lastSession, hasNotes: state.lastSessionHasNotes)
                 Divider()
+            } else if case .ending = state.sessionPhase, !state.liveTranscript.isEmpty {
+                sessionBanner(utteranceCount: state.liveTranscript.count, hasNotes: false)
+                Divider()
             }
 
             batchStatusBanner(state: state)
@@ -170,8 +173,12 @@ struct ContentView: View {
     }
 
     private func sessionBanner(for session: SessionSummary, hasNotes: Bool) -> some View {
+        sessionBanner(utteranceCount: session.utteranceCount, hasNotes: hasNotes)
+    }
+
+    private func sessionBanner(utteranceCount: Int, hasNotes: Bool) -> some View {
         HStack {
-            Text("Session ended · \(session.utteranceCount) utterances")
+            Text("Session ended · \(utteranceCount) utterances")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("app.sessionEndedBanner")

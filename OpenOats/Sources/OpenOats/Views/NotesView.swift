@@ -29,6 +29,11 @@ struct NotesView: View {
         .onChange(of: state.pendingDeleteSessionID) { _, pending in
             showDeleteConfirmation = pending != nil
         }
+        .onChange(of: state.loadedSession?.summary.id) { _, _ in
+            if state.loadedSession != nil {
+                detailViewMode = .notes
+            }
+        }
     }
 
     private func sidebar(state: NotesController.State) -> some View {
@@ -133,10 +138,8 @@ struct NotesView: View {
             set: { newValue in
                 Task {
                     await notesController.selectSession(newValue)
-                    if notesController.state.loadedSession?.notes != nil {
+                    if notesController.state.loadedSession != nil {
                         detailViewMode = .notes
-                    } else {
-                        detailViewMode = .transcript
                     }
                 }
             }
