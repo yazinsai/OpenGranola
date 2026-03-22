@@ -401,27 +401,7 @@ final class AppCoordinator {
         silenceCheckTask = nil
         lastUtteranceAt = nil
 
-        // 9. Kick off batch transcription if enabled
-        if let settings, settings.enableBatchRefinement, let batchEngine {
-            let batchSessionID = sessionID
-            let batchModel = settings.batchTranscriptionModel
-            let batchLocale = settings.locale
-            let notesDir = URL(fileURLWithPath: settings.notesFolderPath)
-            let store = sessionStore
-            let diarize = settings.enableDiarization
-            let diarizeVariant = settings.diarizationVariant
-            Task.detached { [batchEngine] in
-                await batchEngine.process(
-                    sessionID: batchSessionID,
-                    model: batchModel,
-                    locale: batchLocale,
-                    sessionStore: store,
-                    notesDirectory: notesDir,
-                    enableDiarization: diarize,
-                    diarizationVariant: diarizeVariant
-                )
-            }
-        }
+        // Legacy coordinator path no longer owns batch refinement kickoff.
     }
 
     // MARK: - History

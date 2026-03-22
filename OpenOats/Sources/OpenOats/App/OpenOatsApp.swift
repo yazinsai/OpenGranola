@@ -1,60 +1,82 @@
-import SwiftUI
 import AppKit
 import Sparkle
+import SwiftUI
 import UserNotifications
 
 public struct OpenOatsRootApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Environment(\.openWindow) private var openWindow
-    @State private var settings: AppSettings
-    @State private var coordinator: AppCoordinator
-    @State private var runtime: AppRuntime
+
+    @State private var container: AppContainer
+    @State private var settings: SettingsStore
+    @State private var liveSessionController: LiveSessionController
+    @State private var meetingDetectionController: MeetingDetectionController
+    @State private var notesController: NotesController
+    @State private var navigationState: AppNavigationState
+
     private let updaterController: AppUpdaterController
     private let defaults: UserDefaults
 
     public init() {
-        let context = AppRuntime.bootstrap()
-        self._settings = State(initialValue: context.settings)
-        self._coordinator = State(initialValue: context.coordinator)
-        self._runtime = State(initialValue: context.runtime)
-        self.updaterController = context.updaterController
-        self.defaults = context.runtime.defaults
+        let bootstrap = AppContainer.bootstrap()
+        self._container = State(initialValue: bootstrap.container)
+        self._settings = State(initialValue: bootstrap.container.settings)
+        self._liveSessionController = State(initialValue: bootstrap.container.liveSessionController)
+        self._meetingDetectionController = State(initialValue: bootstrap.container.meetingDetectionController)
+        self._notesController = State(initialValue: bootstrap.container.notesController)
+        self._navigationState = State(initialValue: bootstrap.container.navigationState)
+        self.updaterController = bootstrap.updaterController
+        self.defaults = bootstrap.container.defaults
     }
 
     public var body: some Scene {
-        Window("OpenOats", id: "main") {
-            ContentView(settings: settings)
-                .environment(runtime)
-                .environment(coordinator)
+        Window("OpenOats", id: Self.mainWindowID) {
+            ContentView(settings: settings, defaults: defaults)
+                .environment(liveSessionController)
+                .environment(meetingDetectionController)
+                .environment(notesController)
+                .environment(navigationState)
                 .defaultAppStorage(defaults)
+                .task {
+                    await container.activateIfNeeded()
+                }
                 .onAppear {
-                    appDelegate.coordinator = coordinator
+                    appDelegate.liveSessionController = liveSessionController
+                    appDelegate.meetingDetectionController = meetingDetectionController
                     appDelegate.settings = settings
                     appDelegate.defaults = defaults
-                    appDelegate.runtime = runtime
-                    if case .live = runtime.mode {
+
+                    if case .live = container.mode {
                         appDelegate.setupMenuBarIfNeeded(
-                            coordinator: coordinator,
+                            liveSessionController: liveSessionController,
+                            meetingDetectionController: meetingDetectionController,
                             settings: settings,
                             showMainWindow: { [self] in showMainWindow() },
                             checkForUpdates: { updaterController.checkForUpdatesFromMenuBar() }
                         )
                     }
+
                     settings.applyScreenShareVisibility()
                 }
                 .onOpenURL { url in
                     guard let command = OpenOatsDeepLink.parse(url) else { return }
-                    // Restore visibility when app is in background mode (LSUIElement)
                     if NSApp.activationPolicy() == .accessory {
                         NSApp.setActivationPolicy(.regular)
                         NSApp.activate(ignoringOtherApps: true)
                     }
+
                     switch command {
+                    case .startSession:
+                        if settings.hasAcknowledgedRecordingConsent {
+                            liveSessionController.startManualSession()
+                        } else {
+                            showMainWindow()
+                        }
+                    case .stopSession:
+                        liveSessionController.stopSession()
                     case .openNotes(let sessionID):
-                        coordinator.queueSessionSelection(sessionID)
+                        navigationState.queueSessionSelection(sessionID)
                         openNotesWindow()
-                    default:
-                        coordinator.queueExternalCommand(command)
                     }
                 }
         }
@@ -63,9 +85,8 @@ public struct OpenOatsRootApp: App {
         .defaultSize(width: 320, height: 560)
         .commands {
             CommandGroup(after: .appInfo) {
-                if case .live = runtime.mode {
+                if case .live = container.mode {
                     CheckForUpdatesView(updater: updaterController.updater)
-
                     Divider()
                 }
 
@@ -89,25 +110,31 @@ public struct OpenOatsRootApp: App {
 
         Window("Notes", id: "notes") {
             NotesView(settings: settings)
-                .environment(runtime)
-                .environment(coordinator)
+                .environment(notesController)
                 .defaultAppStorage(defaults)
+                .task {
+                    await container.activateIfNeeded()
+                }
         }
         .defaultSize(width: 700, height: 550)
 
         Window("Transcript", id: "transcript") {
             TranscriptWindowView()
-                .environment(runtime)
-                .environment(coordinator)
+                .environment(liveSessionController)
                 .defaultAppStorage(defaults)
+                .task {
+                    await container.activateIfNeeded()
+                }
         }
         .defaultSize(width: 600, height: 700)
 
         Settings {
-            SettingsView(settings: settings, updater: updaterController.updater)
-                .environment(runtime)
-                .environment(coordinator)
-                .defaultAppStorage(defaults)
+            SettingsView(
+                settings: settings,
+                updater: updaterController.updater,
+                templateStore: container.templateStore
+            )
+            .defaultAppStorage(defaults)
         }
     }
 }
@@ -135,23 +162,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var windowObserver: Any?
     private var menuBarController: MenuBarController?
     private var isTerminating = false
-    var coordinator: AppCoordinator?
-    var settings: AppSettings?
-    var runtime: AppRuntime?
+
+    var liveSessionController: LiveSessionController?
+    var meetingDetectionController: MeetingDetectionController?
+    var settings: SettingsStore?
     var defaults: UserDefaults = .standard
 
+    private var globalHotkeyMonitor: Any?
+    private var localHotkeyMonitor: Any?
+
     func setupMenuBarIfNeeded(
-        coordinator: AppCoordinator,
-        settings: AppSettings,
+        liveSessionController: LiveSessionController,
+        meetingDetectionController: MeetingDetectionController,
+        settings: SettingsStore,
         showMainWindow: @escaping () -> Void,
         checkForUpdates: @escaping () -> Void
     ) {
         guard menuBarController == nil else { return }
 
-        runtime?.ensureServicesInitialized(settings: settings, coordinator: coordinator)
-
         let controller = MenuBarController(
-            coordinator: coordinator,
+            liveSessionController: liveSessionController,
+            meetingDetectionController: meetingDetectionController,
             settings: settings,
             onCheckForUpdates: checkForUpdates
         )
@@ -165,9 +196,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var isUITest: Bool {
         ProcessInfo.processInfo.environment["OPENOATS_UI_TEST"] != nil
     }
-
-    private var globalHotkeyMonitor: Any?
-    private var localHotkeyMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if !isUITest {
@@ -209,13 +237,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let coordinator else { return .terminateNow }
-
+        guard let liveSessionController else { return .terminateNow }
         if isTerminating {
             return .terminateNow
         }
 
-        guard coordinator.isRecording else {
+        guard liveSessionController.state.isRunning else {
             return .terminateNow
         }
 
@@ -232,17 +259,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         isTerminating = true
-        coordinator.handle(.userStopped, settings: settings)
+        liveSessionController.stopSession()
 
         Task { @MainActor [weak self] in
             let deadline = Date().addingTimeInterval(30)
             while Date() < deadline {
-                if case .idle = coordinator.state { break }
+                if case .idle = liveSessionController.state.sessionPhase {
+                    break
+                }
                 try? await Task.sleep(for: .milliseconds(100))
             }
             self?.isTerminating = true
             NSApp.reply(toApplicationShouldTerminate: true)
         }
+
         return .terminateLater
     }
 
@@ -250,23 +280,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         isUITest
     }
 
-    // MARK: - NSWindowDelegate
-
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard !isUITest else { return true }
 
         let isMainWindow = sender.identifier?.rawValue == OpenOatsRootApp.mainWindowID
-
         if isMainWindow {
             sender.orderOut(nil)
             NSApp.setActivationPolicy(.accessory)
             showBackgroundModeHintIfNeeded()
             return false
         }
+
         return true
     }
-
-    // MARK: - One-Shot Background Notification
 
     private func showBackgroundModeHintIfNeeded() {
         guard !defaults.bool(forKey: "hasShownBackgroundModeHint") else { return }
@@ -292,8 +318,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    // MARK: - Global Hotkey (Cmd+Shift+L)
-
     private func registerGlobalHotkey() {
         let matchesHotkey: (NSEvent) -> Bool = { event in
             event.modifierFlags.contains([.command, .shift])
@@ -313,17 +337,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func toggleMeeting() {
-        guard let coordinator, let settings else { return }
+        guard let liveSessionController, let settings else { return }
         guard settings.hasAcknowledgedRecordingConsent else { return }
 
-        if coordinator.isRecording {
-            coordinator.handle(.userStopped, settings: settings)
+        if liveSessionController.state.isRunning {
+            liveSessionController.stopSession()
         } else {
-            coordinator.handle(.userStarted(.manual()), settings: settings)
+            liveSessionController.startManualSession()
         }
     }
-
-    // MARK: - Quit
 
     private func handleQuit() {
         NSApp.terminate(nil)
