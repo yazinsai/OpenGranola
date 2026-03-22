@@ -89,6 +89,7 @@ struct ControlBar: View {
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
                 .accessibilityLabel(isRunning ? "Live" : "Start")
                 .accessibilityIdentifier("app.controlBar.toggle")
 
