@@ -42,16 +42,16 @@ final class MiniBarManager: ObservableObject {
         if panel == nil {
             // Position near bottom-center of main screen
             let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-            let barWidth: CGFloat = 56
-            let barHeight: CGFloat = 200
+            let barWidth: CGFloat = 40
+            let barHeight: CGFloat = 18
             let x = screenFrame.midX - barWidth / 2
-            let y = screenFrame.minY + 80
+            let y = screenFrame.minY + 40
             let rect = NSRect(x: x, y: y, width: barWidth, height: barHeight)
             panel = MiniBarPanel(contentRect: rect, defaults: defaults)
         }
 
         let hostingView = NSHostingView(rootView: content)
-        hostingView.layer?.cornerRadius = 28
+        hostingView.layer?.cornerRadius = 9
         hostingView.layer?.masksToBounds = true
         panel?.contentView = hostingView
         panel?.orderFront(nil)
