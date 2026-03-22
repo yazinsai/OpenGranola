@@ -206,7 +206,7 @@ final class AppCoordinator {
     private func startTranscription(metadata: MeetingMetadata, settings: AppSettings?) async {
         // Live session preempts any running batch transcription
         if let batchEngine {
-            Task { await batchEngine.cancel() }
+            await batchEngine.cancel()
         }
 
         lastEndedSession = nil

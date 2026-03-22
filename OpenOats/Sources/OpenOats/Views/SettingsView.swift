@@ -244,7 +244,7 @@ struct SettingsView: View {
 
                 if settings.enableBatchRefinement {
                     Picker("Batch Model", selection: $settings.batchTranscriptionModel) {
-                        ForEach(TranscriptionModel.allCases) { model in
+                        ForEach(TranscriptionModel.batchSuitableModels) { model in
                             Text(model.displayName).tag(model)
                         }
                     }

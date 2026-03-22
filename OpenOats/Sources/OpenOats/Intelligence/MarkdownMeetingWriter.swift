@@ -610,6 +610,10 @@ enum MarkdownMeetingWriter {
 
         let finalContent = result.joined(separator: "\n")
         do {
+            // Back up original before patching (batch transcript quality not yet validated at scale)
+            let backupURL = fileURL.deletingPathExtension().appendingPathExtension("pre-batch.md")
+            try? FileManager.default.copyItem(at: fileURL, to: backupURL)
+
             try finalContent.write(to: fileURL, atomically: true, encoding: .utf8)
             writerLogger.info("Patched transcript in \(fileURL.lastPathComponent, privacy: .public)")
             return true

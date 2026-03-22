@@ -363,22 +363,25 @@ struct ContentView: View {
                 // Poll batch engine status (actor-isolated)
                 if let engine = coordinator.batchEngine {
                     let status = await engine.status
-                    let prev = coordinator.batchStatus
-                    coordinator.batchStatus = status
+                    // Skip updating if idle → idle (no-op)
+                    if status != .idle || coordinator.batchStatus != .idle {
+                        let prev = coordinator.batchStatus
+                        coordinator.batchStatus = status
 
-                    // Send notification on completion if app is not focused
-                    if case .completed(let sid) = status, prev != status {
-                        if !NSApp.isActive, let notifService = coordinator.notificationService {
-                            await notifService.postBatchCompleted(sessionID: sid)
-                        }
-                        // Refresh history so the updated transcript is visible
-                        await coordinator.loadHistory()
+                        // Send notification on completion if app is not focused
+                        if case .completed(let sid) = status, prev != status {
+                            if !NSApp.isActive, let notifService = coordinator.notificationService {
+                                await notifService.postBatchCompleted(sessionID: sid)
+                            }
+                            // Refresh history so the updated transcript is visible
+                            await coordinator.loadHistory()
 
-                        // Auto-dismiss after 3 seconds
-                        Task { @MainActor in
-                            try? await Task.sleep(for: .seconds(3))
-                            if case .completed = coordinator.batchStatus {
-                                coordinator.batchStatus = .idle
+                            // Auto-dismiss after 3 seconds
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .seconds(3))
+                                if case .completed = coordinator.batchStatus {
+                                    coordinator.batchStatus = .idle
+                                }
                             }
                         }
                     }

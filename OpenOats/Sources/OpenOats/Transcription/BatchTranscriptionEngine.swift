@@ -53,9 +53,11 @@ actor BatchTranscriptionEngine {
         await task.value
     }
 
-    func cancel() {
-        currentTask?.cancel()
+    func cancel() async {
+        let task = currentTask
         currentTask = nil
+        task?.cancel()
+        await task?.value
         status = .cancelled
     }
 
@@ -226,21 +228,7 @@ actor BatchTranscriptionEngine {
             for segment in speechSegments {
                 try Task.checkCancellation()
 
-                // Context padding: if segment is short, pad to ~30s
-                let targetSamples = 30 * 16000
-                var transcriptionSamples = segment.samples
-                if transcriptionSamples.count < targetSamples {
-                    // Use surrounding audio for context
-                    let sampleOffset = segment.startSample
-                    let globalOffset = Int(frameOffset * 16000 / Int64(fileSampleRate)) + sampleOffset
-                    let padBefore = min(globalOffset, (targetSamples - transcriptionSamples.count) / 2)
-
-                    // For simplicity, just transcribe the segment as-is
-                    // The model handles short segments fine
-                    _ = padBefore
-                }
-
-                let text = try await backend.transcribe(transcriptionSamples, locale: locale)
+                let text = try await backend.transcribe(segment.samples, locale: locale)
                 guard !text.isEmpty else { continue }
 
                 // Calculate timestamp from frame position
