@@ -466,7 +466,7 @@ struct ContentView: View {
         let timeFmt = DateFormatter()
         timeFmt.dateFormat = "HH:mm:ss"
         let lines = viewState.utterances.map { u in
-            "[\(timeFmt.string(from: u.timestamp))] \(u.speaker == .you ? "You" : "Them"): \(u.displayText)"
+            "[\(timeFmt.string(from: u.timestamp))] \(u.speaker.displayLabel): \(u.displayText)"
         }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
@@ -507,7 +507,7 @@ struct ContentView: View {
         // Persist to transcript log
         Task {
             await coordinator.transcriptLogger?.append(
-                speaker: last.speaker == .you ? "You" : "Them",
+                speaker: last.speaker.displayLabel,
                 text: last.text,
                 timestamp: last.timestamp
             )
@@ -520,8 +520,8 @@ struct ContentView: View {
             }
         }
 
-        // Trigger suggestions on THEM utterance
-        if last.speaker == .them {
+        // Trigger suggestions on any remote utterance
+        if last.speaker.isRemote {
             suggestionEngine?.onThemUtterance(last)
 
             // Delayed write owned by SessionStore (tracks pending writes for drain)

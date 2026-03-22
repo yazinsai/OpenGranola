@@ -33,15 +33,15 @@ final class TranscriptStore {
         set { withMutation(keyPath: \.volatileThemText) { _volatileThemText = newValue } }
     }
 
-    /// Count of finalized them-utterances since last state update
-    private var themUtterancesSinceStateUpdate: Int = 0
+    /// Count of finalized remote utterances since last state update
+    private var remoteUtterancesSinceStateUpdate: Int = 0
 
     @discardableResult
     func append(_ utterance: Utterance) -> Bool {
         guard !shouldSuppressAcousticEcho(utterance) else { return false }
         utterances.append(utterance)
-        if utterance.speaker == .them {
-            themUtterancesSinceStateUpdate += 1
+        if utterance.speaker.isRemote {
+            remoteUtterancesSinceStateUpdate += 1
         }
         return true
     }
@@ -57,21 +57,21 @@ final class TranscriptStore {
         volatileYouText = ""
         volatileThemText = ""
         conversationState = .empty
-        themUtterancesSinceStateUpdate = 0
+        remoteUtterancesSinceStateUpdate = 0
     }
 
     func updateConversationState(_ state: ConversationState) {
         conversationState = state
-        themUtterancesSinceStateUpdate = 0
+        remoteUtterancesSinceStateUpdate = 0
     }
 
-    /// Whether conversation state needs a refresh (every 2-3 finalized them-utterances)
+    /// Whether conversation state needs a refresh (every 2-3 finalized remote utterances)
     var needsStateUpdate: Bool {
-        themUtterancesSinceStateUpdate >= 2
+        remoteUtterancesSinceStateUpdate >= 2
     }
 
-    var lastThemUtterance: Utterance? {
-        utterances.last(where: { $0.speaker == .them })
+    var lastRemoteUtterance: Utterance? {
+        utterances.last(where: { $0.speaker.isRemote })
     }
 
     /// Last N utterances for prompt context
@@ -84,9 +84,9 @@ final class TranscriptStore {
         Array(utterances.suffix(6))
     }
 
-    /// Recent them-only utterances for trigger analysis
-    var recentThemUtterances: [Utterance] {
-        utterances.suffix(10).filter { $0.speaker == .them }
+    /// Recent remote-only utterances for trigger analysis
+    var recentRemoteUtterances: [Utterance] {
+        utterances.suffix(10).filter { $0.speaker.isRemote }
     }
 
     private func shouldSuppressAcousticEcho(_ utterance: Utterance) -> Bool {
@@ -95,7 +95,7 @@ final class TranscriptStore {
         let normalizedYouText = TextSimilarity.normalizedText(utterance.text)
         guard isEligibleForEchoCheck(normalizedYouText) else { return false }
 
-        for candidate in utterances.reversed() where candidate.speaker == .them {
+        for candidate in utterances.reversed() where candidate.speaker.isRemote {
             let timeDelta = utterance.timestamp.timeIntervalSince(candidate.timestamp)
             guard timeDelta >= 0 else { continue }
             guard timeDelta <= acousticEchoWindow else { break }

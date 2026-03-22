@@ -421,7 +421,7 @@ struct NotesView: View {
     @ViewBuilder
     private func transcriptRow(record: SessionRecord, isCleaning: Bool) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(record.speaker == .you ? "You" : "Them")
+            Text(record.speaker.displayLabel)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(record.speaker == .you ? Color.youColor : Color.themColor)
                 .frame(width: 36, alignment: .trailing)
@@ -528,7 +528,7 @@ struct NotesView: View {
         switch detailViewMode {
         case .transcript:
             text = loadedTranscript.map { record in
-                let label = record.speaker == .you ? "You" : "Them"
+                let label = record.speaker.displayLabel
                 let content = showingOriginal ? record.text : (record.refinedText ?? record.text)
                 return "[\(Self.transcriptTimeFormatter.string(from: record.timestamp))] \(label): \(content)"
             }.joined(separator: "\n")

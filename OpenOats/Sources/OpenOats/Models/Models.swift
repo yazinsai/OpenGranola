@@ -1,8 +1,56 @@
 import Foundation
 
-enum Speaker: String, Codable, Sendable {
+enum Speaker: Codable, Sendable, Hashable {
     case you
     case them
+    case remote(Int)
+
+    var displayLabel: String {
+        switch self {
+        case .you: "You"
+        case .them: "Them"
+        case .remote(let n): "Speaker \(n)"
+        }
+    }
+
+    /// True for any non-mic speaker (.them or .remote).
+    var isRemote: Bool {
+        switch self {
+        case .you: false
+        case .them, .remote: true
+        }
+    }
+
+    /// Stable key for persistence (JSONL encoding, backfill dedup).
+    var storageKey: String {
+        switch self {
+        case .you: "you"
+        case .them: "them"
+        case .remote(let n): "remote_\(n)"
+        }
+    }
+
+    // MARK: - Codable
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        switch raw {
+        case "you": self = .you
+        case "them": self = .them
+        default:
+            if raw.hasPrefix("remote_"), let n = Int(raw.dropFirst("remote_".count)) {
+                self = .remote(n)
+            } else {
+                self = .them
+            }
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(storageKey)
+    }
 }
 
 enum RefinementStatus: String, Codable, Sendable {

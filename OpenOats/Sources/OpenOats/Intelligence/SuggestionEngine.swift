@@ -228,7 +228,7 @@ final class SuggestionEngine {
         if fillerRatio > 0.6 { return false }
 
         // Near-duplicate check against recent them utterances
-        let recentThem = transcriptStore.recentThemUtterances.suffix(3)
+        let recentThem = transcriptStore.recentRemoteUtterances.suffix(3)
         for recent in recentThem {
             if recent.id == utterance.id { continue }
             if TextSimilarity.jaccard(text, recent.text) > 0.8 { return false }
@@ -511,7 +511,7 @@ final class SuggestionEngine {
 
         var conversationText = ""
         for u in recentUtterances {
-            let label = u.speaker == .you ? "You" : "Them"
+            let label = u.speaker.displayLabel
             conversationText += "\(label): \(u.text)\n"
         }
 
@@ -555,7 +555,7 @@ final class SuggestionEngine {
 
         var conversationText = ""
         for u in recentExchange {
-            let label = u.speaker == .you ? "You" : "Them"
+            let label = u.speaker.displayLabel
             conversationText += "\(label): \(u.text)\n"
         }
 

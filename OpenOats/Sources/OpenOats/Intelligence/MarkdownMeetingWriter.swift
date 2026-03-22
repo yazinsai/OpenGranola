@@ -203,10 +203,7 @@ enum MarkdownMeetingWriter {
     // MARK: - Speaker Label
 
     static func speakerLabel(_ speaker: Speaker) -> String {
-        switch speaker {
-        case .you: return "You"
-        case .them: return "Them"
-        }
+        speaker.displayLabel
     }
 
     // MARK: - YAML Quoting

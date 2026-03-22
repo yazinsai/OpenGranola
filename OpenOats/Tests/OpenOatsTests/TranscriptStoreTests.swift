@@ -118,19 +118,19 @@ final class TranscriptStoreTests: XCTestCase {
 
     // MARK: - Last Them Utterance
 
-    func testLastThemUtteranceReturnsCorrectOne() {
+    func testLastRemoteUtteranceReturnsCorrectOne() {
         let store = makeStore()
         store.append(makeUtterance(text: "Them first", speaker: .them))
         store.append(makeUtterance(text: "You reply", speaker: .you))
         store.append(makeUtterance(text: "Them second", speaker: .them))
 
-        XCTAssertEqual(store.lastThemUtterance?.text, "Them second")
+        XCTAssertEqual(store.lastRemoteUtterance?.text, "Them second")
     }
 
-    func testLastThemUtteranceWhenNone() {
+    func testLastRemoteUtteranceWhenNone() {
         let store = makeStore()
         store.append(makeUtterance(text: "You only", speaker: .you))
-        XCTAssertNil(store.lastThemUtterance)
+        XCTAssertNil(store.lastRemoteUtterance)
     }
 
     // MARK: - Recent Utterances
@@ -153,16 +153,16 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertEqual(store.recentExchange.count, 6)
     }
 
-    func testRecentThemUtterancesFiltersCorrectly() {
+    func testRecentRemoteUtterancesFiltersCorrectly() {
         let store = makeStore()
         store.append(makeUtterance(text: "Them 1", speaker: .them))
         store.append(makeUtterance(text: "You 1", speaker: .you))
         store.append(makeUtterance(text: "Them 2", speaker: .them))
         store.append(makeUtterance(text: "You 2", speaker: .you))
 
-        let recent = store.recentThemUtterances
+        let recent = store.recentRemoteUtterances
         XCTAssertEqual(recent.count, 2)
-        XCTAssertTrue(recent.allSatisfy { $0.speaker == .them })
+        XCTAssertTrue(recent.allSatisfy { $0.speaker.isRemote })
     }
 
     // MARK: - Volatile Text

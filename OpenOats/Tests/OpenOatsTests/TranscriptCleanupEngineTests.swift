@@ -100,6 +100,63 @@ final class TranscriptCleanupEngineTests: XCTestCase {
 
     // MARK: - Failure threshold
 
+    // MARK: - Speaker Codable
+
+    func testSpeakerCodableRoundTrip() throws {
+        let speakers: [Speaker] = [.you, .them, .remote(1), .remote(5)]
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        for speaker in speakers {
+            let data = try encoder.encode(speaker)
+            let decoded = try decoder.decode(Speaker.self, from: data)
+            XCTAssertEqual(decoded, speaker)
+        }
+    }
+
+    func testSpeakerDecodesLegacyStrings() throws {
+        let decoder = JSONDecoder()
+        let youData = "\"you\"".data(using: .utf8)!
+        let themData = "\"them\"".data(using: .utf8)!
+
+        XCTAssertEqual(try decoder.decode(Speaker.self, from: youData), .you)
+        XCTAssertEqual(try decoder.decode(Speaker.self, from: themData), .them)
+    }
+
+    func testSpeakerDecodesRemote() throws {
+        let decoder = JSONDecoder()
+        let data = "\"remote_3\"".data(using: .utf8)!
+        XCTAssertEqual(try decoder.decode(Speaker.self, from: data), .remote(3))
+    }
+
+    func testSpeakerDisplayLabel() {
+        XCTAssertEqual(Speaker.you.displayLabel, "You")
+        XCTAssertEqual(Speaker.them.displayLabel, "Them")
+        XCTAssertEqual(Speaker.remote(1).displayLabel, "Speaker 1")
+        XCTAssertEqual(Speaker.remote(5).displayLabel, "Speaker 5")
+    }
+
+    func testSpeakerIsRemote() {
+        XCTAssertFalse(Speaker.you.isRemote)
+        XCTAssertTrue(Speaker.them.isRemote)
+        XCTAssertTrue(Speaker.remote(1).isRemote)
+        XCTAssertTrue(Speaker.remote(3).isRemote)
+    }
+
+    func testSpeakerStorageKey() {
+        XCTAssertEqual(Speaker.you.storageKey, "you")
+        XCTAssertEqual(Speaker.them.storageKey, "them")
+        XCTAssertEqual(Speaker.remote(1).storageKey, "remote_1")
+    }
+
+    func testSpeakerUnknownStringDecodesToThem() throws {
+        let decoder = JSONDecoder()
+        let data = "\"unknown_value\"".data(using: .utf8)!
+        XCTAssertEqual(try decoder.decode(Speaker.self, from: data), .them)
+    }
+
+    // MARK: - Failure threshold
+
     func testFailureThresholdIntegerDivision() {
         // With 3 chunks, chunks.count / 2 = 1
         // So 1 failure is silent, 2 failures triggers the error

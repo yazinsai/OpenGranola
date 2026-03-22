@@ -234,7 +234,7 @@ final class TranscriptCleanupEngine {
         baseURL: URL?
     ) async -> [SessionRecord]? {
         let lines = records.map { record in
-            let label = record.speaker == .you ? "You" : "Them"
+            let label = record.speaker.displayLabel
             let text = record.refinedText ?? record.text
             return "[\(timeFormatter.string(from: record.timestamp))] \(label): \(text)"
         }

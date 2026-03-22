@@ -678,7 +678,7 @@ final class TranscriptionEngine {
     ) -> StreamingTranscriber? {
         let backend = speaker == .you ? micBackend : systemBackend
         guard let backend else {
-            diagLog("[ENGINE] makeTranscriber called without initialized backend for \(speaker.rawValue)")
+            diagLog("[ENGINE] makeTranscriber called without initialized backend for \(speaker.storageKey)")
             return nil
         }
         return StreamingTranscriber(

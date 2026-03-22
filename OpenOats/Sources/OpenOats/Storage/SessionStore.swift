@@ -182,7 +182,7 @@ actor SessionStore {
         var refinedLookup: [String: String] = [:]
         for utterance in utterances {
             guard let refined = utterance.refinedText else { continue }
-            let key = "\(iso8601Formatter.string(from: utterance.timestamp))|\(utterance.speaker.rawValue)"
+            let key = "\(iso8601Formatter.string(from: utterance.timestamp))|\(utterance.speaker.storageKey)"
             refinedLookup[key] = refined
         }
 
@@ -199,7 +199,7 @@ actor SessionStore {
             }
 
             if record.refinedText == nil {
-                let key = "\(iso8601Formatter.string(from: record.timestamp))|\(record.speaker.rawValue)"
+                let key = "\(iso8601Formatter.string(from: record.timestamp))|\(record.speaker.storageKey)"
                 if let refined = refinedLookup[key] {
                     record = SessionRecord(
                         speaker: record.speaker,

@@ -61,14 +61,14 @@ final class StreamingTranscriber: @unchecked Sendable {
             bufferCount += 1
             if bufferCount <= 3 {
                 let fmt = buffer.format
-                diagLog("[\(speaker.rawValue)] buffer #\(bufferCount): frames=\(buffer.frameLength) sr=\(fmt.sampleRate) ch=\(fmt.channelCount) interleaved=\(fmt.isInterleaved) common=\(fmt.commonFormat.rawValue)")
+                diagLog("[\(speaker.storageKey)] buffer #\(bufferCount): frames=\(buffer.frameLength) sr=\(fmt.sampleRate) ch=\(fmt.channelCount) interleaved=\(fmt.isInterleaved) common=\(fmt.commonFormat.rawValue)")
             }
 
             guard let samples = extractSamples(buffer) else { continue }
 
             if bufferCount <= 3 {
                 let maxVal = samples.max() ?? 0
-                diagLog("[\(speaker.rawValue)] samples: count=\(samples.count) max=\(maxVal)")
+                diagLog("[\(speaker.storageKey)] samples: count=\(samples.count) max=\(maxVal)")
             }
 
             vadBuffer.append(contentsOf: samples)
@@ -97,7 +97,7 @@ final class StreamingTranscriber: @unchecked Sendable {
                                 isSpeaking = true
                                 startedSpeech = true
                                 speechSamples = recentChunks.suffix(Self.prerollChunkCount).flatMap { $0 }
-                                diagLog("[\(self.speaker.rawValue)] speech start")
+                                diagLog("[\(self.speaker.storageKey)] speech start")
                             }
 
                         case .speechEnd:
@@ -117,7 +117,7 @@ final class StreamingTranscriber: @unchecked Sendable {
 
                     if endedSpeech {
                         isSpeaking = false
-                        diagLog("[\(self.speaker.rawValue)] speech end, samples=\(speechSamples.count)")
+                        diagLog("[\(self.speaker.storageKey)] speech end, samples=\(speechSamples.count)")
                         if speechSamples.count > Self.minimumSpeechSamples {
                             let segment = speechSamples
                             speechSamples.removeAll(keepingCapacity: true)
@@ -152,7 +152,7 @@ final class StreamingTranscriber: @unchecked Sendable {
         do {
             let text = try await backend.transcribe(samples, locale: locale, previousContext: previousContext)
             guard !text.isEmpty else { return }
-            log.info("[\(self.speaker.rawValue)] transcribed: \(text.prefix(80))")
+            log.info("[\(self.speaker.storageKey)] transcribed: \(text.prefix(80))")
             // Store trailing words for cross-segment context
             let words = text.split(separator: " ")
             previousContext = words.suffix(Self.contextWordCount).joined(separator: " ")
