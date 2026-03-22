@@ -165,6 +165,12 @@ actor SessionStore {
     private func rewriteJSONLWithRefinedText(file: URL, utterances: [Utterance]) -> Bool {
         guard let content = try? String(contentsOf: file, encoding: .utf8) else { return false }
 
+        // Back up JSONL before destructive rewrite so garbled LLM output doesn't
+        // permanently overwrite the original transcript.
+        // Uses .bak extension to avoid being picked up by the *.jsonl session scanner.
+        let backupURL = file.appendingPathExtension("pre-cleanup.bak")
+        try? FileManager.default.copyItem(at: file, to: backupURL)
+
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 

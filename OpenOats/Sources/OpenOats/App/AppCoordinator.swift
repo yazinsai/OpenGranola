@@ -187,6 +187,7 @@ final class AppCoordinator {
         case .userDiscarded:
             Task {
                 transcriptionEngine?.stop()
+                audioRecorder?.discardRecording()
                 await transcriptLogger?.endSession()
                 transcriptStore.clear()
                 await sessionStore.endSession()

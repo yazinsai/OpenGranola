@@ -220,6 +220,16 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
+    /// Discard the current recording without merging or encoding.
+    /// Closes file handles and removes temp CAF files.
+    func discardRecording() {
+        lock.withLock {
+            micFile = nil
+            sysFile = nil
+        }
+        cleanupTempFiles()
+    }
+
     func finalizeRecording() async {
         let alreadySealed: Bool = lock.withLock {
             let sealed = micFile == nil && sysFile == nil && micTempURL == nil && sysTempURL == nil

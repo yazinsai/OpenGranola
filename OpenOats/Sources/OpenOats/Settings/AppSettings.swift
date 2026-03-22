@@ -159,9 +159,9 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
     }
 
     /// Models suitable for offline batch re-transcription.
-    /// Excludes Parakeet (English-focused streaming models) and Qwen3 (not optimized for batch).
+    /// Excludes Parakeet (English-focused streaming models).
     static var batchSuitableModels: [TranscriptionModel] {
-        [.whisperSmall, .whisperLargeV3Turbo]
+        [.whisperSmall, .whisperLargeV3Turbo, .qwen3ASR06B]
     }
 }
 
