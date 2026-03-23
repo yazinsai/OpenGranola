@@ -181,6 +181,10 @@ final class AppRuntime {
         coordinator.refinementEngine = services.refinementEngine
         coordinator.audioRecorder = services.audioRecorder
         coordinator.batchEngine = services.batchEngine
+        coordinator.setViewServices(
+            knowledgeBase: services.knowledgeBase,
+            suggestionEngine: services.suggestionEngine
+        )
     }
 
     func seedIfNeeded(coordinator: AppCoordinator) async {

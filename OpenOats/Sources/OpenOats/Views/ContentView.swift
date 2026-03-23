@@ -35,8 +35,8 @@ struct ContentView: View {
     @Environment(AppRuntime.self) private var runtime
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(\.openWindow) private var openWindow
-    @State private var knowledgeBase: KnowledgeBase?
-    @State private var suggestionEngine: SuggestionEngine?
+    private var knowledgeBase: KnowledgeBase? { coordinator.knowledgeBase }
+    private var suggestionEngine: SuggestionEngine? { coordinator.suggestionEngine }
     @State private var overlayManager = OverlayManager()
     @State private var miniBarManager = MiniBarManager()
     @AppStorage("isTranscriptExpanded") private var isTranscriptExpanded = true
@@ -319,16 +319,8 @@ struct ContentView: View {
             if !hasCompletedOnboarding {
                 showOnboarding = true
             }
-            if knowledgeBase == nil {
+            if coordinator.knowledgeBase == nil {
                 runtime.ensureServicesInitialized(settings: settings, coordinator: coordinator)
-                let kb = KnowledgeBase(settings: settings)
-                let se = SuggestionEngine(
-                    transcriptStore: coordinator.transcriptStore,
-                    knowledgeBase: kb,
-                    settings: settings
-                )
-                knowledgeBase = kb
-                suggestionEngine = se
             }
             overlayManager.defaults = runtime.defaults
             miniBarManager.defaults = runtime.defaults

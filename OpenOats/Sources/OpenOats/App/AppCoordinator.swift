@@ -102,6 +102,21 @@ final class AppCoordinator {
     var audioRecorder: AudioRecorder?
     var batchEngine: BatchTranscriptionEngine?
 
+    @ObservationIgnored nonisolated(unsafe) private var _knowledgeBase: KnowledgeBase?
+    nonisolated var knowledgeBase: KnowledgeBase? {
+        get { _knowledgeBase }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _suggestionEngine: SuggestionEngine?
+    nonisolated var suggestionEngine: SuggestionEngine? {
+        get { _suggestionEngine }
+    }
+
+    func setViewServices(knowledgeBase: KnowledgeBase, suggestionEngine: SuggestionEngine) {
+        _knowledgeBase = knowledgeBase
+        _suggestionEngine = suggestionEngine
+    }
+
     /// The template snapshot frozen at session start (not stop).
     private var sessionTemplateSnapshot: TemplateSnapshot?
 
