@@ -7,6 +7,7 @@ struct TranscriptView: View {
     var showSearch: Bool = false
 
     @State private var searchText = ""
+    @State private var autoScrollEnabled = true
 
     private var filteredUtterances: [Utterance] {
         guard !searchText.isEmpty else { return utterances }
@@ -22,85 +23,125 @@ struct TranscriptView: View {
     var body: some View {
         VStack(spacing: 0) {
             if showSearch {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                    TextField("Search transcript…", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12))
-                    if !searchText.isEmpty {
-                        Button {
-                            searchText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Clear search")
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial)
-
+                searchBar
                 Divider()
             }
+            transcriptScrollView
+        }
+    }
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    let visible = filteredUtterances
-                    if visible.isEmpty && isSearching {
-                        Text("No matches")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity, minHeight: 60)
-                    } else {
-                        LazyVStack(alignment: .leading, spacing: 8) {
-                            ForEach(Array(visible.enumerated()), id: \.element.id) { index, utterance in
-                                UtteranceBubble(
-                                    utterance: utterance,
-                                    showTimestamp: shouldShowTimestamp(at: index, in: visible)
-                                )
-                                .id(utterance.id)
+    private var searchBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            TextField("Search transcript…", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Clear search")
+            }
+
+            Divider()
+                .frame(height: 14)
+
+            Button {
+                autoScrollEnabled.toggle()
+            } label: {
+                Image(systemName: "arrow.down.to.line")
+                    .font(.system(size: 11))
+                    .foregroundStyle(autoScrollEnabled ? Color.secondary : Color.red)
+            }
+            .buttonStyle(.plain)
+            .help(autoScrollEnabled ? "Pause auto-scroll" : "Resume auto-scroll")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial)
+    }
+
+    private var transcriptScrollView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                let visible = filteredUtterances
+                if visible.isEmpty && isSearching {
+                    Text("No matches")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, minHeight: 60)
+                } else {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(visible.enumerated()), id: \.element.id) { index, utterance in
+                            UtteranceBubble(
+                                utterance: utterance,
+                                showTimestamp: shouldShowTimestamp(at: index, in: visible)
+                            )
+                            .id(utterance.id)
+                        }
+
+                        if !isSearching {
+                            if !volatileYouText.isEmpty {
+                                VolatileIndicator(text: volatileYouText, speaker: .you)
+                                    .id("volatile-you")
                             }
 
-                            if !isSearching {
-                                if !volatileYouText.isEmpty {
-                                    VolatileIndicator(text: volatileYouText, speaker: .you)
-                                        .id("volatile-you")
-                                }
-
-                                if !volatileThemText.isEmpty {
-                                    VolatileIndicator(text: volatileThemText, speaker: .them)
-                                        .id("volatile-them")
-                                }
+                            if !volatileThemText.isEmpty {
+                                VolatileIndicator(text: volatileThemText, speaker: .them)
+                                    .id("volatile-them")
                             }
                         }
-                        .padding(16)
                     }
+                    .padding(16)
                 }
-                .onChange(of: utterances.count) {
-                    guard !isSearching else { return }
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        if let last = utterances.last {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
-                    }
-                }
-                .onChange(of: volatileYouText) {
-                    guard !isSearching else { return }
-                    proxy.scrollTo("volatile-you", anchor: .bottom)
-                }
-                .onChange(of: volatileThemText) {
-                    guard !isSearching else { return }
-                    proxy.scrollTo("volatile-them", anchor: .bottom)
-                }
-                .onChange(of: searchText) {
-                    if searchText.isEmpty, let last = utterances.last {
+            }
+            .onChange(of: utterances.count) {
+                guard !isSearching, autoScrollEnabled else { return }
+                withAnimation(.easeOut(duration: 0.2)) {
+                    if let last = utterances.last {
                         proxy.scrollTo(last.id, anchor: .bottom)
                     }
+                }
+            }
+            .onChange(of: volatileYouText) {
+                guard !isSearching, autoScrollEnabled else { return }
+                proxy.scrollTo("volatile-you", anchor: .bottom)
+            }
+            .onChange(of: volatileThemText) {
+                guard !isSearching, autoScrollEnabled else { return }
+                proxy.scrollTo("volatile-them", anchor: .bottom)
+            }
+            .onChange(of: searchText) {
+                if searchText.isEmpty, autoScrollEnabled, let last = utterances.last {
+                    proxy.scrollTo(last.id, anchor: .bottom)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if !autoScrollEnabled {
+                    Button {
+                        autoScrollEnabled = true
+                        if let last = utterances.last {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.white, Color.accentTeal)
+                            .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Resume auto-scroll")
+                    .padding(12)
+                    .transition(.opacity.combined(with: .scale))
                 }
             }
         }
