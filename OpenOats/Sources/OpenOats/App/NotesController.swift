@@ -56,14 +56,18 @@ final class NotesController {
     // MARK: - Lifecycle
 
     /// Called when the Notes window appears. Loads history and handles pending navigation.
-    func onAppear() async {
+    /// Returns true if a deep-link session selection was consumed (caller should switch to notes tab).
+    @discardableResult
+    func onAppear() async -> Bool {
         await loadHistory()
 
         if let requested = coordinator.consumeRequestedSessionSelection() {
             selectSession(requested)
+            return true
         } else if let last = coordinator.lastEndedSession {
             selectSession(last.id)
         }
+        return false
     }
 
     /// React to a new session ending while the Notes window is open.

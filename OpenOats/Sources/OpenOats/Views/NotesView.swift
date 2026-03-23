@@ -27,7 +27,17 @@ struct NotesView: View {
         .task {
             let controller = NotesController(coordinator: coordinator)
             notesController = controller
-            await controller.onAppear()
+            await controller.loadHistory()
+
+            // Handle pending navigation — inline rather than via controller
+            // to ensure @State detailViewMode update happens in the same
+            // transaction as session selection (matches pre-Phase 6 behavior).
+            if let requested = coordinator.consumeRequestedSessionSelection() {
+                controller.selectSession(requested)
+                detailViewMode = .notes
+            } else if let last = coordinator.lastEndedSession {
+                controller.selectSession(last.id)
+            }
         }
     }
 
