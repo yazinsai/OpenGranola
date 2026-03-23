@@ -4,15 +4,13 @@ import XCTest
 @MainActor
 final class AppCoordinatorIntegrationTests: XCTestCase {
 
-    func testUserStoppedFinalizesSessionAndRefreshesHistory() async {
-        let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-            .appendingPathComponent("OpenOatsCoordinatorTests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let notesDirectory = root.appendingPathComponent("Notes", isDirectory: true)
-        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try? FileManager.default.createDirectory(at: notesDirectory, withIntermediateDirectories: true)
-
-        let suiteName = "com.openoats.tests.coordinator.\(UUID().uuidString)"
+    /// Create a coordinator + controller pair wired together for integration tests.
+    private func makeTestHarness(
+        root: URL,
+        notesDirectory: URL,
+        scripted: [Utterance]
+    ) -> (AppCoordinator, LiveSessionController, AppSettings, SessionStore) {
+        let suiteName = "com.openoats.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName) ?? .standard
         defaults.removePersistentDomain(forName: suiteName)
         defaults.set(notesDirectory.path, forKey: "notesFolderPath")
@@ -30,18 +28,48 @@ final class AppCoordinatorIntegrationTests: XCTestCase {
         let coordinator = AppCoordinator(
             sessionStore: sessionStore,
             templateStore: TemplateStore(rootDirectory: root),
-            notesEngine: NotesEngine(mode: .scripted(markdown: "Unused")),
+            notesEngine: NotesEngine(mode: .scripted(markdown: "Test")),
             transcriptStore: transcriptStore
         )
         coordinator.transcriptionEngine = TranscriptionEngine(
             transcriptStore: transcriptStore,
             settings: settings,
-            mode: .scripted([
-                Utterance(text: "Let me walk through the rollout plan.", speaker: .you),
-                Utterance(text: "The pilot scope sounds good to me.", speaker: .them),
-            ])
+            mode: .scripted(scripted)
         )
         coordinator.transcriptLogger = TranscriptLogger(directory: notesDirectory)
+
+        let container = AppContainer(
+            mode: .live,
+            defaults: defaults,
+            appSupportDirectory: root,
+            notesDirectory: notesDirectory
+        )
+        let controller = LiveSessionController(coordinator: coordinator, container: container)
+        coordinator.liveSessionController = controller
+
+        return (coordinator, controller, settings, sessionStore)
+    }
+
+    private func makeTempDirs() -> (root: URL, notes: URL) {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("OpenOatsCoordinatorTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let notesDirectory = root.appendingPathComponent("Notes", isDirectory: true)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: notesDirectory, withIntermediateDirectories: true)
+        return (root, notesDirectory)
+    }
+
+    func testUserStoppedFinalizesSessionAndRefreshesHistory() async {
+        let dirs = makeTempDirs()
+        let (coordinator, _controller, settings, sessionStore) = makeTestHarness(
+            root: dirs.root,
+            notesDirectory: dirs.notes,
+            scripted: [
+                Utterance(text: "Let me walk through the rollout plan.", speaker: .you),
+                Utterance(text: "The pilot scope sounds good to me.", speaker: .them),
+            ]
+        )
 
         let metadata = MeetingMetadata(
             detectionContext: DetectionContext(
@@ -87,46 +115,21 @@ final class AppCoordinatorIntegrationTests: XCTestCase {
         XCTAssertNotNil(persisted)
         XCTAssertEqual(persisted?.utteranceCount, 2)
         XCTAssertFalse(persisted?.hasNotes ?? true)
+
+        // Keep controller alive for the duration of the test (weak ref in coordinator)
+        withExtendedLifetime(_controller) {}
     }
 
     func testFinalizationWritesSidecarWithCorrectMetadata() async {
-        let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-            .appendingPathComponent("OpenOatsFinalizationTests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let notesDirectory = root.appendingPathComponent("Notes", isDirectory: true)
-        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try? FileManager.default.createDirectory(at: notesDirectory, withIntermediateDirectories: true)
-
-        let suiteName = "com.openoats.tests.finalization.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
-        defaults.removePersistentDomain(forName: suiteName)
-        defaults.set(notesDirectory.path, forKey: "notesFolderPath")
-        defaults.set(true, forKey: "hasAcknowledgedRecordingConsent")
-
-        let storage = AppSettingsStorage(
-            defaults: defaults,
-            secretStore: .ephemeral,
-            defaultNotesDirectory: notesDirectory,
-            runMigrations: false
-        )
-        let settings = AppSettings(storage: storage)
-        let transcriptStore = TranscriptStore()
-        let sessionStore = SessionStore(rootDirectory: root)
-        let coordinator = AppCoordinator(
-            sessionStore: sessionStore,
-            templateStore: TemplateStore(rootDirectory: root),
-            notesEngine: NotesEngine(mode: .scripted(markdown: "Test")),
-            transcriptStore: transcriptStore
-        )
-        coordinator.transcriptionEngine = TranscriptionEngine(
-            transcriptStore: transcriptStore,
-            settings: settings,
-            mode: .scripted([
+        let dirs = makeTempDirs()
+        let (coordinator, _controller, settings, sessionStore) = makeTestHarness(
+            root: dirs.root,
+            notesDirectory: dirs.notes,
+            scripted: [
                 Utterance(text: "Hello from you.", speaker: .you),
                 Utterance(text: "Hello from them.", speaker: .them),
-            ])
+            ]
         )
-        coordinator.transcriptLogger = TranscriptLogger(directory: notesDirectory)
 
         let metadata = MeetingMetadata.manual()
         coordinator.handle(.userStarted(metadata), settings: settings)
@@ -154,6 +157,8 @@ final class AppCoordinatorIntegrationTests: XCTestCase {
         let session = indices.first!
         XCTAssertFalse(session.hasNotes)
         XCTAssertEqual(session.utteranceCount, 2)
+
+        withExtendedLifetime(_controller) {}
     }
 
     func testFinalizationTimeoutForcesIdleState() async {

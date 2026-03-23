@@ -114,13 +114,16 @@ final class AppCoordinator {
     }
 
     /// The template snapshot frozen at session start (not stop).
-    private var sessionTemplateSnapshot: TemplateSnapshot?
+    var sessionTemplateSnapshot: TemplateSnapshot?
 
     /// Guard against finalization hanging forever.
     private var finalizationTimeoutTask: Task<Void, Never>?
 
     /// Retained reference to the active settings for side effects.
     var activeSettings: AppSettings?
+
+    /// The live session controller that handles all session side effects.
+    weak var liveSessionController: LiveSessionController?
 
     /// Task consuming detection controller events.
     private var detectionEventTask: Task<Void, Never>?
@@ -157,9 +160,7 @@ final class AppCoordinator {
     private func performSideEffects(for event: MeetingEvent, settings: AppSettings?) {
         switch event {
         case .userStarted(let metadata):
-            Task {
-                await startTranscription(metadata: metadata, settings: settings)
-            }
+            Task { await liveSessionController?.startTranscription(metadata: metadata, settings: settings) }
 
         case .userStopped:
             finalizationTimeoutTask = Task {
@@ -168,20 +169,14 @@ final class AppCoordinator {
                 handle(.finalizationTimeout)
             }
             Task {
-                await finalizeCurrentSession(settings: settings)
+                await liveSessionController?.finalizeCurrentSession(settings: settings)
                 finalizationTimeoutTask?.cancel()
                 finalizationTimeoutTask = nil
                 handle(.finalizationComplete)
             }
 
         case .userDiscarded:
-            Task {
-                transcriptionEngine?.stop()
-                audioRecorder?.discardRecording()
-                await transcriptLogger?.endSession()
-                transcriptStore.clear()
-                await sessionStore.endSession()
-            }
+            Task { liveSessionController?.discardSession() }
 
         case .finalizationComplete:
             finalizationTimeoutTask?.cancel()
@@ -189,217 +184,6 @@ final class AppCoordinator {
 
         case .finalizationTimeout:
             finalizationTimeoutTask = nil
-        }
-    }
-
-    // MARK: - Transcription Lifecycle
-
-    private func startTranscription(metadata: MeetingMetadata, settings: AppSettings?) async {
-        // Live session preempts any running batch transcription
-        if let batchEngine {
-            await batchEngine.cancel()
-        }
-
-        lastEndedSession = nil
-        lastStorageError = nil
-        transcriptStore.clear()
-
-        // Wire storage error reporting so UI can surface write failures
-        await sessionStore.setWriteErrorHandler { [weak self] message in
-            Task { @MainActor [weak self] in
-                self?.lastStorageError = message
-            }
-        }
-
-        // Freeze template choice at start time
-        if let template = selectedTemplate {
-            sessionTemplateSnapshot = templateStore.snapshot(of: template)
-        } else if let generic = templateStore.template(for: TemplateStore.genericID) {
-            sessionTemplateSnapshot = templateStore.snapshot(of: generic)
-        } else {
-            sessionTemplateSnapshot = nil
-        }
-
-        let templateID = selectedTemplate?.id
-        await sessionStore.startSession(templateID: templateID)
-        await transcriptLogger?.startSession()
-
-        if let settings {
-            if settings.saveAudioRecording || settings.enableBatchRefinement {
-                audioRecorder?.startSession()
-                transcriptionEngine?.audioRecorder = audioRecorder
-            } else {
-                transcriptionEngine?.audioRecorder = nil
-            }
-
-            await transcriptionEngine?.start(
-                locale: settings.locale,
-                inputDeviceID: settings.inputDeviceID,
-                transcriptionModel: settings.transcriptionModel
-            )
-        }
-    }
-
-    private func finalizeCurrentSession(settings: AppSettings? = nil) async {
-        // 1. Drain audio buffers (flush final speech)
-        await transcriptionEngine?.finalize()
-
-        // 1b. Drain pending refinements (5-second timeout)
-        if let settings, settings.enableTranscriptRefinement {
-            await refinementEngine?.drain(timeout: .seconds(5))
-        }
-
-        // 2. Drain delayed JSONL writes
-        await sessionStore.awaitPendingWrites()
-
-        // 2b. Backfill refined text into JSONL from TranscriptStore
-        // The 5-second delayed writes often miss refinedText because LLM calls take longer.
-        // By now both the refinement engine and pending writes have drained, so the
-        // TranscriptStore has the final refined text for all utterances.
-        let utterancesSnapshot = transcriptStore.utterances
-        await sessionStore.backfillRefinedText(from: utterancesSnapshot)
-
-        // 3. Build sidecar from this session's transcript data
-        let sessionID = await sessionStore.currentSessionID ?? "unknown"
-        let utteranceCount = transcriptStore.utterances.count
-        let title = transcriptStore.conversationState.currentTopic.isEmpty
-            ? nil : transcriptStore.conversationState.currentTopic
-
-        // Extract meeting app name from state machine metadata (available in .ending state)
-        let meetingAppName: String?
-        if case .ending(let metadata) = state {
-            meetingAppName = metadata.detectionContext?.meetingApp?.name
-        } else {
-            meetingAppName = nil
-        }
-
-        // Capture the ASR engine name from current settings
-        let engineName = settings?.transcriptionModel.rawValue
-
-        let index = SessionIndex(
-            id: sessionID,
-            startedAt: transcriptStore.utterances.first?.timestamp ?? Date(),
-            endedAt: Date(),
-            templateSnapshot: sessionTemplateSnapshot,
-            title: title,
-            utteranceCount: utteranceCount,
-            hasNotes: false,
-            meetingApp: meetingAppName,
-            engine: engineName
-        )
-        let sidecar = SessionSidecar(index: index, notes: nil)
-
-        // 4. Write sidecar
-        await sessionStore.writeSidecar(sidecar)
-
-        // 4b. Generate structured Markdown file from JSONL (has refined text after backfill)
-        let jsonlRecords = await sessionStore.loadTranscript(sessionID: sessionID)
-        if !jsonlRecords.isEmpty, let settings {
-            let outputDir = URL(fileURLWithPath: settings.notesFolderPath)
-            MarkdownMeetingWriter.write(
-                metadata: .init(from: index),
-                records: jsonlRecords,
-                outputDirectory: outputDir
-            )
-        }
-
-        // 5. Close JSONL file
-        await sessionStore.endSession()
-
-        // 6. Close plain-text archive (after drain so final utterances are captured)
-        await transcriptLogger?.endSession()
-
-        // 6b. Merge and encode audio recording (after all audio drained)
-        // If batch refinement is enabled, stash CAFs for offline transcription.
-        if let settings, let recorder = audioRecorder {
-            let wantsBatch = settings.enableBatchRefinement
-            let wantsExport = settings.saveAudioRecording
-
-            if wantsBatch && wantsExport {
-                // Both: copy temp CAFs for batch, then let finalizeRecording merge + clean originals
-                let tempURLs = recorder.tempFileURLs()
-                let anchorsData = recorder.timingAnchors()
-                let fm = FileManager.default
-
-                let copiedMic: URL?
-                if let micSrc = tempURLs.mic, fm.fileExists(atPath: micSrc.path) {
-                    let dst = URL(fileURLWithPath: NSTemporaryDirectory())
-                        .appendingPathComponent("batch_mic_\(sessionID).caf")
-                    try? fm.copyItem(at: micSrc, to: dst)
-                    copiedMic = dst
-                } else {
-                    copiedMic = nil
-                }
-
-                let copiedSys: URL?
-                if let sysSrc = tempURLs.sys, fm.fileExists(atPath: sysSrc.path) {
-                    let dst = URL(fileURLWithPath: NSTemporaryDirectory())
-                        .appendingPathComponent("batch_sys_\(sessionID).caf")
-                    try? fm.copyItem(at: sysSrc, to: dst)
-                    copiedSys = dst
-                } else {
-                    copiedSys = nil
-                }
-
-                await sessionStore.stashAudioForBatch(
-                    sessionID: sessionID,
-                    micURL: copiedMic,
-                    sysURL: copiedSys,
-                    anchors: BatchAnchors(
-                        micStartDate: anchorsData.micStartDate,
-                        sysStartDate: anchorsData.sysStartDate,
-                        micAnchors: anchorsData.micAnchors,
-                        sysAnchors: anchorsData.sysAnchors
-                    )
-                )
-
-                // Now finalize: merges originals to M4A and cleans temp files
-                await recorder.finalizeRecording()
-            } else if wantsBatch {
-                // Batch only: seal and stash, skip merge
-                let sealed = recorder.sealForBatch()
-                await sessionStore.stashAudioForBatch(
-                    sessionID: sessionID,
-                    micURL: sealed.mic,
-                    sysURL: sealed.sys,
-                    anchors: BatchAnchors(
-                        micStartDate: sealed.micStartDate,
-                        sysStartDate: sealed.sysStartDate,
-                        micAnchors: sealed.micAnchors,
-                        sysAnchors: sealed.sysAnchors
-                    )
-                )
-                // No finalizeRecording needed — files moved to session subdir
-            } else if wantsExport {
-                await recorder.finalizeRecording()
-            }
-        }
-
-        // 7. Update UI state + refresh history so Notes window sees the new session
-        lastEndedSession = index
-        sessionTemplateSnapshot = nil
-        await loadHistory()
-
-        // 8. Kick off batch transcription if enabled
-        if let settings, settings.enableBatchRefinement, let batchEngine {
-            let batchSessionID = sessionID
-            let batchModel = settings.batchTranscriptionModel
-            let batchLocale = settings.locale
-            let notesDir = URL(fileURLWithPath: settings.notesFolderPath)
-            let store = sessionStore
-            let diarize = settings.enableDiarization
-            let diarizeVariant = settings.diarizationVariant
-            Task.detached { [batchEngine] in
-                await batchEngine.process(
-                    sessionID: batchSessionID,
-                    model: batchModel,
-                    locale: batchLocale,
-                    sessionStore: store,
-                    notesDirectory: notesDir,
-                    enableDiarization: diarize,
-                    diarizationVariant: diarizeVariant
-                )
-            }
         }
     }
 
