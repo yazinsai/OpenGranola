@@ -9,7 +9,7 @@ struct NotesView: View {
         case notes = "Notes"
     }
 
-    @State private var detailViewMode: DetailViewMode = .notes
+    @State private var detailViewMode: DetailViewMode = .transcript
     @State private var showingOriginal = false
     @State private var showDeleteConfirmation = false
 
@@ -28,11 +28,6 @@ struct NotesView: View {
         }
         .onChange(of: state.pendingDeleteSessionID) { _, pending in
             showDeleteConfirmation = pending != nil
-        }
-        .onChange(of: state.loadedSession?.summary.id) { _, _ in
-            if state.loadedSession != nil {
-                detailViewMode = .notes
-            }
         }
     }
 
@@ -138,8 +133,10 @@ struct NotesView: View {
             set: { newValue in
                 Task {
                     await notesController.selectSession(newValue)
-                    if notesController.state.loadedSession != nil {
+                    if notesController.state.loadedSession?.notes != nil {
                         detailViewMode = .notes
+                    } else {
+                        detailViewMode = .transcript
                     }
                 }
             }

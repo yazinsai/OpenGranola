@@ -70,7 +70,6 @@ struct ControlBar: View {
                             Text("Live")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(.primary)
-                                .accessibilityIdentifier("app.controlBar.toggle")
                         } else {
                             Image(systemName: "mic.fill")
                                 .font(.system(size: 11))
@@ -79,7 +78,6 @@ struct ControlBar: View {
                             Text("Start")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.white)
-                                .accessibilityIdentifier("app.controlBar.toggle")
                         }
                     }
                     .padding(.horizontal, 12)
@@ -91,6 +89,7 @@ struct ControlBar: View {
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("app.controlBar.toggle")
 
                 // Audio level bars when running
                 if isRunning {
