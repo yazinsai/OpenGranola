@@ -1,6 +1,31 @@
 import SwiftUI
 import CoreAudio
 
+struct BatchCompletionPresentationState {
+    private(set) var lastObservedStatus: BatchTranscriptionEngine.Status = .idle
+    private(set) var visibleCompletedSessionID: String?
+
+    mutating func observe(_ status: BatchTranscriptionEngine.Status) -> String? {
+        defer { lastObservedStatus = status }
+
+        switch status {
+        case .completed(let sessionID):
+            guard lastObservedStatus != status else { return nil }
+            visibleCompletedSessionID = sessionID
+            return sessionID
+        default:
+            if case .completed = lastObservedStatus {
+                visibleCompletedSessionID = nil
+            }
+            return nil
+        }
+    }
+
+    mutating func dismissCompletedBanner() {
+        visibleCompletedSessionID = nil
+    }
+}
+
 struct ContentView: View {
     private enum ControlBarAction {
         case toggle
@@ -54,7 +79,8 @@ struct ContentView: View {
     @State private var observedVoyageApiKey = ""
     @State private var observedTranscriptionModel: TranscriptionModel = .parakeetV2
     @State private var observedInputDeviceID: AudioDeviceID = 0
-    @State private var previousBatchStatus: BatchTranscriptionEngine.Status = .idle
+    @State private var batchCompletionPresentation = BatchCompletionPresentationState()
+    @State private var batchCompletionDismissTask: Task<Void, Never>?
 
     var body: some View {
         bodyWithModifiers
@@ -173,7 +199,9 @@ struct ContentView: View {
                 .background(.ultraThinMaterial)
 
                 Divider()
-            } else if case .completed = viewState.batchStatus {
+            } else if let visibleSessionID = batchCompletionPresentation.visibleCompletedSessionID,
+                      case .completed(let sessionID) = viewState.batchStatus,
+                      sessionID == visibleSessionID {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
@@ -374,24 +402,27 @@ struct ContentView: View {
                 // Poll batch engine status (actor-isolated)
                 if let engine = coordinator.batchEngine {
                     let status = await engine.status
+                    let completedSessionID = batchCompletionPresentation.observe(status)
                     // Skip updating if idle → idle (no-op)
                     if status != .idle || coordinator.batchStatus != .idle {
-                        let prev = coordinator.batchStatus
                         coordinator.batchStatus = status
 
                         // Send notification on completion if app is not focused
-                        if case .completed(let sid) = status, prev != status {
+                        if let sid = completedSessionID {
                             if !NSApp.isActive, let notifService = coordinator.notificationService {
                                 await notifService.postBatchCompleted(sessionID: sid)
                             }
                             // Refresh history so the updated transcript is visible
                             await coordinator.loadHistory()
 
-                            // Auto-dismiss after 3 seconds
-                            Task { @MainActor in
+                            // Auto-dismiss the banner after 3 seconds without
+                            // mutating the engine-backed completion state.
+                            batchCompletionDismissTask?.cancel()
+                            batchCompletionDismissTask = Task { @MainActor in
                                 try? await Task.sleep(for: .seconds(3))
-                                if case .completed = coordinator.batchStatus {
-                                    coordinator.batchStatus = .idle
+                                guard !Task.isCancelled else { return }
+                                if batchCompletionPresentation.visibleCompletedSessionID == sid {
+                                    batchCompletionPresentation.dismissCompletedBanner()
                                 }
                             }
                         }
