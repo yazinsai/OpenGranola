@@ -45,7 +45,9 @@ final class LiveSessionController {
     private var observedTranscriptionModel: TranscriptionModel = .parakeetV2
     private var observedInputDeviceID: AudioDeviceID = 0
     private var observedPendingExternalCommandID: UUID?
-    private var previousBatchStatus: BatchTranscriptionEngine.Status = .idle
+    /// Tracks the session ID we last handled a batch completion for,
+    /// preventing the auto-dismiss → re-poll cycle from re-triggering the notification.
+    private var lastNotifiedBatchSessionID: String?
 
     init(coordinator: AppCoordinator, container: AppContainer) {
         self.coordinator = coordinator
@@ -73,10 +75,10 @@ final class LiveSessionController {
             if let engine = coordinator.batchEngine {
                 let status = await engine.status
                 if status != .idle || coordinator.batchStatus != .idle {
-                    let prev = coordinator.batchStatus
                     coordinator.batchStatus = status
 
-                    if case .completed(let sid) = status, prev != status {
+                    if case .completed(let sid) = status, lastNotifiedBatchSessionID != sid {
+                        lastNotifiedBatchSessionID = sid
                         if !NSApp.isActive, let notifService = container.notificationService {
                             await notifService.postBatchCompleted(sessionID: sid)
                         }
