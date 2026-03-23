@@ -60,9 +60,9 @@ final class NotesController {
         await loadHistory()
 
         if let requested = coordinator.consumeRequestedSessionSelection() {
-            state.selectedSessionID = requested
+            selectSession(requested)
         } else if let last = coordinator.lastEndedSession {
-            state.selectedSessionID = last.id
+            selectSession(last.id)
         }
     }
 
@@ -70,7 +70,7 @@ final class NotesController {
     func handleLastEndedSessionChanged() async {
         if let last = coordinator.lastEndedSession {
             await loadHistory()
-            state.selectedSessionID = last.id
+            selectSession(last.id)
         }
     }
 
@@ -78,7 +78,7 @@ final class NotesController {
     /// Returns true if a request was consumed (caller may want to switch to notes tab).
     func handleRequestedSessionSelection() -> Bool {
         if let requested = coordinator.consumeRequestedSessionSelection() {
-            state.selectedSessionID = requested
+            selectSession(requested)
             return true
         }
         return false
