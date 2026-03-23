@@ -1,26 +1,18 @@
 import Foundation
 import Observation
-import SwiftUI
 
-enum ExternalCommand: Equatable {
-    case startSession
-    case stopSession
-    case openNotes(sessionID: String?)
-}
-
-struct ExternalCommandRequest: Identifiable, Equatable {
-    let id: UUID
-    let command: ExternalCommand
-
-    init(command: ExternalCommand) {
-        self.id = UUID()
-        self.command = command
-    }
-}
-
-/// Shared state coordinator injected into all window scenes.
-/// Bridges the main window (transcription) and Notes window (history + generation).
-/// Owns TranscriptStore, TranscriptLogger, TranscriptionEngine, and the recording lifecycle.
+/// Slim coordinator that owns the meeting lifecycle state machine and all shared
+/// cross-cutting state (session history, external command queue, detection event loop).
+///
+/// **What lives here:**
+/// - `state` / `handle()` / `performSideEffects()` — canonical MeetingState machine
+/// - `sessionHistory` / `lastEndedSession` — shared observable state consumed by multiple views
+/// - External command queue — bridges deep links and menu-bar actions to the live session
+/// - Detection event loop — maps MeetingDetectionController events to state machine events
+/// - Service references — constructor-injected stores and lazily-set engines
+///
+/// Side effects are delegated to `LiveSessionController`; this class never touches audio
+/// or disk directly.
 @Observable
 @MainActor
 final class AppCoordinator {
