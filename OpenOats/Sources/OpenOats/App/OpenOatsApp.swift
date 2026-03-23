@@ -249,7 +249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return .terminateNow
         }
 
-        guard liveSessionController.state.hasActiveSession else {
+        guard liveSessionController.state.isRunning else {
             return .terminateNow
         }
 
@@ -346,7 +346,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func toggleMeeting() {
         guard let liveSessionController, let settings else { return }
         guard settings.hasAcknowledgedRecordingConsent else { return }
-        guard !liveSessionController.state.isStartingSession else { return }
 
         if liveSessionController.state.isRunning {
             liveSessionController.stopSession()

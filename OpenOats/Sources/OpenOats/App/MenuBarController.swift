@@ -73,7 +73,7 @@ final class MenuBarController {
                 self.updateIcon()
                 await withCheckedContinuation { continuation in
                     withObservationTracking {
-                        _ = self.liveSessionController.state.hasActiveSession
+                        _ = self.liveSessionController.state.isRunning
                     } onChange: {
                         continuation.resume()
                     }
@@ -83,7 +83,7 @@ final class MenuBarController {
     }
 
     private func updateIcon() {
-        let symbolName = liveSessionController.state.hasActiveSession
+        let symbolName = liveSessionController.state.isRunning
             ? "waveform.circle.fill"
             : "waveform.circle"
         statusItem.button?.image = NSImage(

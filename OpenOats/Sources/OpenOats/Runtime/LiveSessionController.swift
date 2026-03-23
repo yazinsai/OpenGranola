@@ -8,7 +8,6 @@ import Observation
 final class LiveSessionController {
     struct State: Sendable {
         var sessionPhase: MeetingState = .idle
-        var isStartingSession = false
         var liveTranscript: [Utterance] = []
         var volatileYouText = ""
         var volatileThemText = ""
@@ -32,15 +31,6 @@ final class LiveSessionController {
         var isRunning: Bool {
             if case .recording = sessionPhase { return true }
             return false
-        }
-
-        var isEnding: Bool {
-            if case .ending = sessionPhase { return true }
-            return false
-        }
-
-        var hasActiveSession: Bool {
-            isStartingSession || isRunning || isEnding
         }
 
         var recordingStartedAt: Date? {
@@ -135,11 +125,15 @@ final class LiveSessionController {
     }
 
     func startManualSession() {
-        enqueueSessionStart(metadata: .manual())
+        Task { @MainActor in
+            await self.startSession(metadata: .manual())
+        }
     }
 
     func startDetectedSession(_ metadata: MeetingMetadata) {
-        enqueueSessionStart(metadata: metadata)
+        Task { @MainActor in
+            await self.startSession(metadata: metadata)
+        }
     }
 
     func confirmModelDownloadAndStart() {
@@ -260,10 +254,7 @@ final class LiveSessionController {
         next.suggestions = suggestionEngine.suggestions
         next.isGeneratingSuggestions = suggestionEngine.isGenerating
         next.currentError = transcriptionEngine.lastError ?? next.lastStorageError
-        let engineStatus = transcriptionEngine.assetStatus
-        next.statusMessage = next.isStartingSession && engineStatus == "Ready"
-            ? "Starting..."
-            : engineStatus
+        next.statusMessage = transcriptionEngine.assetStatus
         next.needsDownload = transcriptionEngine.needsModelDownload
         next.kbIndexingProgress = knowledgeBase.indexingProgress
         next.showLiveTranscript = settings.showLiveTranscript
@@ -424,22 +415,8 @@ final class LiveSessionController {
         }
     }
 
-    private func enqueueSessionStart(metadata: MeetingMetadata) {
-        guard !state.hasActiveSession else { return }
-        state.isStartingSession = true
-        refreshProjectedState()
-
-        Task { @MainActor [weak self] in
-            await self?.startSession(metadata: metadata)
-        }
-    }
-
     private func startSession(metadata: MeetingMetadata) async {
-        guard state.isStartingSession || !state.hasActiveSession else { return }
-        defer {
-            state.isStartingSession = false
-            refreshProjectedState()
-        }
+        guard !state.isRunning else { return }
 
         await batchEngine.cancel()
         finalizationTask?.cancel()
@@ -477,6 +454,7 @@ final class LiveSessionController {
 
         guard transcriptionEngine.isRunning else {
             await repository.deleteSession(sessionID: handle.id)
+            refreshProjectedState()
             return
         }
 
