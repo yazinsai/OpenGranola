@@ -84,6 +84,12 @@ final class AppCoordinator {
         set { withMutation(keyPath: \.batchStatus) { _batchStatus = newValue } }
     }
 
+    @ObservationIgnored nonisolated(unsafe) private var _batchIsImporting: Bool = false
+    var batchIsImporting: Bool {
+        get { access(keyPath: \.batchIsImporting); return _batchIsImporting }
+        set { withMutation(keyPath: \.batchIsImporting) { _batchIsImporting = newValue } }
+    }
+
     var transcriptionEngine: TranscriptionEngine?
     var refinementEngine: TranscriptRefinementEngine?
     var audioRecorder: AudioRecorder?

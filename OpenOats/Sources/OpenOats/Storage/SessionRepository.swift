@@ -88,6 +88,8 @@ struct SessionMetadata: Codable, Sendable {
     var meetingApp: String?
     var engine: String?
     var tags: [String]?
+    /// How the session was created (nil for live sessions, "imported" for imported audio).
+    var source: String?
 }
 
 // MARK: - SessionRepository
@@ -341,6 +343,65 @@ actor SessionRepository {
         liveUtteranceCount = 0
     }
 
+    // MARK: - Imported Session
+
+    /// Configuration for creating an imported session (no live file handle needed).
+    struct ImportedSessionConfig: Sendable {
+        let title: String
+        let startedAt: Date
+        let endedAt: Date
+        let language: String?
+        let engine: String?
+    }
+
+    /// Create a session directory and initial metadata for an imported audio file.
+    /// Unlike `startSession`, this does not open a live file handle.
+    @discardableResult
+    func createImportedSession(config: ImportedSessionConfig) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let sessionID = "session_\(formatter.string(from: config.startedAt))"
+
+        let sessionDir = sessionDirectory(for: sessionID)
+        try? FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+
+        // Create audio subdirectory
+        let audioDir = sessionDir.appendingPathComponent("audio", isDirectory: true)
+        try? FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
+
+        let metadata = SessionMetadata(
+            id: sessionID,
+            startedAt: config.startedAt,
+            endedAt: config.endedAt,
+            title: config.title,
+            utteranceCount: 0,
+            hasNotes: false,
+            language: config.language,
+            engine: config.engine,
+            source: "imported"
+        )
+        writeSessionMetadata(metadata, sessionID: sessionID)
+
+        return sessionID
+    }
+
+    /// Update utterance count and endedAt for a finalized imported session.
+    func finalizeImportedSession(sessionID: String, utteranceCount: Int, endedAt: Date) {
+        guard var meta = loadSessionMetadataFile(sessionID: sessionID) else { return }
+        meta.utteranceCount = utteranceCount
+        meta.endedAt = endedAt
+        writeSessionMetadata(meta, sessionID: sessionID)
+    }
+
+    /// Copy an audio file into the session's audio directory.
+    func copyAudioFileToSession(sessionID: String, sourceURL: URL) {
+        let audioDir = sessionDirectory(for: sessionID)
+            .appendingPathComponent("audio", isDirectory: true)
+        try? FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
+        let dest = audioDir.appendingPathComponent("imported.\(sourceURL.pathExtension)")
+        try? FileManager.default.copyItem(at: sourceURL, to: dest)
+    }
+
     // MARK: - Final Transcript
 
     func saveFinalTranscript(sessionID: String, records: [SessionRecord]) {
@@ -455,7 +516,8 @@ actor SessionRepository {
                         language: meta.language,
                         meetingApp: meta.meetingApp,
                         engine: meta.engine,
-                        tags: meta.tags
+                        tags: meta.tags,
+                        source: meta.source
                     ))
                     continue
                 }
@@ -491,7 +553,8 @@ actor SessionRepository {
                 language: meta.language,
                 meetingApp: meta.meetingApp,
                 engine: meta.engine,
-                tags: meta.tags
+                tags: meta.tags,
+                source: meta.source
             )
 
             let transcript = loadTranscript(sessionID: id)
@@ -992,7 +1055,8 @@ actor SessionRepository {
             language: meta?.language,
             meetingApp: meta?.meetingApp,
             engine: meta?.engine,
-            tags: meta?.tags
+            tags: meta?.tags,
+            source: meta?.source
         )
 
         // Write/update Markdown meeting notes

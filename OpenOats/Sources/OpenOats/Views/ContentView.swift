@@ -102,13 +102,15 @@ struct ContentView: View {
                 Divider()
             }
 
-            // Batch transcription progress banner
+            // Batch transcription / import progress banner
             if case .transcribing(let progress) = controllerState.batchStatus {
                 HStack(spacing: 8) {
                     ProgressView(value: progress, total: 1.0)
                         .progressViewStyle(.linear)
                         .frame(maxWidth: .infinity)
-                    Text("Enhancing transcript... \(Int(progress * 100))%")
+                    Text(controllerState.batchIsImporting
+                         ? "Importing meeting recording… \(Int(progress * 100))%"
+                         : "Enhancing transcript... \(Int(progress * 100))%")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -122,7 +124,9 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Loading batch model...")
+                    Text(controllerState.batchIsImporting
+                         ? "Preparing to import…"
+                         : "Loading batch model...")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -136,7 +140,9 @@ struct ContentView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                         .font(.system(size: 12))
-                    Text("Transcript enhanced")
+                    Text(controllerState.batchIsImporting
+                         ? "Meeting recording imported"
+                         : "Transcript enhanced")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }

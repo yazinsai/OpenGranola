@@ -1,6 +1,8 @@
 import SwiftUI
 import AppKit
+import AVFoundation
 import Sparkle
+import UniformTypeIdentifiers
 import UserNotifications
 
 public struct OpenOatsRootApp: App {
@@ -79,6 +81,12 @@ public struct OpenOatsRootApp: App {
                 }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
 
+                Button("Import Meeting Recording...") {
+                    importMeetingRecording()
+                }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(coordinator.isRecording || isBatchEngineBusy)
+
                 Button("GitHub Repository...") {
                     if let url = URL(string: "https://github.com/yazinsai/OpenOats") {
                         NSWorkspace.shared.open(url)
@@ -117,6 +125,89 @@ extension OpenOatsRootApp {
 
     private func openNotesWindow() {
         openWindow(id: "notes")
+    }
+
+    private var isBatchEngineBusy: Bool {
+        switch coordinator.batchStatus {
+        case .idle, .completed, .failed, .cancelled: return false
+        default: return true
+        }
+    }
+
+    private func importMeetingRecording() {
+        let panel = NSOpenPanel()
+        panel.title = "Import Meeting Recording"
+        panel.allowedContentTypes = [
+            .audio,
+            .init(filenameExtension: "m4a")!,
+            .init(filenameExtension: "mp3")!,
+            .init(filenameExtension: "wav")!,
+            .init(filenameExtension: "caf")!,
+        ]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+
+        guard panel.runModal() == .OK, let fileURL = panel.url else { return }
+
+        guard let batchEngine = coordinator.batchEngine else { return }
+
+        let model = settings.transcriptionModel
+        let locale = settings.locale
+        let repo = coordinator.sessionRepository
+
+        // Derive start date and duration from file
+        let fm = FileManager.default
+        let startDate: Date
+        if let attrs = try? fm.attributesOfItem(atPath: fileURL.path),
+           let creation = attrs[.creationDate] as? Date {
+            startDate = creation
+        } else {
+            startDate = Date()
+        }
+
+        // Estimate duration from audio file for endedAt
+        var estimatedEnd = startDate
+        if let audioFile = try? AVAudioFile(forReading: fileURL) {
+            let duration = Double(audioFile.length) / audioFile.processingFormat.sampleRate
+            estimatedEnd = startDate.addingTimeInterval(duration)
+        }
+
+        let title = fileURL.deletingPathExtension().lastPathComponent
+
+        Task {
+            let sessionID = await repo.createImportedSession(
+                config: .init(
+                    title: title,
+                    startedAt: startDate,
+                    endedAt: estimatedEnd,
+                    language: settings.transcriptionLocale,
+                    engine: model.rawValue
+                )
+            )
+
+            await batchEngine.importFile(
+                url: fileURL,
+                sessionID: sessionID,
+                model: model,
+                locale: locale,
+                sessionRepository: repo
+            )
+
+            // Check result
+            let status = await batchEngine.status
+            if case .completed = status {
+                coordinator.queueSessionSelection(sessionID)
+                openNotesWindow()
+                await coordinator.loadHistory()
+            } else if case .failed = status {
+                // Clean up the orphaned session
+                await repo.deleteSession(sessionID: sessionID)
+                await coordinator.loadHistory()
+            } else if case .cancelled = status {
+                await repo.deleteSession(sessionID: sessionID)
+                await coordinator.loadHistory()
+            }
+        }
     }
 
     private func showMainWindow() {

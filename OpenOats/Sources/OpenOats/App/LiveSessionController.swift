@@ -14,6 +14,7 @@ struct LiveSessionState {
     var suggestions: [Suggestion] = []
     var isGeneratingSuggestions: Bool = false
     var batchStatus: BatchTranscriptionEngine.Status = .idle
+    var batchIsImporting: Bool = false
     var lastEndedSession: SessionIndex? = nil
     var lastSessionHasNotes: Bool = false
     var kbIndexingProgress: String = ""
@@ -78,8 +79,10 @@ final class LiveSessionController {
             // Poll batch engine status (actor-isolated)
             if let engine = coordinator.batchEngine {
                 let status = await engine.status
+                let importing = await engine.isImporting
                 if status != .idle || coordinator.batchStatus != .idle {
                     coordinator.batchStatus = status
+                    coordinator.batchIsImporting = importing
 
                     if case .completed(let sid) = status, lastNotifiedBatchSessionID != sid {
                         lastNotifiedBatchSessionID = sid
@@ -467,6 +470,7 @@ final class LiveSessionController {
         next.suggestions = coordinator.suggestionEngine?.suggestions ?? []
         next.isGeneratingSuggestions = coordinator.suggestionEngine?.isGenerating ?? false
         next.batchStatus = coordinator.batchStatus
+        next.batchIsImporting = coordinator.batchIsImporting
         next.lastEndedSession = lastEndedSession
         next.lastSessionHasNotes = lastSessionHasNotes
         next.kbIndexingProgress = coordinator.knowledgeBase?.indexingProgress ?? ""

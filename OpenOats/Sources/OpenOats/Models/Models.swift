@@ -188,6 +188,8 @@ struct SessionIndex: Identifiable, Codable, Sendable {
     var engine: String?
     /// User-assigned tags for session organization.
     var tags: [String]?
+    /// How the session was created (nil for live sessions, "imported" for imported audio).
+    var source: String?
 }
 
 struct SessionSidecar: Codable, Sendable {

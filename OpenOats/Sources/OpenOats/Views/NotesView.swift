@@ -41,7 +41,9 @@ struct NotesView: View {
             // transaction as session selection (matches pre-Phase 6 behavior).
             if let requested = coordinator.consumeRequestedSessionSelection() {
                 controller.selectSession(requested)
-                detailViewMode = .notes
+                // Show Transcript tab for imported sessions (no notes generated yet)
+                let isImported = controller.state.sessionHistory.first(where: { $0.id == requested })?.source == "imported"
+                detailViewMode = isImported ? .transcript : .notes
             } else if let last = coordinator.lastEndedSession {
                 controller.selectSession(last.id)
             }

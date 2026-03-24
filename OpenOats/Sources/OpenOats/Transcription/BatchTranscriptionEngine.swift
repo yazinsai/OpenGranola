@@ -18,6 +18,8 @@ actor BatchTranscriptionEngine {
     }
 
     private(set) var status: Status = .idle
+    /// True when the current batch job is an audio file import (affects UI copy).
+    private(set) var isImporting: Bool = false
     private var currentTask: Task<Void, Never>?
 
     /// Process batch transcription for a completed session.
@@ -63,12 +65,133 @@ actor BatchTranscriptionEngine {
         task?.cancel()
         await task?.value
         status = .cancelled
+        isImporting = false
+    }
+
+    // MARK: - Audio Import
+
+    /// Import and transcribe an external audio file (meeting recording).
+    func importFile(
+        url: URL,
+        sessionID: String,
+        model: TranscriptionModel,
+        locale: Locale,
+        sessionRepository: SessionRepository
+    ) async {
+        currentTask?.cancel()
+        isImporting = true
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.runImport(
+                    url: url,
+                    sessionID: sessionID,
+                    model: model,
+                    locale: locale,
+                    sessionRepository: sessionRepository
+                )
+            } catch is CancellationError {
+                await self.setStatus(.cancelled)
+                await self.setIsImporting(false)
+                batchLog.info("Audio import cancelled for \(sessionID)")
+            } catch {
+                await self.setStatus(.failed(error.localizedDescription))
+                await self.setIsImporting(false)
+                batchLog.error("Audio import failed: \(error.localizedDescription)")
+            }
+        }
+        currentTask = task
+        await task.value
+    }
+
+    private func runImport(
+        url: URL,
+        sessionID: String,
+        model: TranscriptionModel,
+        locale: Locale,
+        sessionRepository: SessionRepository
+    ) async throws {
+        batchLog.info("Starting audio import for \(sessionID) from \(url.lastPathComponent)")
+        status = .loading(model: model.displayName)
+
+        // Prepare backend and VAD
+        let backend = model.makeBackend()
+        try await backend.prepare { statusMsg in
+            batchLog.info("Backend: \(statusMsg)")
+        }
+
+        try Task.checkCancellation()
+
+        let vad = try await VadManager()
+
+        try Task.checkCancellation()
+
+        status = .transcribing(progress: 0)
+
+        // Derive start date from file attributes
+        let startDate: Date
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let creationDate = attrs[.creationDate] as? Date {
+            startDate = creationDate
+        } else if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  let modDate = attrs[.modificationDate] as? Date {
+            startDate = modDate
+        } else {
+            startDate = Date()
+        }
+
+        // Transcribe the file as a single speaker
+        let records = try await transcribeFile(
+            url: url,
+            speaker: .them,
+            startDate: startDate,
+            sampleRate: nil,
+            backend: backend,
+            vad: vad,
+            locale: locale,
+            progressBase: 0,
+            progressScale: 1.0
+        )
+
+        try Task.checkCancellation()
+
+        guard !records.isEmpty else {
+            batchLog.warning("Audio import produced no records for \(sessionID)")
+            status = .failed("No speech detected in the audio file")
+            isImporting = false
+            return
+        }
+
+        // Derive endedAt from last record timestamp
+        let endedAt = records.last?.timestamp ?? startDate
+
+        // Save final transcript atomically
+        await sessionRepository.saveFinalTranscript(sessionID: sessionID, records: records)
+
+        // Update session metadata with final counts
+        await sessionRepository.finalizeImportedSession(
+            sessionID: sessionID,
+            utteranceCount: records.count,
+            endedAt: endedAt
+        )
+
+        // Copy original audio file to session
+        await sessionRepository.copyAudioFileToSession(sessionID: sessionID, sourceURL: url)
+
+        status = .completed(sessionID: sessionID)
+        isImporting = false
+        batchLog.info("Audio import completed for \(sessionID): \(records.count) records")
     }
 
     // MARK: - Private
 
     private func setStatus(_ newStatus: Status) {
         status = newStatus
+    }
+
+    private func setIsImporting(_ value: Bool) {
+        isImporting = value
     }
 
     private func runTranscription(
