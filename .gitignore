@@ -16,3 +16,4 @@ target/
 .claude/settings.local.json
 .claude/worktrees/
 opencassava/.npm-cache/
+.worktrees/
