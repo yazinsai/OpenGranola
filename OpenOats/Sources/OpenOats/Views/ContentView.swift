@@ -220,6 +220,7 @@ struct ContentView: View {
             ControlBar(
                 isRunning: controllerState.isRunning,
                 audioLevel: controllerState.audioLevel,
+                isMicMuted: controllerState.isMicMuted,
                 modelDisplayName: controllerState.modelDisplayName,
                 transcriptionPrompt: controllerState.transcriptionPrompt,
                 statusMessage: controllerState.statusMessage,
@@ -227,6 +228,9 @@ struct ContentView: View {
                 needsDownload: controllerState.needsDownload,
                 onToggle: {
                     pendingControlBarAction = .toggle
+                },
+                onMuteToggle: {
+                    liveSessionController?.toggleMicMute()
                 },
                 onConfirmDownload: {
                     pendingControlBarAction = .confirmDownload

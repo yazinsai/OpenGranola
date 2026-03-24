@@ -3,12 +3,14 @@ import SwiftUI
 struct ControlBar: View {
     let isRunning: Bool
     let audioLevel: Float
+    let isMicMuted: Bool
     let modelDisplayName: String
     let transcriptionPrompt: String
     let statusMessage: String?
     let errorMessage: String?
     let needsDownload: Bool
     let onToggle: () -> Void
+    let onMuteToggle: () -> Void
     let onConfirmDownload: () -> Void
 
     var body: some View {
@@ -60,16 +62,16 @@ struct ControlBar: View {
                 Button(action: onToggle) {
                     HStack(spacing: 6) {
                         if isRunning {
-                            // Pulsing dot when live
+                            // Pulsing dot when live, static when muted
                             Circle()
-                                .fill(Color.green)
+                                .fill(isMicMuted ? Color.red : Color.green)
                                 .frame(width: 8, height: 8)
-                                .scaleEffect(1.0 + CGFloat(audioLevel) * 0.5)
+                                .scaleEffect(isMicMuted ? 1.0 : 1.0 + CGFloat(audioLevel) * 0.5)
                                 .animation(.easeOut(duration: 0.1), value: audioLevel)
 
-                            Text("Live")
+                            Text(isMicMuted ? "Muted" : "Live")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(isMicMuted ? .red : .primary)
                         } else {
                             Image(systemName: "mic.fill")
                                 .font(.system(size: 11))
@@ -85,16 +87,27 @@ struct ControlBar: View {
                     // Avoid hover-driven local state here. On macOS 26 / Swift 6.2,
                     // switching this button from Start to Live while the pointer is
                     // over it can trip a SwiftUI executor crash in onHover handling.
-                    .background(isRunning ? Color.green.opacity(0.1) : Color.accentColor)
+                    .background(isRunning ? (isMicMuted ? Color.red.opacity(0.1) : Color.green.opacity(0.1)) : Color.accentColor)
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("app.controlBar.toggle")
 
-                // Audio level bars when running
+                // Mute button + audio level bars when running
                 if isRunning {
+                    Button(action: onMuteToggle) {
+                        Image(systemName: isMicMuted ? "mic.slash.fill" : "mic.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(isMicMuted ? .red : .secondary)
+                            .frame(width: 20, height: 20)
+                    }
+                    .buttonStyle(.plain)
+                    .help(isMicMuted ? "Unmute microphone" : "Mute microphone")
+                    .accessibilityIdentifier("app.controlBar.muteToggle")
+
                     AudioLevelView(level: audioLevel)
                         .frame(width: 40, height: 14)
+                        .opacity(isMicMuted ? 0.3 : 1.0)
                 }
 
                 Spacer()

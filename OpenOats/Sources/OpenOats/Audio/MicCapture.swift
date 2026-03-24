@@ -13,10 +13,17 @@ final class MicCapture: @unchecked Sendable {
     private let _hasCapturedFrames = SyncBool()
     private let _error = SyncString()
     private let _streamContinuation = OSAllocatedUnfairLock<AsyncStream<AVAudioPCMBuffer>.Continuation?>(uncheckedState: nil)
+    private let _muted = SyncBool()
 
-    var audioLevel: Float { _audioLevel.value }
+    var audioLevel: Float { _muted.value ? 0 : _audioLevel.value }
     var hasCapturedFrames: Bool { _hasCapturedFrames.value }
     var captureError: String? { _error.value }
+
+    /// When muted, buffers are not forwarded to the stream and audio level reads as 0.
+    var isMuted: Bool {
+        get { _muted.value }
+        set { _muted.value = newValue }
+    }
 
     /// Set a specific input device by its AudioDeviceID. Pass nil to use system default.
     func setInputDevice(_ deviceID: AudioDeviceID?) {
@@ -131,6 +138,7 @@ final class MicCapture: @unchecked Sendable {
 
             diagLog("[MIC-4] tapFormat: sr=\(tapFormat.sampleRate) ch=\(tapFormat.channelCount)")
 
+            let muted = self._muted
             var tapCallCount = 0
             inputNode.installTap(onBus: 0, bufferSize: 4096, format: tapFormat) { buffer, _ in
                 tapCallCount += 1
@@ -142,6 +150,7 @@ final class MicCapture: @unchecked Sendable {
                     diagLog("[MIC-6] tap #\(tapCallCount): frames=\(buffer.frameLength) rms=\(rms) level=\(level.value)")
                 }
 
+                guard !muted.value else { return }
                 continuation.yield(buffer)
             }
             self.hasTapInstalled = true

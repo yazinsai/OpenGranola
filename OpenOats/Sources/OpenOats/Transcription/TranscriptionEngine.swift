@@ -93,6 +93,13 @@ final class TranscriptionEngine {
         }
     }
 
+    /// Mute/unmute the microphone. When muted, mic audio is not transcribed
+    /// and the audio level reads as 0. System audio continues normally.
+    nonisolated var isMicMuted: Bool {
+        get { micCapture.isMuted }
+        set { micCapture.isMuted = newValue }
+    }
+
     private var micTask: Task<Void, Never>?
     private var sysTask: Task<Void, Never>?
     /// Keeps the mic stream alive for the audio level meter when transcription isn't running.

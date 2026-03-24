@@ -23,6 +23,7 @@ struct LiveSessionState {
     var transcriptionPrompt: String = ""
     var modelDisplayName: String = ""
     var showLiveTranscript: Bool = true
+    var isMicMuted: Bool = false
 }
 
 /// Owns all live session side effects: polling, utterance ingestion,
@@ -113,6 +114,11 @@ final class LiveSessionController {
     func confirmDownloadAndStart(settings: AppSettings) {
         coordinator.transcriptionEngine?.downloadConfirmed = true
         startSession(settings: settings)
+    }
+
+    func toggleMicMute() {
+        guard let engine = coordinator.transcriptionEngine, engine.isRunning else { return }
+        engine.isMicMuted.toggle()
     }
 
     // MARK: - KB Indexing
@@ -461,6 +467,7 @@ final class LiveSessionController {
         next.transcriptionPrompt = settings.transcriptionModel.downloadPrompt
         next.modelDisplayName = activeModelRaw.split(separator: "/").last.map(String.init) ?? activeModelRaw
         next.showLiveTranscript = settings.showLiveTranscript
+        next.isMicMuted = coordinator.transcriptionEngine?.isMicMuted ?? false
 
         state = next
     }
