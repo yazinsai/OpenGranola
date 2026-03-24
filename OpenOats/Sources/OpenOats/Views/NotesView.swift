@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct NotesView: View {
     @Bindable var settings: AppSettings
@@ -544,6 +545,84 @@ struct NotesView: View {
             .fixedSize()
             .help("Click to regenerate, or pick a different template")
         }
+
+        imageInsertMenu(controller: controller, state: state)
+    }
+
+    @ViewBuilder
+    private func imageInsertMenu(controller: NotesController, state: NotesState) -> some View {
+        Menu {
+            Button {
+                insertImageFromFile(controller: controller)
+            } label: {
+                Label("From File\u{2026}", systemImage: "folder")
+            }
+            Button {
+                insertImageFromClipboard(controller: controller)
+            } label: {
+                Label("From Clipboard", systemImage: "doc.on.clipboard")
+            }
+            .disabled(!clipboardHasImage())
+            Button {
+                captureScreenshot(controller: controller)
+            } label: {
+                Label("Capture Screenshot", systemImage: "camera.viewfinder")
+            }
+        } label: {
+            Label("Insert Image", systemImage: "photo.badge.plus")
+                .font(.system(size: 12))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .fixedSize()
+        .disabled(state.notesGenerationStatus == .generating || state.selectedSessionID == nil)
+        .help("Insert an image into notes")
+    }
+
+    private func clipboardHasImage() -> Bool {
+        let pb = NSPasteboard.general
+        return pb.canReadItem(withDataConformingToTypes: [UTType.png.identifier, UTType.tiff.identifier, UTType.jpeg.identifier])
+    }
+
+    private func insertImageFromFile(controller: NotesController) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose an image to insert into notes"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let nsImage = NSImage(contentsOf: url),
+              let tiff = nsImage.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let pngData = rep.representation(using: .png, properties: [:]) else { return }
+        controller.insertImage(imageData: pngData)
+    }
+
+    private func insertImageFromClipboard(controller: NotesController) {
+        let pb = NSPasteboard.general
+        if let data = pb.data(forType: .png) {
+            controller.insertImage(imageData: data)
+        } else if let data = pb.data(forType: .tiff),
+                  let rep = NSBitmapImageRep(data: data),
+                  let pngData = rep.representation(using: .png, properties: [:]) {
+            controller.insertImage(imageData: pngData)
+        }
+    }
+
+    private func captureScreenshot(controller: NotesController) {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).png")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-i", tempURL.path]
+        process.terminationHandler = { proc in
+            defer { try? FileManager.default.removeItem(at: tempURL) }
+            guard proc.terminationStatus == 0,
+                  let data = try? Data(contentsOf: tempURL) else { return }
+            Task { @MainActor in
+                controller.insertImage(imageData: data)
+            }
+        }
+        try? process.run()
     }
 
     @ViewBuilder
@@ -566,7 +645,7 @@ struct NotesView: View {
             generatingView(controller: controller, state: state)
         case .idle, .completed, .error:
             if let notes = state.loadedNotes {
-                notesContentView(notes)
+                notesContentView(notes, sessionDirectory: state.selectedSessionDirectory)
             } else {
                 notesEmptyState(controller: controller, state: state, sessionID: sessionID)
             }
@@ -597,9 +676,9 @@ struct NotesView: View {
         }
     }
 
-    private func notesContentView(_ notes: EnhancedNotes) -> some View {
+    private func notesContentView(_ notes: EnhancedNotes, sessionDirectory: URL?) -> some View {
         ScrollView {
-            markdownContent(notes.markdown)
+            markdownContent(notes.markdown, sessionDirectory: sessionDirectory)
                 .padding(16)
                 .accessibilityIdentifier("notes.renderedMarkdown")
         }
@@ -710,7 +789,7 @@ struct NotesView: View {
 
     // MARK: - Markdown Rendering
 
-    private func markdownContent(_ markdown: String) -> some View {
+    private func markdownContent(_ markdown: String, sessionDirectory: URL? = nil) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             let sections = parseMarkdownSections(markdown)
             ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
@@ -721,20 +800,79 @@ struct NotesView: View {
                         .padding(.top, section.level == 1 ? 4 : 2)
                 }
                 if !section.body.isEmpty {
-                    if let attributed = try? AttributedString(markdown: section.body, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-                        Text(attributed)
-                            .font(.system(size: 13))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Text(section.body)
-                            .font(.system(size: 13))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    sectionBodyView(section.body, sessionDirectory: sessionDirectory)
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func sectionBodyView(_ body: String, sessionDirectory: URL?) -> some View {
+        let blocks = parseBodyBlocks(body)
+        ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+            switch block {
+            case .text(let text):
+                if let attributed = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+                    Text(attributed)
+                        .font(.system(size: 13))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(text)
+                        .font(.system(size: 13))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            case .image(let path):
+                if let dir = sessionDirectory,
+                   let nsImage = NSImage(contentsOf: dir.appendingPathComponent(path)) {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: 500, maxHeight: 400)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else {
+                    Label("Image not found", systemImage: "photo")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private enum BodyBlock {
+        case text(String)
+        case image(path: String)
+    }
+
+    private func parseBodyBlocks(_ body: String) -> [BodyBlock] {
+        var blocks: [BodyBlock] = []
+        var scanner = body[...]
+
+        while let imgStart = scanner.range(of: "![") {
+            let before = String(scanner[scanner.startIndex..<imgStart.lowerBound])
+            if !before.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                blocks.append(.text(before))
+            }
+
+            let afterBracket = scanner[imgStart.upperBound...]
+            guard let closeBracket = afterBracket.range(of: "]("),
+                  let closeParen = afterBracket[closeBracket.upperBound...].range(of: ")") else {
+                blocks.append(.text(String(scanner)))
+                return blocks
+            }
+
+            let path = String(afterBracket[closeBracket.upperBound..<closeParen.lowerBound])
+            blocks.append(.image(path: path))
+            scanner = afterBracket[closeParen.upperBound...]
+        }
+
+        let tail = String(scanner)
+        if !tail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            blocks.append(.text(tail))
+        }
+
+        return blocks
     }
 
     private struct MarkdownSection {

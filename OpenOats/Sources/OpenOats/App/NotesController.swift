@@ -16,6 +16,8 @@ struct NotesState {
     var streamingMarkdown: String = ""
     /// Active tag filter for sidebar (nil = show all).
     var tagFilter: String?
+    /// Directory for the currently selected session (used for image loading).
+    var selectedSessionDirectory: URL?
 }
 
 enum CleanupStatus: Equatable {
@@ -98,11 +100,14 @@ final class NotesController {
         guard let sessionID else {
             state.loadedNotes = nil
             state.loadedTranscript = []
+            state.selectedSessionDirectory = nil
             return
         }
 
         state.loadedNotes = nil
         state.loadedTranscript = []
+        state.selectedSessionDirectory = coordinator.sessionRepository.sessionsDirectoryURL
+            .appendingPathComponent(sessionID, isDirectory: true)
         state.showingOriginal = false
         coordinator.cleanupEngine.cancel()
         syncCleanupStatus()
@@ -174,6 +179,41 @@ final class NotesController {
         coordinator.notesEngine.cancel()
         state.notesGenerationStatus = .idle
         state.streamingMarkdown = ""
+    }
+
+    // MARK: - Image Insertion
+
+    func insertImage(imageData: Data) {
+        guard let sessionID = state.selectedSessionID else { return }
+
+        Task {
+            let filename = await coordinator.sessionRepository.saveImage(
+                sessionID: sessionID, imageData: imageData
+            )
+            let imageRef = "\n\n![](images/\(filename))\n"
+
+            if let existing = state.loadedNotes {
+                let updated = EnhancedNotes(
+                    template: existing.template,
+                    generatedAt: existing.generatedAt,
+                    markdown: existing.markdown + imageRef
+                )
+                await coordinator.sessionRepository.saveNotes(sessionID: sessionID, notes: updated)
+                state.loadedNotes = updated
+            } else {
+                let template = state.selectedTemplate
+                    ?? coordinator.templateStore.template(for: TemplateStore.genericID)
+                    ?? TemplateStore.builtInTemplates.first!
+                let notes = EnhancedNotes(
+                    template: coordinator.templateStore.snapshot(of: template),
+                    generatedAt: Date(),
+                    markdown: "![](images/\(filename))"
+                )
+                await coordinator.sessionRepository.saveNotes(sessionID: sessionID, notes: notes)
+                state.loadedNotes = notes
+                await loadHistory()
+            }
+        }
     }
 
     // MARK: - Transcript Cleanup

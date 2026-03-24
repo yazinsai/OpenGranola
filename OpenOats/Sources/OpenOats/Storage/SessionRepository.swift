@@ -483,6 +483,18 @@ actor SessionRepository {
         )
     }
 
+    // MARK: - Images
+
+    func saveImage(sessionID: String, imageData: Data) -> String {
+        let dir = sessionDirectory(for: sessionID)
+            .appendingPathComponent("images", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let filename = "\(UUID().uuidString).png"
+        let url = dir.appendingPathComponent(filename)
+        try? imageData.write(to: url, options: .atomic)
+        return filename
+    }
+
     // MARK: - Listing & Loading
 
     func listSessions() -> [SessionIndex] {
@@ -929,7 +941,7 @@ actor SessionRepository {
 
     // MARK: - Accessors
 
-    var sessionsDirectoryURL: URL { sessionsDirectory }
+    nonisolated var sessionsDirectoryURL: URL { sessionsDirectory }
 
     func getCurrentSessionID() -> String? { currentSessionID }
 
