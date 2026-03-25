@@ -32,6 +32,8 @@ pub struct StreamingTranscriber {
     on_progress: Option<OnProgress>,
     stop_signal: Option<Arc<AtomicBool>>,
     parakeet_worker: Option<crate::transcription::parakeet::ParakeetWorker>,
+    diarization_enabled: bool,
+    clear_speakers_on_start: bool,
 }
 
 impl StreamingTranscriber {
@@ -44,6 +46,8 @@ impl StreamingTranscriber {
             on_progress: None,
             stop_signal: None,
             parakeet_worker: None,
+            diarization_enabled: false,
+            clear_speakers_on_start: false,
         }
     }
 
@@ -57,6 +61,8 @@ impl StreamingTranscriber {
             on_progress: None,
             stop_signal: None,
             parakeet_worker: None,
+            diarization_enabled: false,
+            clear_speakers_on_start: false,
         }
     }
 
@@ -79,6 +85,16 @@ impl StreamingTranscriber {
 
     pub fn with_stop_signal(mut self, stop_signal: Arc<AtomicBool>) -> Self {
         self.stop_signal = Some(stop_signal);
+        self
+    }
+
+    pub fn with_diarization(mut self, enabled: bool) -> Self {
+        self.diarization_enabled = enabled;
+        self
+    }
+
+    pub fn with_clear_speakers_on_start(mut self, enabled: bool) -> Self {
+        self.clear_speakers_on_start = enabled;
         self
     }
 
