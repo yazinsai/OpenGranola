@@ -107,6 +107,7 @@ public struct OpenOatsRootApp: App {
             TranscriptWindowView()
                 .environment(container)
                 .environment(coordinator)
+                .environment(coordinator.transcriptStore)
                 .defaultAppStorage(defaults)
         }
         .defaultSize(width: 600, height: 700)

@@ -1,10 +1,9 @@
 import SwiftUI
 
 struct TranscriptWindowView: View {
-    @Environment(AppCoordinator.self) private var coordinator
+    @Environment(TranscriptStore.self) private var store
 
     var body: some View {
-        let store = coordinator.transcriptStore
         VStack(spacing: 0) {
             HStack {
                 Text("Live Transcript")
