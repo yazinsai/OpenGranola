@@ -883,17 +883,21 @@ pub fn start_transcription(
             let app_sg = them_app.clone();
             let state_sg = Arc::clone(&them_state);
 
-            let on_them = move |text: String, _speaker_id: Option<String>| {
+            let on_them = move |text: String, speaker_id: Option<String>| {
                 if !*state_sg.is_running.lock().unwrap() {
                     return;
                 }
+                let (participant_id, participant_label) = match &speaker_id {
+                    Some(id) => speaker_id_to_label(id),
+                    None => ("remote_1".to_string(), "Speaker A".to_string()),
+                };
                 use opencassava_core::models::{Speaker, Utterance};
                 let utterance = Utterance {
                     id: uuid::Uuid::new_v4(),
                     text: text.clone(),
                     speaker: Speaker::Them,
-                    participant_id: Some("remote_1".into()),
-                    participant_label: Some("Speaker A".into()),
+                    participant_id: Some(participant_id.clone()),
+                    participant_label: Some(participant_label.clone()),
                     timestamp: chrono::Utc::now(),
                 };
 
@@ -901,16 +905,16 @@ pub fn start_transcription(
                 let payload = TranscriptPayload {
                     text: text.clone(),
                     speaker: "them".into(),
-                    participant_id: "remote_1".into(),
-                    participant_label: "Speaker A".into(),
+                    participant_id: participant_id.clone(),
+                    participant_label: participant_label.clone(),
                 };
                 app_sg.emit("transcript", &payload).ok();
 
                 // Append to session store and logger
                 let record = SessionRecord {
                     speaker: Speaker::Them,
-                    participant_id: Some("remote_1".into()),
-                    participant_label: Some("Speaker A".into()),
+                    participant_id: Some(participant_id.clone()),
+                    participant_label: Some(participant_label.clone()),
                     text: text.clone(),
                     timestamp: chrono::Utc::now(),
                     suggestions: None,
@@ -926,7 +930,7 @@ pub fn start_transcription(
                     .append_record(&record)
                     .ok();
                 state_sg.transcript_logger.lock().unwrap().append(
-                    "Speaker A",
+                    &participant_label,
                     &text,
                     chrono::Utc::now(),
                 );
@@ -976,7 +980,9 @@ pub fn start_transcription(
                 StreamingTranscriber::new(them_backend, them_lang, Box::new(on_them))
                 .with_volatile(Box::new(on_them_vol))
                 .with_progress(on_them_progress)
-                .with_stop_signal(Arc::clone(&them_state.stop_requested));
+                .with_stop_signal(Arc::clone(&them_state.stop_requested))
+                .with_diarization(settings.diarization_enabled)
+                .with_clear_speakers_on_start(true);
             if let Some(worker) = warmed_sys {
                 transcriber = transcriber.with_parakeet_worker(worker);
             }
@@ -1265,7 +1271,9 @@ pub fn start_transcription(
         let mut transcriber = StreamingTranscriber::new(backend, language, Box::new(on_you))
             .with_volatile(Box::new(on_you_vol))
             .with_progress(on_you_progress)
-            .with_stop_signal(Arc::clone(&state_clone.stop_requested));
+            .with_stop_signal(Arc::clone(&state_clone.stop_requested))
+            .with_diarization(false)
+            .with_clear_speakers_on_start(false);
         if let Some(worker) = warmed_mic {
             transcriber = transcriber.with_parakeet_worker(worker);
         }
