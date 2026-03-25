@@ -8,20 +8,18 @@ interface Props {
   colorLight?: string;
 }
 
-const BAR_COUNT = 3;
+const BAR_COUNT = 12;
 const BAR_WIDTH = 6;
 const BAR_GAP = 4;
 const BAR_STRIDE = BAR_WIDTH + BAR_GAP;
-const CLUSTER_WIDTH = BAR_COUNT * BAR_WIDTH + (BAR_COUNT - 1) * BAR_GAP;
+const CLUSTER_WIDTH = BAR_COUNT * BAR_WIDTH + (BAR_COUNT - 1) * BAR_GAP; // 116px
 const MAX_BAR_HEIGHT = 14;
+const MIN_ACTIVE_BAR_HEIGHT = 2;
 const SILENCE_BAR_HEIGHT = 3;
 const CORNER_RADIUS = 2;
-
-const BAR_CONFIGS = [
-  { speed: 1.0, phase: 0 },
-  { speed: 1.4, phase: Math.PI / 3 },
-  { speed: 0.8, phase: (2 * Math.PI) / 3 },
-];
+// Traveling wave: one full cycle visible across all bars, scrolling at ~3 rad/s
+const SPATIAL_FREQ = (2 * Math.PI) / BAR_COUNT;
+const TEMPORAL_FREQ = 0.003; // radians per ms
 
 export function WaveformVisualizer({
   level,
@@ -65,12 +63,13 @@ export function WaveformVisualizer({
 
     const loop = () => {
       ctx.clearRect(0, 0, width, height);
-      const t = performance.now() / 300;
+      const t = performance.now() * TEMPORAL_FREQ;
       for (let i = 0; i < BAR_COUNT; i++) {
-        const { speed, phase } = BAR_CONFIGS[i];
+        // Traveling wave: wave scrolls left→right across all bars
+        const wave = 0.5 + 0.5 * Math.sin(i * SPATIAL_FREQ - t);
         const barHeight = Math.max(
-          SILENCE_BAR_HEIGHT,
-          visualLevel * MAX_BAR_HEIGHT * (0.6 + 0.4 * Math.sin(t * speed + phase))
+          MIN_ACTIVE_BAR_HEIGHT,
+          visualLevel * MAX_BAR_HEIGHT * wave
         );
         drawRoundedBar(startX + i * BAR_STRIDE, barHeight, color);
       }
