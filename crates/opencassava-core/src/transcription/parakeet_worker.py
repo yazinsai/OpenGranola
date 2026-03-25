@@ -8,6 +8,11 @@ import soundfile as sf
 
 
 MODELS = {}
+SPEAKER_ANCHORS = {}        # speaker_id (str) → mean embedding (np.ndarray)
+SPEAKER_COUNTER = 0         # next speaker index
+TITANET_MODEL = None
+COSINE_THRESHOLD = 0.7
+MIN_SPEAKER_ID_SAMPLES = 16_000  # 1.0 s at 16 kHz
 
 
 def model_key(model_name: str, device: str) -> str:
@@ -51,6 +56,13 @@ def handle_ensure_model(payload):
     emit({"ok": True, "result": {"model": model_name}})
 
 
+def handle_clear_speakers():
+    global SPEAKER_ANCHORS, SPEAKER_COUNTER
+    SPEAKER_ANCHORS.clear()
+    SPEAKER_COUNTER = 0
+    emit({"ok": True, "result": {"cleared": True}})
+
+
 def handle_transcribe(payload):
     model_name = payload["model"]
     device = payload.get("device", "auto")
@@ -86,6 +98,8 @@ def main():
                 handle_health()
             elif command == "ensure_model":
                 handle_ensure_model(payload)
+            elif command == "clear_speakers":
+                handle_clear_speakers()
             elif command == "transcribe":
                 handle_transcribe(payload)
             elif command == "shutdown":
