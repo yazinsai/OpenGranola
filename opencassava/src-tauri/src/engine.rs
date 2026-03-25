@@ -560,6 +560,17 @@ fn resolve_transcription_language(settings: &AppSettings, model: &str) -> String
     }
 }
 
+/// Maps a Python worker speaker ID (e.g. "speaker_0") to a (participant_id, participant_label) pair.
+/// Falls back to ("remote_1", "Speaker A") for unrecognised formats.
+fn speaker_id_to_label(id: &str) -> (String, String) {
+    if let Some(n_str) = id.strip_prefix("speaker_") {
+        if let Ok(n) = n_str.parse::<usize>() {
+            return (id.to_string(), format!("Speaker {}", n + 1));
+        }
+    }
+    ("remote_1".to_string(), "Speaker A".to_string())
+}
+
 // ── LLM / Embed resolver helpers ─────────────────────────────────────────────
 
 fn llm_base_url_and_key(settings: &AppSettings) -> (String, Option<String>) {
@@ -1786,5 +1797,33 @@ mod tests {
     fn app_state_initializes_without_panic() {
         let state = AppState::new();
         assert!(!*state.is_running.lock().unwrap());
+    }
+
+    #[test]
+    fn speaker_id_to_label_parses_speaker_0() {
+        let (pid, label) = speaker_id_to_label("speaker_0");
+        assert_eq!(pid, "speaker_0");
+        assert_eq!(label, "Speaker 1");
+    }
+
+    #[test]
+    fn speaker_id_to_label_parses_speaker_4() {
+        let (pid, label) = speaker_id_to_label("speaker_4");
+        assert_eq!(pid, "speaker_4");
+        assert_eq!(label, "Speaker 5");
+    }
+
+    #[test]
+    fn speaker_id_to_label_falls_back_on_bad_format() {
+        let (pid, label) = speaker_id_to_label("unknown");
+        assert_eq!(pid, "remote_1");
+        assert_eq!(label, "Speaker A");
+    }
+
+    #[test]
+    fn speaker_id_to_label_falls_back_on_non_integer() {
+        let (pid, label) = speaker_id_to_label("speaker_abc");
+        assert_eq!(pid, "remote_1");
+        assert_eq!(label, "Speaker A");
     }
 }
