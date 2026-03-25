@@ -17,6 +17,10 @@ final class AudioRecorder: @unchecked Sendable {
     private var micStartDate: Date?
     private var sysStartDate: Date?
 
+    /// Wall-clock timestamp and frame position of the most recent buffer write.
+    private var sysEndDate: Date?
+    private var sysEndFrame: Int64 = 0
+
     /// Timing anchors mapping frame positions to wall-clock dates.
     private(set) var micAnchors: [(frame: Int64, date: Date)] = []
     private(set) var sysAnchors: [(frame: Int64, date: Date)] = []
@@ -37,6 +41,8 @@ final class AudioRecorder: @unchecked Sendable {
             sysWriteCount = 0
             micStartDate = nil
             sysStartDate = nil
+            sysEndDate = nil
+            sysEndFrame = 0
             micAnchors = []
             sysAnchors = []
 
@@ -185,11 +191,15 @@ final class AudioRecorder: @unchecked Sendable {
             }
 
             // Record timing anchor on first write
+            let now = Date()
             if sysStartDate == nil {
-                let now = Date()
                 sysStartDate = now
                 sysAnchors.append((frame: sysFile?.length ?? 0, date: now))
             }
+
+            // Track latest write position for effective sample rate computation
+            sysEndDate = now
+            sysEndFrame = (sysFile?.length ?? 0) + Int64(buffer.frameLength)
 
             do {
                 try sysFile?.write(from: buffer)
@@ -278,8 +288,16 @@ final class AudioRecorder: @unchecked Sendable {
     }
 
     private func mergeAndEncode() {
-        let (micURL, sysURL, dir, timestamp) = lock.withLock {
-            (micTempURL, sysTempURL, outputDirectory, sessionTimestamp)
+        let (micURL, sysURL, dir, timestamp, sysEffectiveRate) = lock.withLock {
+            // Effective sample rate: corrects for process tap delivering at lower rate than declared.
+            var effectiveRate: Double? = nil
+            if let start = sysStartDate, let end = sysEndDate, sysEndFrame > 0 {
+                let wallClockSeconds = end.timeIntervalSince(start)
+                if wallClockSeconds > 1.0 {
+                    effectiveRate = Double(sysEndFrame) / wallClockSeconds
+                }
+            }
+            return (micTempURL, sysTempURL, outputDirectory, sessionTimestamp, effectiveRate)
         }
 
         let micReader: AVAudioFile? = {
@@ -304,10 +322,28 @@ final class AudioRecorder: @unchecked Sendable {
         }
         if let sys = sysReader {
             diagLog("[RECORDER] sys temp: \(sys.length) frames, format=\(sys.processingFormat)")
+            if let eff = sysEffectiveRate {
+                diagLog("[RECORDER] sys effective sample rate: \(eff) Hz (declared: \(sys.processingFormat.sampleRate) Hz)")
+            }
         }
 
         let micSamples = Self.readAllMono(file: micReader, targetRate: targetRate, targetFormat: targetFormat)
-        let sysSamples = Self.readAllMono(file: sysReader, targetRate: targetRate, targetFormat: targetFormat)
+
+        let sysSamples: [Float]
+        if let sysReader,
+           let effectiveRate = sysEffectiveRate,
+           abs(effectiveRate - sysReader.processingFormat.sampleRate) > 1000
+        {
+            diagLog("[RECORDER] sys rate mismatch: effective=\(effectiveRate) vs declared=\(sysReader.processingFormat.sampleRate), resampling from effective rate")
+            sysSamples = Self.readAllMono(
+                file: sysReader,
+                targetRate: targetRate,
+                targetFormat: targetFormat,
+                overrideSampleRate: effectiveRate
+            )
+        } else {
+            sysSamples = Self.readAllMono(file: sysReader, targetRate: targetRate, targetFormat: targetFormat)
+        }
 
         let micPeak = micSamples.reduce(Float(0)) { max($0, abs($1)) }
         let sysPeak = sysSamples.reduce(Float(0)) { max($0, abs($1)) }
@@ -354,7 +390,12 @@ final class AudioRecorder: @unchecked Sendable {
         diagLog("[RECORDER] Saved \(outputURL.lastPathComponent) (\(length) frames)")
     }
 
-    private static func readAllMono(file: AVAudioFile?, targetRate: Double, targetFormat: AVAudioFormat) -> [Float] {
+    private static func readAllMono(
+        file: AVAudioFile?,
+        targetRate: Double,
+        targetFormat: AVAudioFormat,
+        overrideSampleRate: Double? = nil
+    ) -> [Float] {
         guard let file, file.length > 0 else { return [] }
 
         let srcFormat = file.processingFormat
@@ -363,16 +404,47 @@ final class AudioRecorder: @unchecked Sendable {
         do { try file.read(into: readBuf) } catch { return [] }
 
         // Already at target format — extract directly
-        if srcFormat.sampleRate == targetRate && srcFormat.channelCount == 1 {
+        if overrideSampleRate == nil && srcFormat.sampleRate == targetRate && srcFormat.channelCount == 1 {
             return extractSamples(from: readBuf)
         }
 
-        // Resample and/or downmix via AVAudioConverter
-        guard let converter = AVAudioConverter(from: srcFormat, to: targetFormat) else {
-            return extractMonoSamples(from: readBuf)
+        // Re-tag the buffer at the effective rate so AVAudioConverter resamples correctly.
+        let converterInput: AVAudioPCMBuffer
+        let converterSrcFormat: AVAudioFormat
+        if let override = overrideSampleRate, override != srcFormat.sampleRate {
+            guard let retaggedFormat = AVAudioFormat(
+                commonFormat: srcFormat.commonFormat,
+                sampleRate: override,
+                channels: srcFormat.channelCount,
+                interleaved: srcFormat.isInterleaved
+            ) else {
+                return extractMonoSamples(from: readBuf)
+            }
+            guard let retaggedBuf = AVAudioPCMBuffer(
+                pcmFormat: retaggedFormat,
+                frameCapacity: frameCount
+            ) else {
+                return extractMonoSamples(from: readBuf)
+            }
+            retaggedBuf.frameLength = readBuf.frameLength
+            if let src = readBuf.floatChannelData, let dst = retaggedBuf.floatChannelData {
+                for ch in 0..<Int(srcFormat.channelCount) {
+                    memcpy(dst[ch], src[ch], Int(frameCount) * MemoryLayout<Float>.size)
+                }
+            }
+            converterInput = retaggedBuf
+            converterSrcFormat = retaggedFormat
+        } else {
+            converterInput = readBuf
+            converterSrcFormat = srcFormat
         }
 
-        let ratio = targetRate / srcFormat.sampleRate
+        // Resample and/or downmix via AVAudioConverter
+        guard let converter = AVAudioConverter(from: converterSrcFormat, to: targetFormat) else {
+            return extractMonoSamples(from: converterInput)
+        }
+
+        let ratio = targetRate / converterSrcFormat.sampleRate
         let outFrames = AVAudioFrameCount(Double(frameCount) * ratio) + 1
         guard let outBuf = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outFrames) else { return [] }
 
@@ -382,7 +454,7 @@ final class AudioRecorder: @unchecked Sendable {
             if consumed { status.pointee = .endOfStream; return nil }
             consumed = true
             status.pointee = .haveData
-            return readBuf
+            return converterInput
         }
 
         return extractSamples(from: outBuf)
