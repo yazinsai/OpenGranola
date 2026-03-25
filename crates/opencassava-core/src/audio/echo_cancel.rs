@@ -323,4 +323,195 @@ mod tests {
         let ratio = cleaned_tail_energy / raw_tail_energy;
         assert!(ratio < 0.15, "cleaned energy should be < 15% of raw, got {:.2}%", ratio * 100.0);
     }
+
+    #[test]
+    fn freq_domain_aec_preserves_speech_during_doubletalk() {
+        let n = 64_000;
+        let reference = EchoReferenceBuffer::new(1_000);
+        let mut processor = MicEchoProcessor::new(reference.clone());
+
+        let render: Vec<f32> = (0..n).map(|i| {
+            (2.0 * std::f32::consts::PI * 200.0 * i as f32 / 16_000.0).sin() * 0.5
+        }).collect();
+
+        let mic: Vec<f32> = (0..n).map(|i| {
+            let local_speech = (2.0 * std::f32::consts::PI * 800.0 * i as f32 / 16_000.0).sin() * 0.4;
+            let echo = (2.0 * std::f32::consts::PI * 200.0 * i as f32 / 16_000.0).sin() * 0.3;
+            local_speech + echo
+        }).collect();
+
+        let chunk_size = 480;
+        let mut all_cleaned = Vec::new();
+        for (render_chunk, mic_chunk) in render.chunks(chunk_size).zip(mic.chunks(chunk_size)) {
+            reference.push_render_chunk(render_chunk);
+            let cleaned = processor.process_chunk(mic_chunk);
+            all_cleaned.extend_from_slice(&cleaned);
+        }
+
+        let tail_start = 32_000;
+        let local_only: Vec<f32> = (tail_start..n).map(|i| {
+            (2.0 * std::f32::consts::PI * 800.0 * i as f32 / 16_000.0).sin() * 0.4
+        }).collect();
+
+        let local_energy = energy(&local_only);
+        let cleaned_energy = energy(&all_cleaned[tail_start..]);
+        let ratio = cleaned_energy / local_energy;
+        assert!(ratio > 0.70, "local speech energy should be > 70% preserved, got {:.2}%", ratio * 100.0);
+    }
+
+    #[test]
+    fn freq_domain_aec_converges_within_400ms() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let reference = EchoReferenceBuffer::new(1_000);
+        let mut processor = MicEchoProcessor::new(reference.clone());
+
+        let mut converged_at_block = None;
+        let target_ratio = 10.0f32.powf(-15.0 / 10.0);
+
+        for block_idx in 0..200 {
+            let offset = block_idx * BLOCK_SIZE;
+            let render: Vec<f32> = (0..BLOCK_SIZE).map(|i| {
+                let mut h = DefaultHasher::new();
+                (offset + i).hash(&mut h);
+                (h.finish() as f32 / u64::MAX as f32) * 2.0 - 1.0
+            }).collect();
+            let mic: Vec<f32> = render.iter().map(|&s| s * 0.5).collect();
+
+            reference.push_render_chunk(&render);
+            let cleaned = processor.process_chunk(&mic);
+
+            let raw_e = energy(&mic);
+            let clean_e = energy(&cleaned);
+            if raw_e > 0.0 && clean_e / raw_e < target_ratio && converged_at_block.is_none() {
+                converged_at_block = Some(block_idx);
+            }
+        }
+
+        let block = converged_at_block.expect("filter never converged to 15dB suppression");
+        let ms = block * BLOCK_SIZE * 1000 / SAMPLE_RATE;
+        assert!(block < 25, "should converge within 25 blocks (400ms), converged at block {} ({}ms)", block, ms);
+    }
+
+    #[test]
+    fn freq_domain_aec_handles_variable_chunk_sizes() {
+        let reference = EchoReferenceBuffer::new(1_000);
+        let mut processor = MicEchoProcessor::new(reference.clone());
+
+        let chunk_sizes = [100, 256, 500, 1000, 37, 480];
+        let mut total_in = 0;
+        let mut total_out = 0;
+
+        for &size in &chunk_sizes {
+            let render = vec![0.1f32; size];
+            let mic = vec![0.05f32; size];
+            reference.push_render_chunk(&render);
+            let cleaned = processor.process_chunk(&mic);
+            assert_eq!(cleaned.len(), size, "output length must match input length {}", size);
+            total_in += size;
+            total_out += cleaned.len();
+        }
+        assert_eq!(total_in, total_out);
+    }
+
+    #[test]
+    fn freq_domain_aec_cancels_delayed_echo() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let reference = EchoReferenceBuffer::new(1_000);
+        let mut processor = MicEchoProcessor::new(reference.clone());
+
+        let n = 64_000;
+        let delay = 2400;
+
+        let render: Vec<f32> = (0..n).map(|i| {
+            let mut h = DefaultHasher::new();
+            i.hash(&mut h);
+            (h.finish() as f32 / u64::MAX as f32) * 2.0 - 1.0
+        }).collect();
+
+        let mut mic = vec![0.0f32; delay];
+        mic.extend(render.iter().map(|&s| s * 0.5));
+        mic.truncate(n);
+
+        let chunk_size = 480;
+        let mut all_cleaned = Vec::new();
+        for (render_chunk, mic_chunk) in render.chunks(chunk_size).zip(mic.chunks(chunk_size)) {
+            reference.push_render_chunk(render_chunk);
+            let cleaned = processor.process_chunk(mic_chunk);
+            all_cleaned.extend_from_slice(&cleaned);
+        }
+
+        let tail_start = 32_000;
+        let raw_e = energy(&mic[tail_start..]);
+        let clean_e = energy(&all_cleaned[tail_start..]);
+        let ratio = clean_e / raw_e;
+        assert!(ratio < 0.20, "delayed echo energy should be < 20% after convergence, got {:.2}%", ratio * 100.0);
+    }
+
+    #[test]
+    fn freq_domain_aec_preserves_mic_when_reference_silent() {
+        let reference = EchoReferenceBuffer::new(1_000);
+        let mut processor = MicEchoProcessor::new(reference.clone());
+
+        let silence = vec![0.0f32; 4800];
+        reference.push_render_chunk(&silence);
+
+        let mic: Vec<f32> = (0..4800).map(|i| {
+            ((i as f32) * 0.11).sin() * 0.3
+        }).collect();
+
+        let mut all_cleaned = Vec::new();
+        for chunk in mic.chunks(480) {
+            reference.push_render_chunk(&vec![0.0; chunk.len()]);
+            let cleaned = processor.process_chunk(chunk);
+            all_cleaned.extend_from_slice(&cleaned);
+        }
+
+        let ratio = energy(&all_cleaned) / energy(&mic);
+        assert!(ratio > 0.95, "mic should pass through when reference silent, got {:.2}%", ratio * 100.0);
+    }
+
+    #[test]
+    fn freq_domain_aec_resets_after_prolonged_silence() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let reference = EchoReferenceBuffer::new(1_000);
+        let mut processor = MicEchoProcessor::new(reference.clone());
+
+        for i in 0..125 {
+            let offset = i * 256;
+            let render: Vec<f32> = (0..256).map(|j| {
+                let mut h = DefaultHasher::new();
+                (offset + j).hash(&mut h);
+                (h.finish() as f32 / u64::MAX as f32) * 2.0 - 1.0
+            }).collect();
+            let mic: Vec<f32> = render.iter().map(|&s| s * 0.5).collect();
+            reference.push_render_chunk(&render);
+            processor.process_chunk(&mic);
+        }
+
+        for _ in 0..63 {
+            let silence = vec![0.0f32; 256];
+            reference.push_render_chunk(&silence);
+            processor.process_chunk(&silence);
+        }
+
+        let new_mic: Vec<f32> = (0..4800).map(|i| {
+            ((i as f32) * 0.07).sin() * 0.3
+        }).collect();
+        let mut all_cleaned = Vec::new();
+        for chunk in new_mic.chunks(480) {
+            reference.push_render_chunk(&vec![0.0; chunk.len()]);
+            let cleaned = processor.process_chunk(chunk);
+            all_cleaned.extend_from_slice(&cleaned);
+        }
+
+        let ratio = energy(&all_cleaned) / energy(&new_mic);
+        assert!(ratio < 1.2, "output should not have artifacts after silence reset, energy ratio {:.2}", ratio);
+        assert!(ratio > 0.7, "output should not be excessively suppressed, energy ratio {:.2}", ratio);
+    }
 }
