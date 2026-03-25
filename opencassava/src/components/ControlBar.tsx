@@ -314,13 +314,8 @@ export function ControlBar({
           </span>
 
           <div style={{ display: "flex", flexDirection: "column", gap: spacing[1] }}>
-            <WaveformVisualizer level={audioLevel} isActive={isRunning && !isStopping} />
-            <WaveformVisualizer
-              level={audioLevelThem}
-              isActive={isRunning && !isStopping}
-              color={colors.them}
-              colorLight={colors.themLight}
-            />
+            <WaveformVisualizer level={audioLevel} isActive={isRunning && !isStopping} color={colors.success} />
+            <WaveformVisualizer level={audioLevelThem} isActive={isRunning && !isStopping} color={colors.success} />
           </div>
 
           <span style={statusBadgeStyle(isStopping ? colors.warning : colors.success)}>
