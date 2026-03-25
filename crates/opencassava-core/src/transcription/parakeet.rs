@@ -19,6 +19,8 @@ pub struct ParakeetConfig {
     pub models_dir: PathBuf,
     pub model: String,
     pub device: String,
+    /// BCP-47 language code (e.g. "es", "fr") or empty for auto-detect.
+    pub language: String,
 }
 
 impl ParakeetConfig {
@@ -205,12 +207,19 @@ impl ParakeetWorker {
     }
 
     pub fn transcribe(&mut self, samples: &[f32]) -> Result<String, String> {
-        let response = self.send_request(json!({
+        let mut payload = json!({
             "command": "transcribe",
             "model": self.config.model.clone(),
             "device": self.config.device.clone(),
             "samples": samples,
-        }))?;
+        });
+        let lang = self.config.language.trim();
+        if !lang.is_empty() && lang != "auto" {
+            // Strip region suffix: "es-ES" → "es"
+            let lang_code = lang.split('-').next().unwrap_or(lang);
+            payload["language"] = serde_json::Value::String(lang_code.to_string());
+        }
+        let response = self.send_request(payload)?;
         Ok(response["text"].as_str().unwrap_or_default().to_string())
     }
 

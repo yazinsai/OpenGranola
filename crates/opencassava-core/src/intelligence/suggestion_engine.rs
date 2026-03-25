@@ -1,4 +1,5 @@
 use crate::intelligence::llm_client::{strip_fences, Message};
+use crate::intelligence::notes_engine::language_response_instruction;
 use crate::models::{
     ConversationState, KBResult, Suggestion, SuggestionDecision, SuggestionKind, Utterance,
 };
@@ -19,6 +20,8 @@ pub struct SuggestionEngine {
     pub kb_surfacing_system_prompt: String,
     pub suggestion_synthesis_system_prompt: String,
     pub smart_question_system_prompt: String,
+    /// BCP-47 locale (e.g. "es", "fr", "auto") from transcription settings.
+    pub response_language: String,
 }
 
 impl SuggestionEngine {
@@ -32,6 +35,7 @@ impl SuggestionEngine {
             kb_surfacing_system_prompt: "You decide if an AI suggestion should be shown. Return only valid JSON.".into(),
             suggestion_synthesis_system_prompt: "You write brief, helpful suggestions for meeting participants.".into(),
             smart_question_system_prompt: "You decide when a smart clarifying question should be suggested. Return only valid JSON.".into(),
+            response_language: String::new(),
         }
     }
 
@@ -290,10 +294,16 @@ impl SuggestionEngine {
             .collect::<Vec<_>>()
             .join("\n\n");
 
+        let language_instruction = language_response_instruction(&self.response_language);
         let prompt = format!(
             "Given this conversation moment and relevant knowledge, write a concise, \
             actionable suggestion (1-2 sentences) that would help the speaker respond effectively.\n\n\
-            Recent conversation:\n{transcript_window}\n\nRelevant knowledge:\n{context}"
+            Recent conversation:\n{transcript_window}\n\nRelevant knowledge:\n{context}{}",
+            if language_instruction.is_empty() {
+                String::new()
+            } else {
+                format!("\n\n{language_instruction}")
+            }
         );
 
         let messages = vec![
@@ -330,6 +340,12 @@ impl SuggestionEngine {
             .cloned()
             .collect::<Vec<_>>()
             .join(", ");
+        let language_instruction = language_response_instruction(&self.response_language);
+        let question_language_note = if language_instruction.is_empty() {
+            String::new()
+        } else {
+            format!(" {language_instruction} The \"question\" field must be in the same language as the conversation.")
+        };
         let prompt = format!(
             "A meeting participant may need a clarifying or probing question when there is a knowledge gap, ambiguity, \
             missing constraint, or unstated assumption.\n\
@@ -343,13 +359,14 @@ impl SuggestionEngine {
             \"relevanceScore\": 0-1, \"helpfulnessScore\": 0-1, \"timingScore\": 0-1, \
             \"noveltyScore\": 0-1, \"reason\": string}}.\n\
             The question must be concise, natural, and directly ask for the missing information. \
-            Do not repeat a smart question that was already surfaced earlier in the session.",
+            Do not repeat a smart question that was already surfaced earlier in the session.{}",
             self.conversation_state.current_topic,
             self.conversation_state.short_summary,
             recent_context,
             utterance,
             recent,
             previously_surfaced_questions,
+            question_language_note,
         );
 
         let messages = vec![

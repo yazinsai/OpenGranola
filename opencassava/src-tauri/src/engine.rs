@@ -267,6 +267,7 @@ impl AppState {
             runtime_root,
             model: settings.parakeet_model.clone(),
             device: settings.parakeet_device.clone(),
+            language: settings.transcription_locale.clone(),
         }
     }
 }
@@ -1033,6 +1034,7 @@ pub fn start_transcription(
                     engine.kb_surfacing_system_prompt = settings.kb_surfacing_system_prompt.clone();
                     engine.suggestion_synthesis_system_prompt = settings.suggestion_synthesis_system_prompt.clone();
                     engine.smart_question_system_prompt = settings.smart_question_system_prompt.clone();
+                    engine.response_language = settings.transcription_locale.clone();
                 }
                 let (embed_url, embed_key, embed_model) = embed_config(&settings);
                 let (llm_url, llm_key) = llm_base_url_and_key(&settings);
@@ -1501,6 +1503,7 @@ pub async fn generate_notes(
         &base_url,
         api_key.as_deref(),
         &model,
+        &settings.transcription_locale,
         on_chunk,
     )
     .await?;

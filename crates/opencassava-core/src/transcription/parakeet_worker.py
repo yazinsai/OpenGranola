@@ -54,6 +54,7 @@ def handle_ensure_model(payload):
 def handle_transcribe(payload):
     model_name = payload["model"]
     device = payload.get("device", "auto")
+    language = payload.get("language", "")
     samples = np.asarray(payload.get("samples", []), dtype=np.float32)
 
     model = load_model(model_name, device)
@@ -64,7 +65,17 @@ def handle_transcribe(payload):
             tmp_path = f.name
         sf.write(tmp_path, samples, 16000)
 
-        transcriptions = model.transcribe([tmp_path])
+        if language:
+            try:
+                from nemo.collections.asr.parts.utils.transcribe_utils import TranscriptionConfig
+                cfg = TranscriptionConfig(source_lang=language, target_lang=language, pnc="yes")
+                transcriptions = model.transcribe([tmp_path], override_config=cfg)
+            except Exception:
+                # Model doesn't support language override (e.g. English-only RNNT) — fall back.
+                transcriptions = model.transcribe([tmp_path])
+        else:
+            transcriptions = model.transcribe([tmp_path])
+
         raw = transcriptions[0] if transcriptions else ""
         text = raw.text if hasattr(raw, "text") else str(raw)
         emit({"ok": True, "result": {"text": text.strip()}})

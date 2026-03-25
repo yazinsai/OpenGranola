@@ -1,5 +1,15 @@
 use crate::models::{MeetingTemplate, SessionRecord};
 
+/// Returns a language instruction string to append to LLM prompts.
+/// Empty string means no instruction needed (e.g. auto-detect or English).
+pub fn language_response_instruction(locale: &str) -> String {
+    let locale = locale.trim().to_ascii_lowercase();
+    if locale.is_empty() || locale == "auto" || locale.starts_with("en") {
+        return String::new();
+    }
+    "IMPORTANT: Write your entire response in the same language as the transcript above.".to_string()
+}
+
 const MAX_TRANSCRIPT_CHARS: usize = 60_000;
 
 /// Format a transcript slice as a human-readable string for the LLM prompt.
@@ -34,6 +44,7 @@ pub async fn generate_notes<F>(
     base_url: &str,
     api_key: Option<&str>,
     model: &str,
+    language: &str,
     on_chunk: F,
 ) -> Result<String, String>
 where
@@ -42,12 +53,19 @@ where
     let raw = format_transcript(records);
     let transcript = truncate_transcript(&raw);
 
+    let language_instruction = language_response_instruction(language);
+    let user_message = if language_instruction.is_empty() {
+        format!("Here is the meeting transcript:\n\n{}", transcript)
+    } else {
+        format!(
+            "Here is the meeting transcript:\n\n{}\n\n{}",
+            transcript, language_instruction
+        )
+    };
+
     let messages = vec![
         crate::intelligence::llm_client::Message::system(&template.system_prompt),
-        crate::intelligence::llm_client::Message::user(format!(
-            "Here is the meeting transcript:\n\n{}",
-            transcript
-        )),
+        crate::intelligence::llm_client::Message::user(user_message),
     ];
 
     crate::intelligence::llm_client::stream_completion(
