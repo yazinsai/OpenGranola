@@ -450,6 +450,10 @@ struct NotesView: View {
                 notesToolbarActions(controller: controller, state: state)
             }
 
+            if state.audioFileURL != nil {
+                audioPlaybackButton(controller: controller, state: state)
+            }
+
             Button {
                 copyCurrentContent(state: state)
             } label: {
@@ -463,6 +467,38 @@ struct NotesView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private func audioPlaybackButton(controller: NotesController, state: NotesState) -> some View {
+        Menu {
+            Button {
+                controller.toggleAudioPlayback()
+            } label: {
+                Label(
+                    state.isPlayingAudio ? "Pause" : "Play Recording",
+                    systemImage: state.isPlayingAudio ? "pause.fill" : "play.fill"
+                )
+            }
+            Divider()
+            Button {
+                controller.revealAudioInFinder()
+            } label: {
+                Label("Show in Finder", systemImage: "folder")
+            }
+        } label: {
+            Label(
+                state.isPlayingAudio ? "Pause" : "Play",
+                systemImage: state.isPlayingAudio ? "pause.fill" : "play.fill"
+            )
+            .font(.system(size: 12))
+        } primaryAction: {
+            controller.toggleAudioPlayback()
+        }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .fixedSize()
+        .help(state.isPlayingAudio ? "Pause audio recording" : "Play audio recording")
     }
 
     @ViewBuilder
