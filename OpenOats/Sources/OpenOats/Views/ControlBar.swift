@@ -9,6 +9,7 @@ struct ControlBar: View {
     let statusMessage: String?
     let errorMessage: String?
     let needsDownload: Bool
+    let downloadProgress: Double?
     let onToggle: () -> Void
     let onMuteToggle: () -> Void
     let onConfirmDownload: () -> Void
@@ -43,15 +44,24 @@ struct ControlBar: View {
                 .padding(.vertical, 8)
             }
 
-            // Status message (model loading, etc.)
+            // Status message (model loading / downloading)
             if let status = statusMessage, status != "Ready" {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(status)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("app.controlBar.status")
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        if downloadProgress == nil {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text(status)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("app.controlBar.status")
+                    }
+                    if let progress = downloadProgress {
+                        ProgressView(value: progress)
+                            .progressViewStyle(.linear)
+                            .accessibilityIdentifier("app.controlBar.downloadProgress")
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)

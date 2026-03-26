@@ -33,12 +33,23 @@ final class WhisperKitManager: @unchecked Sendable {
     }
 
     /// Download and initialize the WhisperKit pipeline.
-    func setup(progressCallback: ((Progress) -> Void)? = nil) async throws {
+    /// - Parameter progressCallback: Optional callback reporting download progress (0…1).
+    func setup(progressCallback: ((Double) -> Void)? = nil) async throws {
+        // Download with progress reporting, then load from the local folder.
+        let modelFolder = try await WhisperKit.download(
+            variant: variant.rawValue,
+            from: Variant.modelRepo
+        ) { progress in
+            progressCallback?(progress.fractionCompleted)
+        }
+
         let config = WhisperKitConfig(
             model: variant.rawValue,
             modelRepo: Variant.modelRepo,
+            modelFolder: modelFolder.path,
             verbose: false,
-            prewarm: true
+            prewarm: true,
+            download: false
         )
         let whisperKit = try await WhisperKit(config)
         self.pipe = whisperKit
