@@ -37,7 +37,7 @@ final class WhisperKitBackend: TranscriptionBackend, @unchecked Sendable {
         }
     }
 
-    func prepare(onStatus: @Sendable (String) -> Void, onProgress: @Sendable (Double) -> Void) async throws {
+    func prepare(onStatus: @Sendable (String) -> Void, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         onStatus("Downloading \(displayName)...")
         let manager = WhisperKitManager(variant: variant)
         try await manager.setup { fraction in

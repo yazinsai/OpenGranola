@@ -23,7 +23,7 @@ protocol TranscriptionBackend: Sendable {
     /// - Parameters:
     ///   - onStatus: Reports human-readable status messages (e.g. "Downloading…").
     ///   - onProgress: Reports download progress as a fraction in 0…1 (called only during download).
-    func prepare(onStatus: @Sendable (String) -> Void, onProgress: @Sendable (Double) -> Void) async throws
+    func prepare(onStatus: @Sendable (String) -> Void, onProgress: @escaping @Sendable (Double) -> Void) async throws
 
     /// Transcribe a segment of Float32 audio samples at 16kHz mono.
     /// Returns the transcribed text, or empty string if no speech detected.
