@@ -157,7 +157,7 @@ private final class MockTranscriptionBackend: TranscriptionBackend, @unchecked S
 
     func checkStatus() -> BackendStatus { .ready }
 
-    func prepare(onStatus: @Sendable (String) -> Void) async throws {
+    func prepare(onStatus: @Sendable (String) -> Void, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         onStatus("Preparing Mock...")
         prepared = true
     }
