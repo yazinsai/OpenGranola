@@ -288,6 +288,17 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Import") {
+                Text("Import meetings from Granola. Generate an API key in the Granola desktop app under Settings.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                SecureField("Granola API Key", text: $settings.granolaApiKey)
+                    .font(.system(size: 12, design: .monospaced))
+
+                GranolaImportButton(apiKey: settings.granolaApiKey)
+            }
+
             Section("Meeting Detection") {
                 Toggle("Auto-detect meetings", isOn: $settings.meetingAutoDetectEnabled)
                     .font(.system(size: 12))
@@ -640,6 +651,97 @@ private struct IconPickerGrid: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(selected == icon ? .primary : .secondary)
+            }
+        }
+    }
+}
+
+// MARK: - Granola Import Button
+
+private struct GranolaImportButton: View {
+    @Environment(AppCoordinator.self) private var coordinator
+    let apiKey: String
+    @State private var importState: GranolaImportState = .idle
+    @State private var isImporting = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            switch importState {
+            case .idle:
+                EmptyView()
+            case .fetching(let progress):
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(progress)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            case .importing(let current, let total):
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Importing \(current) of \(total)...")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            case .completed(let imported, let skipped):
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.system(size: 12))
+                    Text("Imported \(imported) meeting\(imported == 1 ? "" : "s")\(skipped > 0 ? ", \(skipped) already existed" : "")")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            case .failed(let error):
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                        .font(.system(size: 12))
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red)
+                }
+            }
+
+            Button("Import from Granola") {
+                startImport()
+            }
+            .font(.system(size: 12))
+            .disabled(isImporting)
+        }
+    }
+
+    private func startImport() {
+        guard !apiKey.isEmpty else {
+            importState = .failed("Enter your Granola API key above.")
+            return
+        }
+
+        isImporting = true
+        importState = .fetching(progress: "Connecting to Granola...")
+
+        let repo = coordinator.sessionRepository
+        let importer = GranolaImporter()
+
+        Task { @MainActor in
+            do {
+                let result = try await importer.importAll(
+                    apiKey: apiKey,
+                    sessionRepository: repo,
+                    onProgress: { state in
+                        Task { @MainActor in
+                            self.importState = state
+                        }
+                    }
+                )
+                importState = .completed(imported: result.imported, skipped: result.skipped)
+                isImporting = false
+                await coordinator.loadHistory()
+            } catch {
+                importState = .failed(error.localizedDescription)
+                isImporting = false
             }
         }
     }

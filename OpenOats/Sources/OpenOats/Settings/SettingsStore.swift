@@ -415,6 +415,19 @@ final class SettingsStore {
         }
     }
 
+    // MARK: - Import Settings
+
+    @ObservationIgnored nonisolated(unsafe) private var _granolaApiKey: String
+    var granolaApiKey: String {
+        get { access(keyPath: \.granolaApiKey); return _granolaApiKey }
+        set {
+            withMutation(keyPath: \.granolaApiKey) {
+                _granolaApiKey = newValue
+                secretStore.save(key: "granolaApiKey", value: newValue)
+            }
+        }
+    }
+
     // MARK: - UI Settings
 
     @ObservationIgnored nonisolated(unsafe) private var _showLiveTranscript: Bool
@@ -544,6 +557,9 @@ final class SettingsStore {
         } else {
             self._hideFromScreenShare = defaults.bool(forKey: "hideFromScreenShare")
         }
+
+        // Import Settings
+        self._granolaApiKey = storage.secretStore.load(key: "granolaApiKey") ?? ""
 
         // UI Settings
         if defaults.object(forKey: "showLiveTranscript") == nil {
