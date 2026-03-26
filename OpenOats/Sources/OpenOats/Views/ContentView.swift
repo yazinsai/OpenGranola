@@ -174,9 +174,11 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
+
+                Divider()
             }
 
-            Divider()
+            Spacer(minLength: 0)
 
             // Collapsible transcript (hidden when live transcript is disabled)
             if controllerState.showLiveTranscript {
