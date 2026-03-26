@@ -7,6 +7,30 @@ struct KBChunk: Codable, Sendable {
     let sourceFile: String
     let headerContext: String
     let embedding: [Float]
+    let relativePath: String     // e.g. "sales/pricing.md"
+    let folderBreadcrumb: String // e.g. "sales"
+    let documentTitle: String    // first H1 or filename sans extension
+
+    init(text: String, sourceFile: String, headerContext: String, embedding: [Float], relativePath: String, folderBreadcrumb: String, documentTitle: String) {
+        self.text = text
+        self.sourceFile = sourceFile
+        self.headerContext = headerContext
+        self.embedding = embedding
+        self.relativePath = relativePath
+        self.folderBreadcrumb = folderBreadcrumb
+        self.documentTitle = documentTitle
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decode(String.self, forKey: .text)
+        sourceFile = try container.decode(String.self, forKey: .sourceFile)
+        headerContext = try container.decode(String.self, forKey: .headerContext)
+        embedding = try container.decode([Float].self, forKey: .embedding)
+        relativePath = try container.decodeIfPresent(String.self, forKey: .relativePath) ?? sourceFile
+        folderBreadcrumb = try container.decodeIfPresent(String.self, forKey: .folderBreadcrumb) ?? ""
+        documentTitle = try container.decodeIfPresent(String.self, forKey: .documentTitle) ?? sourceFile
+    }
 }
 
 /// Disk cache format for embedded KB chunks.
@@ -86,7 +110,7 @@ final class KnowledgeBase {
             cache = KBCache(entries: [:], embeddingConfigFingerprint: fingerprint)
         }
         var allChunks: [KBChunk] = []
-        var filesToEmbed: [(key: String, chunks: [(text: String, header: String)])] = []
+        var filesToEmbed: [(key: String, chunks: [(text: String, header: String)], relativePath: String, folderBreadcrumb: String, documentTitle: String)] = []
         var files = 0
 
         for fileURL in fileURLs {
@@ -103,14 +127,27 @@ final class KnowledgeBase {
                 continue
             }
 
+            let relativePath = fileURL.path.hasPrefix(folderURL.path)
+                ? String(fileURL.path.dropFirst(folderURL.path.count).drop(while: { $0 == "/" }))
+                : fileName
+
+            let folderBreadcrumb = URL(fileURLWithPath: relativePath).deletingLastPathComponent().path
+                .trimmingCharacters(in: CharacterSet(charactersIn: "./"))
+
+            let docTitle = extractDocumentTitle(from: content) ?? fileName.replacingOccurrences(of: ".\(fileURL.pathExtension)", with: "")
+
             let textChunks = chunkMarkdown(content, sourceFile: fileName)
-            filesToEmbed.append((key: cacheKey, chunks: textChunks))
+            filesToEmbed.append((key: cacheKey, chunks: textChunks, relativePath: relativePath, folderBreadcrumb: folderBreadcrumb, documentTitle: docTitle))
         }
 
         // Embed new/changed files in batches
         if !filesToEmbed.isEmpty {
             let allTextsToEmbed = filesToEmbed.flatMap { entry in
-                entry.chunks.map { "\($0.header)\n\($0.text)" }
+                entry.chunks.map { chunk in
+                    var prefix = entry.relativePath
+                    if !chunk.header.isEmpty { prefix += " > \(chunk.header)" }
+                    return "\(prefix)\n\(chunk.text)"
+                }
             }
 
             indexingProgress = "Embedding \(allTextsToEmbed.count) chunks..."
@@ -128,11 +165,15 @@ final class KnowledgeBase {
                     var fileChunks: [KBChunk] = []
                     for chunk in entry.chunks {
                         let embedding = embeddings[offset]
+                        let fileName = entry.key.components(separatedBy: ":").first ?? ""
                         let kbChunk = KBChunk(
                             text: chunk.text,
-                            sourceFile: entry.key.components(separatedBy: ":").first ?? "",
+                            sourceFile: fileName,
                             headerContext: chunk.header,
-                            embedding: embedding
+                            embedding: embedding,
+                            relativePath: entry.relativePath,
+                            folderBreadcrumb: entry.folderBreadcrumb,
+                            documentTitle: entry.documentTitle
                         )
                         fileChunks.append(kbChunk)
                         offset += 1
@@ -256,6 +297,38 @@ final class KnowledgeBase {
         }
     }
 
+    /// Search returning rich context packs with adjacent sibling text.
+    func searchContextPacks(queries: [String], topK: Int = 3) async -> [KBContextPack] {
+        let results = await search(queries: queries, topK: topK)
+        return results.map { result in
+            let matchIndex = chunks.firstIndex { $0.text == result.text && $0.sourceFile == result.sourceFile }
+            let prevSibling: String?
+            if let mi = matchIndex, mi > 0, chunks[mi - 1].sourceFile == result.sourceFile {
+                prevSibling = chunks[mi - 1].text
+            } else {
+                prevSibling = nil
+            }
+            let nextSibling: String?
+            if let mi = matchIndex, mi < chunks.count - 1, chunks[mi + 1].sourceFile == result.sourceFile {
+                nextSibling = chunks[mi + 1].text
+            } else {
+                nextSibling = nil
+            }
+
+            let chunk = matchIndex.map { chunks[$0] }
+            return KBContextPack(
+                matchedText: result.text,
+                relativePath: chunk?.relativePath ?? result.sourceFile,
+                folderBreadcrumb: chunk?.folderBreadcrumb ?? "",
+                documentTitle: chunk?.documentTitle ?? result.sourceFile,
+                headerBreadcrumb: result.headerContext,
+                score: result.score,
+                previousSiblingText: prevSibling,
+                nextSiblingText: nextSibling
+            )
+        }
+    }
+
     func clear() {
         chunks.removeAll()
         isIndexed = false
@@ -284,6 +357,17 @@ final class KnowledgeBase {
     }
 
     // MARK: - Markdown Chunking
+
+    /// Extracts the first H1 heading from markdown content, or nil.
+    private nonisolated func extractDocumentTitle(from content: String) -> String? {
+        for line in content.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("# ") && !trimmed.hasPrefix("##") {
+                return String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return nil
+    }
 
     /// Splits markdown content into chunks aware of header hierarchy.
     private nonisolated func chunkMarkdown(_ text: String, sourceFile: String) -> [(text: String, header: String)] {
