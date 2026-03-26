@@ -516,6 +516,8 @@ final class TranscriptionEngine {
 
         micBackend = nil
         systemBackend = nil
+        transcriptStore.volatileYouText = ""
+        transcriptStore.volatileThemText = ""
         isRunning = false
         assetStatus = "Ready"
     }
@@ -548,6 +550,8 @@ final class TranscriptionEngine {
         currentMicDeviceID = 0
         micBackend = nil
         systemBackend = nil
+        transcriptStore.volatileYouText = ""
+        transcriptStore.volatileThemText = ""
         isRunning = false
         assetStatus = "Ready"
     }

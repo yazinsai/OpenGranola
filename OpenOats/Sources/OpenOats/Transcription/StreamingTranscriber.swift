@@ -61,6 +61,8 @@ final class StreamingTranscriber: @unchecked Sendable {
         var recentChunks: [[Float]] = []
         var isSpeaking = false
         var bufferCount = 0
+        var lastPartialTime: Date = .distantPast
+        var isRunningPartial = false
 
         for await buffer in stream {
             bufferCount += 1
@@ -128,20 +130,42 @@ final class StreamingTranscriber: @unchecked Sendable {
 
                     if endedSpeech {
                         isSpeaking = false
+                        isRunningPartial = false
                         diagLog("[\(self.speaker.storageKey)] speech end, samples=\(speechSamples.count)")
                         if speechSamples.count > Self.minimumSpeechSamples {
                             let segment = speechSamples
                             speechSamples.removeAll(keepingCapacity: true)
+                            onPartial("")  // Clear partial display
                             await transcribeSegment(segment)
                         } else {
                             speechSamples.removeAll(keepingCapacity: true)
+                            onPartial("")  // Clear partial display
                         }
                     } else if isSpeaking {
+
+                        // Throttled partial hypothesis every ~400ms
+                        if !isRunningPartial,
+                           speechSamples.count > Self.minimumSpeechSamples,
+                           Date.now.timeIntervalSince(lastPartialTime) >= 0.4 {
+                            isRunningPartial = true
+                            lastPartialTime = .now
+                            let snapshot = speechSamples
+                            do {
+                                let text = try await backend.transcribe(snapshot, locale: locale, previousContext: nil)
+                                if !text.isEmpty && !Task.isCancelled {
+                                    onPartial(text)
+                                }
+                            } catch {
+                                // Best-effort — ignore
+                            }
+                            isRunningPartial = false
+                        }
 
                         // Flush on long continuous speech (see flushInterval)
                         if speechSamples.count >= flushInterval {
                             let segment = speechSamples
                             speechSamples.removeAll(keepingCapacity: true)
+                            onPartial("")  // Clear partial display
                             await transcribeSegment(segment)
                         }
                     }
@@ -152,6 +176,7 @@ final class StreamingTranscriber: @unchecked Sendable {
         }
 
         if speechSamples.count > Self.minimumSpeechSamples {
+            onPartial("")  // Clear partial display
             await transcribeSegment(speechSamples)
         }
     }
