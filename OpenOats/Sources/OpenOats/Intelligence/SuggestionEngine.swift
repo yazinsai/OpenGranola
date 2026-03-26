@@ -73,7 +73,7 @@ final class SuggestionEngine {
     private var recentSuggestionTexts: [String] = []
 
     /// Per-trigger log snapshots for delayed writes (keyed by triggerUtteranceID).
-    private var logSnapshots: [UUID: LogSnapshot] = []
+    private var logSnapshots: [UUID: LogSnapshot] = [:]
 
     private static let maxActiveSuggestions = 3
 
