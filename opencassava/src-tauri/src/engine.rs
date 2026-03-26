@@ -834,6 +834,10 @@ pub fn save_settings(
     s.save();
     let hide_from_screen_share = s.hide_from_screen_share;
     drop(s);
+    // Drop any pre-warmed Parakeet workers so they don't carry stale config
+    // (e.g. old language) into the next recording session.
+    *state.warmed_parakeet_mic.lock().unwrap() = None;
+    *state.warmed_parakeet_sys.lock().unwrap() = None;
     set_content_protection(app, hide_from_screen_share)?;
     Ok(())
 }
