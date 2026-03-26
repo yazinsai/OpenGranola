@@ -100,6 +100,11 @@ pub struct AudioLevelPayload {
 }
 
 #[derive(Clone, Serialize)]
+pub struct CalibrationAudioLevelPayload {
+    pub level: f32,
+}
+
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptionProgressPayload {
     pub captured_segments: u32,
@@ -178,6 +183,8 @@ pub struct AppState {
     pub warmed_parakeet_sys: Mutex<Option<ParakeetWorker>>,
     /// True while Parakeet workers are being pre-warmed in the background.
     pub parakeet_warming: Arc<std::sync::atomic::AtomicBool>,
+    pub preview_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+    pub preview_stop: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl AppState {
@@ -215,6 +222,8 @@ impl AppState {
             warmed_parakeet_mic: Mutex::new(None),
             warmed_parakeet_sys: Mutex::new(None),
             parakeet_warming: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            preview_task: Mutex::new(None),
+            preview_stop: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -629,6 +638,17 @@ fn normalize_openai_base_url(base_url: &str) -> String {
     } else {
         format!("{trimmed}/v1")
     }
+}
+
+pub(crate) fn top_percentile_mean(values: &[f32], percentile: f32) -> f32 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    let count = ((values.len() as f32 * percentile).ceil() as usize).max(1);
+    let top = &sorted[..count.min(sorted.len())];
+    top.iter().sum::<f32>() / top.len() as f32
 }
 
 fn compute_rms(samples: &[f32]) -> f32 {
@@ -1274,6 +1294,8 @@ pub fn start_transcription(
         let mic_level_w = Arc::clone(&state_clone.mic_level);
         let mut echo_processor = MicEchoProcessor::new(echo_reference.clone());
         echo_processor.set_enabled(settings.echo_cancellation_enabled);
+        let mic_gate_threshold = settings.mic_calibration_rms.unwrap_or(0.0) * settings.mic_threshold_multiplier;
+        echo_processor.set_threshold(mic_gate_threshold);
         let mic_stream_leveled = mic_stream.map(move |chunk: Vec<f32>| {
             let cleaned = echo_processor.process_chunk(&chunk);
             let rms = compute_rms(&cleaned);
@@ -1938,5 +1960,25 @@ mod tests {
         let (pid, label) = speaker_id_to_label("speaker_abc");
         assert_eq!(pid, "remote_1");
         assert_eq!(label, "Speaker A");
+    }
+
+    #[test]
+    fn top_percentile_mean_known_inputs() {
+        let vals = vec![0.1f32, 0.5, 0.3, 0.8, 0.2];
+        // top 30% of 5 = ceil(1.5) = 2 items → sorted desc [0.8, 0.5] → mean = 0.65
+        let result = top_percentile_mean(&vals, 0.30);
+        assert!((result - 0.65).abs() < 1e-5, "expected 0.65, got {}", result);
+    }
+
+    #[test]
+    fn top_percentile_mean_empty() {
+        assert_eq!(top_percentile_mean(&[], 0.30), 0.0);
+    }
+
+    #[test]
+    fn top_percentile_mean_all_items_when_percentile_is_one() {
+        let vals = vec![0.2f32, 0.4, 0.6];
+        let result = top_percentile_mean(&vals, 1.0);
+        assert!((result - (0.2 + 0.4 + 0.6) / 3.0).abs() < 1e-5, "got {}", result);
     }
 }
