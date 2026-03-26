@@ -28,9 +28,11 @@ final class ParakeetBackend: TranscriptionBackend, @unchecked Sendable {
         try? FileManager.default.removeItem(at: cacheDir)
     }
 
-    func prepare(onStatus: @Sendable (String) -> Void) async throws {
+    func prepare(onStatus: @Sendable (String) -> Void, onProgress: @Sendable (Double) -> Void) async throws {
         onStatus("Downloading \(displayName)...")
-        let models = try await AsrModels.downloadAndLoad(version: version)
+        let models = try await AsrModels.downloadAndLoad(version: version) { progress in
+            onProgress(progress.fractionCompleted)
+        }
         onStatus("Initializing \(displayName)...")
         let asr = AsrManager(config: .default)
         try await asr.initialize(models: models)

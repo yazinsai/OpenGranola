@@ -76,6 +76,13 @@ final class TranscriptionEngine {
         set { withMutation(keyPath: \.downloadConfirmed) { _downloadConfirmed = newValue } }
     }
 
+    @ObservationIgnored nonisolated(unsafe) private var _downloadProgress: Double?
+    /// Fraction complete (0…1) during model download, nil when not downloading.
+    var downloadProgress: Double? {
+        get { access(keyPath: \.downloadProgress); return _downloadProgress }
+        set { withMutation(keyPath: \.downloadProgress) { _downloadProgress = newValue } }
+    }
+
     private let systemCapture = SystemAudioCapture()
     private let micCapture = MicCapture()
     private let transcriptStore: TranscriptStore
@@ -194,18 +201,27 @@ final class TranscriptionEngine {
         isRunning = true
 
         // 1. Load transcription models via backend protocol
-        assetStatus = needsModelDownload
+        let isDownloading = needsModelDownload
+        assetStatus = isDownloading
             ? "Downloading \(transcriptionModel.displayName)..."
             : "Loading \(transcriptionModel.displayName)..."
+        if isDownloading { downloadProgress = 0 }
         diagLog("[ENGINE-1] loading transcription model \(transcriptionModel.rawValue)...")
         do {
             let vocab = settings.transcriptionCustomVocabulary
             let mic = transcriptionModel.makeBackend(customVocabulary: vocab)
-            try await mic.prepare { [weak self] status in
-                Task { @MainActor in
-                    self?.assetStatus = status
+            try await mic.prepare(
+                onStatus: { [weak self] status in
+                    Task { @MainActor in
+                        self?.assetStatus = status
+                    }
+                },
+                onProgress: { [weak self] fraction in
+                    Task { @MainActor in
+                        self?.downloadProgress = fraction
+                    }
                 }
-            }
+            )
             self.micBackend = mic
 
             // Parakeet needs a separate backend for system audio (mutable decoder state).
@@ -238,6 +254,7 @@ final class TranscriptionEngine {
 
             needsModelDownload = false
             downloadConfirmed = false
+            downloadProgress = nil
             assetStatus = "Models ready"
             diagLog("[ENGINE-2] transcription model loaded")
         } catch {
@@ -246,6 +263,7 @@ final class TranscriptionEngine {
             lastError = msg
             assetStatus = "Ready"
             isRunning = false
+            downloadProgress = nil
             // Clear corrupt cache so the next attempt triggers a fresh download
             settings.transcriptionModel.makeBackend().clearModelCache()
             diagLog("[ENGINE-2-FAIL] cleared model cache for \(settings.transcriptionModel.rawValue)")
