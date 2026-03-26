@@ -945,6 +945,25 @@ actor SessionRepository {
 
     func getCurrentSessionID() -> String? { currentSessionID }
 
+    /// Returns the URL of the playable audio file for a session, if one exists.
+    /// Checks for merged M4A exports and imported audio files.
+    func audioFileURL(for sessionID: String) -> URL? {
+        let audioDir = sessionDirectory(for: sessionID)
+            .appendingPathComponent("audio", isDirectory: true)
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: audioDir.path) else { return nil }
+
+        guard let contents = try? fm.contentsOfDirectory(
+            at: audioDir,
+            includingPropertiesForKeys: nil
+        ) else { return nil }
+
+        // Prefer M4A exports, then imported files — skip raw CAF and batch metadata
+        let skipExtensions: Set<String> = ["caf", "json"]
+        let playable = contents.filter { !skipExtensions.contains($0.pathExtension.lowercased()) }
+        return playable.first
+    }
+
     // MARK: - Private Helpers
 
     private func sessionDirectory(for sessionID: String) -> URL {

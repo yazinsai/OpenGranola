@@ -1,3 +1,5 @@
+import AppKit
+import AVFoundation
 import Foundation
 import Observation
 
@@ -18,6 +20,10 @@ struct NotesState {
     var tagFilter: String?
     /// Directory for the currently selected session (used for image loading).
     var selectedSessionDirectory: URL?
+    /// URL of the playable audio file for the selected session (nil if no audio).
+    var audioFileURL: URL?
+    /// Whether audio is currently playing.
+    var isPlayingAudio: Bool = false
 }
 
 enum CleanupStatus: Equatable {
@@ -47,6 +53,10 @@ final class NotesController {
 
     /// Observation polling task for engine state mapping.
     @ObservationIgnored nonisolated(unsafe) private var engineObservationTask: Task<Void, Never>?
+
+    /// Audio player for session recordings.
+    @ObservationIgnored private var audioPlayer: AVPlayer?
+    @ObservationIgnored private var playerObservation: Any?
 
     init(coordinator: AppCoordinator) {
         self.coordinator = coordinator
@@ -96,16 +106,19 @@ final class NotesController {
 
     func selectSession(_ sessionID: String?) {
         state.selectedSessionID = sessionID
+        stopAudio()
 
         guard let sessionID else {
             state.loadedNotes = nil
             state.loadedTranscript = []
             state.selectedSessionDirectory = nil
+            state.audioFileURL = nil
             return
         }
 
         state.loadedNotes = nil
         state.loadedTranscript = []
+        state.audioFileURL = nil
         state.selectedSessionDirectory = coordinator.sessionRepository.sessionsDirectoryURL
             .appendingPathComponent(sessionID, isDirectory: true)
         state.showingOriginal = false
@@ -115,11 +128,13 @@ final class NotesController {
         Task {
             let notes = await coordinator.sessionRepository.loadNotes(sessionID: sessionID)
             let transcript = await coordinator.sessionRepository.loadTranscript(sessionID: sessionID)
+            let audioURL = await coordinator.sessionRepository.audioFileURL(for: sessionID)
 
             guard state.selectedSessionID == sessionID else { return }
 
             state.loadedNotes = notes
             state.loadedTranscript = transcript
+            state.audioFileURL = audioURL
 
             let session = state.sessionHistory.first { $0.id == sessionID }
             if let snapID = session?.templateSnapshot?.id {
@@ -128,6 +143,49 @@ final class NotesController {
                 state.selectedTemplate = coordinator.templateStore.template(for: TemplateStore.genericID)
             }
         }
+    }
+
+    // MARK: - Audio Playback
+
+    func toggleAudioPlayback() {
+        guard let url = state.audioFileURL else { return }
+
+        if state.isPlayingAudio {
+            audioPlayer?.pause()
+            state.isPlayingAudio = false
+            return
+        }
+
+        if audioPlayer?.currentItem?.asset != AVURLAsset(url: url) {
+            stopAudio()
+            let player = AVPlayer(url: url)
+            audioPlayer = player
+            playerObservation = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime,
+                object: player.currentItem,
+                queue: .main
+            ) { [weak self] _ in
+                self?.state.isPlayingAudio = false
+            }
+        }
+
+        audioPlayer?.play()
+        state.isPlayingAudio = true
+    }
+
+    func stopAudio() {
+        audioPlayer?.pause()
+        if let obs = playerObservation {
+            NotificationCenter.default.removeObserver(obs)
+            playerObservation = nil
+        }
+        audioPlayer = nil
+        state.isPlayingAudio = false
+    }
+
+    func revealAudioInFinder() {
+        guard let url = state.audioFileURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     // MARK: - Notes Generation
