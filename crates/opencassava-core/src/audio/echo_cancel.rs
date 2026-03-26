@@ -221,6 +221,7 @@ pub struct MicEchoProcessor {
     reference: EchoReferenceBuffer,
     aec: FreqDomainAec,
     enabled: bool,
+    threshold: f32,
     mic_accum: Vec<f32>,
     out_accum: VecDeque<f32>,
     ref_abs_offset: usize,
@@ -233,6 +234,7 @@ impl MicEchoProcessor {
             reference,
             aec: FreqDomainAec::new(),
             enabled: true,
+            threshold: 0.0,
             mic_accum: Vec::with_capacity(BLOCK_SIZE * 2),
             out_accum: VecDeque::with_capacity(BLOCK_SIZE * 4),
             ref_abs_offset: initial_offset,
@@ -243,41 +245,56 @@ impl MicEchoProcessor {
         self.enabled = enabled;
     }
 
+    pub fn set_threshold(&mut self, threshold: f32) {
+        self.threshold = threshold;
+    }
+
     pub fn process_chunk(&mut self, mic: &[f32]) -> Vec<f32> {
-        if !self.enabled || mic.is_empty() {
+        if mic.is_empty() {
             return mic.to_vec();
         }
 
-        self.mic_accum.extend_from_slice(mic);
-
-        while self.mic_accum.len() >= BLOCK_SIZE {
-            let mic_block: Vec<f32> = self.mic_accum.drain(..BLOCK_SIZE).collect();
-
-            let ref_block = match self.reference.read_block_at(self.ref_abs_offset) {
-                Some(block) => {
-                    self.ref_abs_offset += BLOCK_SIZE;
-                    block
-                }
-                None => {
-                    self.out_accum.extend(mic_block.iter());
-                    self.ref_abs_offset += BLOCK_SIZE;
-                    continue;
-                }
-            };
-
-            let cleaned = self.aec.process_block(&mic_block, &ref_block);
-            self.out_accum.extend(cleaned.iter());
-        }
-
-        let needed = mic.len();
-        if self.out_accum.len() >= needed {
-            self.out_accum.drain(..needed).collect()
+        let cleaned = if !self.enabled {
+            mic.to_vec()
         } else {
-            let mut result: Vec<f32> = self.out_accum.drain(..).collect();
-            let remaining = needed - result.len();
-            result.extend_from_slice(&mic[mic.len() - remaining..]);
-            result
+            self.mic_accum.extend_from_slice(mic);
+
+            while self.mic_accum.len() >= BLOCK_SIZE {
+                let mic_block: Vec<f32> = self.mic_accum.drain(..BLOCK_SIZE).collect();
+
+                let ref_block = match self.reference.read_block_at(self.ref_abs_offset) {
+                    Some(block) => {
+                        self.ref_abs_offset += BLOCK_SIZE;
+                        block
+                    }
+                    None => {
+                        self.out_accum.extend(mic_block.iter());
+                        self.ref_abs_offset += BLOCK_SIZE;
+                        continue;
+                    }
+                };
+
+                let processed = self.aec.process_block(&mic_block, &ref_block);
+                self.out_accum.extend(processed.iter());
+            }
+
+            let needed = mic.len();
+            if self.out_accum.len() >= needed {
+                self.out_accum.drain(..needed).collect()
+            } else {
+                let mut result: Vec<f32> = self.out_accum.drain(..).collect();
+                let remaining = needed - result.len();
+                result.extend_from_slice(&mic[mic.len() - remaining..]);
+                result
+            }
+        };
+
+        // Noise gate: applies regardless of AEC enabled state
+        if self.threshold > 0.0 && rms(&cleaned) < self.threshold {
+            return vec![0.0; mic.len()];
         }
+
+        cleaned
     }
 }
 
@@ -287,6 +304,70 @@ mod tests {
 
     fn energy(samples: &[f32]) -> f32 {
         samples.iter().map(|s| s * s).sum::<f32>() / samples.len().max(1) as f32
+    }
+
+    fn chunk_rms(samples: &[f32]) -> f32 {
+        let sq: f32 = samples.iter().map(|s| s * s).sum();
+        (sq / samples.len() as f32).sqrt()
+    }
+
+    #[test]
+    fn gate_silences_chunk_below_threshold() {
+        let reference = EchoReferenceBuffer::new(1_000);
+        let mut processor = MicEchoProcessor::new(reference.clone());
+        processor.set_enabled(false);
+        processor.set_threshold(0.1);
+
+        let quiet = vec![0.001f32; 480];
+        reference.push_render_chunk(&quiet);
+        let out = processor.process_chunk(&quiet);
+        assert_eq!(out.len(), quiet.len(), "length must be preserved");
+        assert!(chunk_rms(&out) < 1e-6, "output should be silence, got rms={}", chunk_rms(&out));
+    }
+
+    #[test]
+    fn gate_passes_chunk_above_threshold() {
+        let reference = EchoReferenceBuffer::new(1_000);
+        let mut processor = MicEchoProcessor::new(reference.clone());
+        processor.set_enabled(false);
+        processor.set_threshold(0.05);
+
+        let loud: Vec<f32> = (0..480).map(|i| (i as f32 * 0.1).sin() * 0.5).collect();
+        reference.push_render_chunk(&loud);
+        let out = processor.process_chunk(&loud);
+        assert!(chunk_rms(&out) > 0.1, "loud audio should pass gate, got rms={}", chunk_rms(&out));
+    }
+
+    #[test]
+    fn gate_disabled_when_threshold_zero() {
+        let reference = EchoReferenceBuffer::new(1_000);
+        let mut processor = MicEchoProcessor::new(reference.clone());
+        processor.set_enabled(false);
+        // default threshold is 0.0 — gate should be open
+        let quiet = vec![0.001f32; 480];
+        reference.push_render_chunk(&quiet);
+        let out = processor.process_chunk(&quiet);
+        assert!(chunk_rms(&out) > 0.0005, "gate should be open when threshold=0, got rms={}", chunk_rms(&out));
+    }
+
+    #[test]
+    fn gate_applies_when_aec_enabled() {
+        let reference = EchoReferenceBuffer::new(1_000);
+        let mut processor = MicEchoProcessor::new(reference.clone());
+        processor.set_enabled(false);
+        processor.set_threshold(0.2);
+
+        // loud chunk — rms ~0.35 → above threshold, must pass
+        let loud: Vec<f32> = (0..480).map(|i| (i as f32 * 0.1).sin() * 0.5).collect();
+        reference.push_render_chunk(&loud);
+        let out_loud = processor.process_chunk(&loud);
+        assert!(chunk_rms(&out_loud) > 0.1, "loud chunk should pass gate, got rms={}", chunk_rms(&out_loud));
+
+        // quiet chunk — rms ~0.003 → below threshold, must be silenced
+        let quiet = vec![0.005f32; 480];
+        reference.push_render_chunk(&quiet);
+        let out_quiet = processor.process_chunk(&quiet);
+        assert!(chunk_rms(&out_quiet) < 1e-6, "quiet chunk should be silenced by gate, got rms={}", chunk_rms(&out_quiet));
     }
 
     #[test]
