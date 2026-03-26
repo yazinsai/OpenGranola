@@ -222,6 +222,10 @@ extension OpenOatsRootApp {
     }
 }
 
+extension Notification.Name {
+    static let toggleSuggestionPanel = Notification.Name("toggleSuggestionPanel")
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var windowObserver: Any?
@@ -387,20 +391,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Global Hotkey (Cmd+Shift+L)
 
     private func registerGlobalHotkey() {
-        let matchesHotkey: (NSEvent) -> Bool = { event in
+        let matchesMeetingHotkey: (NSEvent) -> Bool = { event in
             event.modifierFlags.contains([.command, .shift])
                 && event.charactersIgnoringModifiers?.lowercased() == "l"
         }
 
+        let matchesPanelHotkey: (NSEvent) -> Bool = { event in
+            event.modifierFlags.contains([.command, .shift])
+                && event.charactersIgnoringModifiers?.lowercased() == "o"
+        }
+
         globalHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard matchesHotkey(event) else { return }
-            Task { @MainActor in self?.toggleMeeting() }
+            if matchesMeetingHotkey(event) {
+                Task { @MainActor in self?.toggleMeeting() }
+            } else if matchesPanelHotkey(event) {
+                Task { @MainActor in
+                    NotificationCenter.default.post(name: .toggleSuggestionPanel, object: nil)
+                }
+            }
         }
 
         localHotkeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard matchesHotkey(event) else { return event }
-            Task { @MainActor in self?.toggleMeeting() }
-            return nil
+            if matchesMeetingHotkey(event) {
+                Task { @MainActor in self?.toggleMeeting() }
+                return nil
+            } else if matchesPanelHotkey(event) {
+                Task { @MainActor in
+                    NotificationCenter.default.post(name: .toggleSuggestionPanel, object: nil)
+                }
+                return nil
+            }
+            return event
         }
     }
 

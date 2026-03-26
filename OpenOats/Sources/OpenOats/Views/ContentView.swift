@@ -371,6 +371,9 @@ struct ContentView: View {
             overlayManager.hide()
             return .handled
         }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleSuggestionPanel)) { _ in
+            toggleOverlay()
+        }
         .onChange(of: pendingControlBarAction) {
             guard let action = pendingControlBarAction else { return }
             pendingControlBarAction = nil
