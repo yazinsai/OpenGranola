@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build-mac:
-    runs-on: macos-latest
+    runs-on: macos-14
     defaults:
       run:
         working-directory: opencassava
@@ -50,14 +50,19 @@ jobs:
       - name: Build macOS DMG
         run: npm run tauri -- build --bundles dmg
         env:
-          # Apple Clang 17 on M-series sets __ARM_FEATURE_MATMUL_INT8 based on
+          # Apple Clang on M-series may set __ARM_FEATURE_MATMUL_INT8 based on
           # native CPU capabilities even when -mcpu=...+noi8mm disables i8mm at
           # the code-generation level. This causes always_inline vmmlaq_s32 calls
           # in ggml-cpu-quants.c to fail because the surrounding function is
           # compiled without i8mm support. Force-undefine the macro so ggml
           # falls back to its non-i8mm code path.
+          # CFLAGS/CXXFLAGS are read by cmake as initial CMAKE_C_FLAGS values;
+          # CMAKE_C_FLAGS/CMAKE_CXX_FLAGS are set explicitly as a belt-and-suspenders
+          # measure in case the cmake invocation overrides the environment defaults.
           CFLAGS: "-U__ARM_FEATURE_MATMUL_INT8"
           CXXFLAGS: "-U__ARM_FEATURE_MATMUL_INT8"
+          CMAKE_C_FLAGS: "-U__ARM_FEATURE_MATMUL_INT8"
+          CMAKE_CXX_FLAGS: "-U__ARM_FEATURE_MATMUL_INT8"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
