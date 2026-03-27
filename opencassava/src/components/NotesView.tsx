@@ -19,7 +19,7 @@ const REGEN_INTERVALS = [
 function getPlainTextPreview(markdown: string, length: number): string {
   const withoutCode = markdown.replace(/`[^`]*`/g, "");
   const withoutLinks = withoutCode.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
-  const withoutFormatting = withoutLinks.replace(/[*_#>/~-]+/g, " ");
+  const withoutFormatting = withoutLinks.replace(/[*_#>~-]+/g, " ");
   const collapsedWhitespace = withoutFormatting.replace(/\s+/g, " ").trim();
   return collapsedWhitespace.slice(0, length);
 }
