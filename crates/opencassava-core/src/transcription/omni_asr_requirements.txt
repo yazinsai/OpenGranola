@@ -1,0 +1,4 @@
+omnilingual-asr
+numpy
+soundfile
+torch

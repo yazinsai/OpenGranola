@@ -21,6 +21,7 @@ pub enum SttBackend {
     WhisperRs { model_path: String },
     FasterWhisper(crate::transcription::faster_whisper::FasterWhisperConfig),
     Parakeet(crate::transcription::parakeet::ParakeetConfig),
+    OmniAsr(crate::transcription::omni_asr::OmniAsrConfig),
     Passthrough,
 }
 
@@ -258,6 +259,30 @@ impl StreamingTranscriber {
                             }
                         }
                         Err(e) => log::error!("Failed to launch parakeet worker: {e}"),
+                    }
+                }
+                SttBackend::OmniAsr(config) => {
+                    match crate::transcription::omni_asr::OmniAsrWorker::spawn(&config) {
+                        Ok(mut worker) => {
+                            for samples in seg_rx.iter() {
+                                match worker.transcribe(&samples) {
+                                    Ok(text) if !text.is_empty() => {
+                                        if let Some(ref on_progress) = progress_for_backend {
+                                            on_progress(SegmentProgress::Processed);
+                                        }
+                                        log::info!("[transcriber] {}", &text[..text.len().min(80)]);
+                                        on_final(text, None);
+                                    }
+                                    Ok(_) => {
+                                        if let Some(ref on_progress) = progress_for_backend {
+                                            on_progress(SegmentProgress::Processed);
+                                        }
+                                    }
+                                    Err(e) => log::error!("omni-asr transcribe error: {e}"),
+                                }
+                            }
+                        }
+                        Err(e) => log::error!("Failed to launch omni-asr worker: {e}"),
                     }
                 }
                 SttBackend::Passthrough => {

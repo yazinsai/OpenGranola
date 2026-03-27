@@ -27,6 +27,7 @@ use opencassava_core::{
     },
     transcription::{
         faster_whisper::{self, FasterWhisperConfig},
+        omni_asr::{self, OmniAsrConfig},
         parakeet::{self, ParakeetConfig, ParakeetWorker},
         streaming_transcriber::{SegmentProgress, StreamingTranscriber, SttBackend},
     },
@@ -284,6 +285,23 @@ impl AppState {
             diarization_enabled: settings.diarization_enabled,
         }
     }
+
+    pub fn omni_asr_root() -> PathBuf {
+        Self::persistent_data_dir().join("stt").join("omni-asr")
+    }
+
+    pub fn omni_asr_config(settings: &AppSettings) -> OmniAsrConfig {
+        let runtime_root = Self::omni_asr_root();
+        OmniAsrConfig {
+            worker_script_path: runtime_root.join("worker.py"),
+            requirements_path: runtime_root.join("requirements.txt"),
+            venv_path: runtime_root.join("venv"),
+            models_dir: runtime_root.join("models"),
+            runtime_root,
+            model: settings.omni_asr_model.clone(),
+            device: settings.omni_asr_device.clone(),
+        }
+    }
 }
 
 fn resolve_whisper_model(settings: &AppSettings) -> &'static str {
@@ -405,6 +423,7 @@ fn selected_stt_provider(settings: &AppSettings) -> &str {
     match settings.stt_provider.trim() {
         "faster-whisper" => "faster-whisper",
         "parakeet" => "parakeet",
+        "omni-asr" => "omni-asr",
         _ => "whisper-rs",
     }
 }
@@ -514,6 +533,56 @@ fn resolve_stt_status(app: &AppHandle, settings: &AppSettings) -> SttStatusPaylo
         };
     }
 
+    if selected_provider == "omni-asr" {
+        let config = AppState::omni_asr_config(settings);
+        let selected_ready =
+            omni_asr::health_check(&config).is_ok()
+                && omni_asr::model_storage_exists(&config);
+
+        if selected_ready {
+            return SttStatusPayload {
+                selected_provider,
+                effective_provider: "omni-asr".into(),
+                selected_model: config.model.clone(),
+                effective_model: config.model.clone(),
+                selected_provider_ready: true,
+                ready: true,
+                using_fallback: false,
+                download_required: false,
+                message: format!("Omni-ASR is ready with {}.", config.model),
+                parakeet_warming: false,
+            };
+        }
+
+        if whisper_ready {
+            return SttStatusPayload {
+                selected_provider,
+                effective_provider: "whisper-rs".into(),
+                selected_model: config.model.clone(),
+                effective_model: whisper_model,
+                selected_provider_ready: false,
+                ready: true,
+                using_fallback: true,
+                download_required: true,
+                message: "Omni-ASR is unavailable. Falling back to whisper-rs.".into(),
+                parakeet_warming: false,
+            };
+        }
+
+        return SttStatusPayload {
+            selected_provider,
+            effective_provider: "omni-asr".into(),
+            selected_model: config.model.clone(),
+            effective_model: config.model.clone(),
+            selected_provider_ready: false,
+            ready: false,
+            using_fallback: false,
+            download_required: true,
+            message: "Omni-ASR needs setup before transcription can start.".into(),
+            parakeet_warming: false,
+        };
+    }
+
     SttStatusPayload {
         selected_provider,
         effective_provider: "whisper-rs".into(),
@@ -547,6 +616,8 @@ fn resolve_stt_backend(
         SttBackend::FasterWhisper(AppState::faster_whisper_config(settings))
     } else if status.effective_provider == "parakeet" {
         SttBackend::Parakeet(AppState::parakeet_config(settings))
+    } else if status.effective_provider == "omni-asr" {
+        SttBackend::OmniAsr(AppState::omni_asr_config(settings))
     } else {
         let model_path = AppState::whisper_model_path_for(app, &status.effective_model)?
             .to_string_lossy()
@@ -1580,6 +1651,65 @@ pub async fn download_stt_model(
             &SttSetupStatusPayload {
                 stage: "done".into(),
                 message: "parakeet is ready.".into(),
+            },
+        )
+        .ok();
+        app.emit("model-download-done", ()).ok();
+        return Ok(());
+    }
+
+    if selected_provider == "omni-asr" {
+        let config = AppState::omni_asr_config(&settings);
+        app.emit(
+            "stt-setup-status",
+            &SttSetupStatusPayload {
+                stage: "prepare".into(),
+                message: "Preparing Omni-ASR runtime directories...".into(),
+            },
+        )
+        .ok();
+        app.emit("model-download-progress", 5).ok();
+        app.emit(
+            "stt-setup-status",
+            &SttSetupStatusPayload {
+                stage: "venv".into(),
+                message: "Creating and updating the Python environment...".into(),
+            },
+        )
+        .ok();
+        let app_log = app.clone();
+        omni_asr::install_runtime(&config, move |line| {
+            app_log.emit("stt-install-log", line).ok();
+        })?;
+        app.emit("model-download-progress", 35).ok();
+        app.emit(
+            "stt-setup-status",
+            &SttSetupStatusPayload {
+                stage: "health".into(),
+                message: "Validating the Omni-ASR worker...".into(),
+            },
+        )
+        .ok();
+        omni_asr::health_check(&config)?;
+        app.emit("model-download-progress", 60).ok();
+        app.emit(
+            "stt-setup-status",
+            &SttSetupStatusPayload {
+                stage: "model".into(),
+                message: format!("Downloading or loading Omni-ASR model {}...", config.model),
+            },
+        )
+        .ok();
+        let app_log2 = app.clone();
+        omni_asr::ensure_model(&config, move |line| {
+            app_log2.emit("stt-install-log", line).ok();
+        })?;
+        app.emit("model-download-progress", 100).ok();
+        app.emit(
+            "stt-setup-status",
+            &SttSetupStatusPayload {
+                stage: "done".into(),
+                message: "Omni-ASR is ready.".into(),
             },
         )
         .ok();

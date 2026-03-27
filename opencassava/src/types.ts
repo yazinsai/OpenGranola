@@ -33,6 +33,8 @@ export interface AppSettings {
   fasterWhisperDevice: string;
   parakeetModel: string;
   parakeetDevice: string;
+  omniAsrModel: string;
+  omniAsrDevice: string;
   diarizationEnabled: boolean;
   echoCancellationEnabled: boolean;
   micCalibrationRms: number | null;

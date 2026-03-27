@@ -54,6 +54,7 @@ const sttProviderOptions = [
   { value: "whisper-rs", label: "whisper-rs", description: "Current in-process local transcription with ggml Whisper models." },
   { value: "faster-whisper", label: "faster-whisper", description: "Bundled worker-based backend with app-managed Python runtime." },
   { value: "parakeet", label: "parakeet", description: "NVIDIA Parakeet TDT v3 — multilingual, 25 languages, automatic language detection. Requires Python and ~3 GB disk." },
+  { value: "omni-asr", label: "Omni-ASR", description: "facebookresearch/omnilingual-asr — supports 1,600+ languages with various models. Requires Python and dependencies." },
 ];
 
 const parakeetModelOptions = [
@@ -65,6 +66,17 @@ const parakeetDeviceOptions = [
   { value: "auto", label: "Auto" },
   { value: "cpu", label: "CPU" },
   { value: "cuda", label: "CUDA (NVIDIA GPU)" },
+];
+
+const omniAsrModelOptions = [
+  { value: "facebook/omnilingual-asr-1b", label: "Omnilingual ASR 1B (Standard)", description: "1.1B params, supports 1,600+ languages." },
+  { value: "facebook/omnilingual-asr-300m", label: "Omnilingual ASR 300M (Fast)", description: "Compact variant for faster inference." },
+];
+
+const omniAsrDeviceOptions = [
+  { value: "auto", label: "Auto" },
+  { value: "cpu", label: "CPU" },
+  { value: "cuda", label: "CUDA" },
 ];
 
 const fasterWhisperModelOptions = [
@@ -308,6 +320,8 @@ export function SettingsView({
     (settings.llmProvider === "ollama" && settings.embeddingProvider === "ollama") ||
     (settings.llmProvider === "openai" && settings.embeddingProvider === "openai" &&
       isLocalUrl(settings.openAiLlmBaseUrl) && isLocalUrl(settings.openAiEmbedBaseUrl));
+
+  const isWindows = navigator.userAgent.toLowerCase().includes("windows");
 
   // Local styles for SettingsView
   const styles = {
@@ -863,8 +877,12 @@ export function SettingsView({
                 style={styles.selectStyle}
               >
                 {sttProviderOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
+                  <option 
+                    key={option.value} 
+                    value={option.value}
+                    disabled={isWindows && option.value === "omni-asr"}
+                  >
+                    {option.label}{isWindows && option.value === "omni-asr" ? " (Unsupported on Windows)" : ""}
                   </option>
                 ))}
               </select>
@@ -892,6 +910,8 @@ export function SettingsView({
                   ? `OpenCassava will use faster-whisper ${settings.fasterWhisperModel}.`
                   : settings.sttProvider === "parakeet"
                   ? `OpenCassava will use Parakeet v3 (${settings.parakeetModel}). Language is auto-detected from audio.`
+                  : settings.sttProvider === "omni-asr"
+                  ? `OpenCassava will use Omni-ASR (${settings.omniAsrModel}).`
                   : `OpenCassava will download and use ${resolveWhisperModel(settings.transcriptionLocale, settings.whisperModel)}. Choose Auto Detect for mixed-language conversations.`}
               </span>
             </div>
@@ -1104,6 +1124,44 @@ export function SettingsView({
                   )}
                 </div>
               </>
+            ) : settings.sttProvider === "omni-asr" ? (
+              <>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>Omni-ASR Model</label>
+                  <select
+                    value={settings.omniAsrModel}
+                    onChange={(e) =>
+                      saveSettings({ ...settings, omniAsrModel: e.target.value })
+                    }
+                    style={styles.selectStyle}
+                  >
+                    {omniAsrModelOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: typography.sm, color: colors.textMuted, marginTop: 4, display: "block" }}>
+                    {omniAsrModelOptions.find((option) => option.value === settings.omniAsrModel)?.description}
+                  </span>
+                </div>
+                <div style={styles.fieldWrap}>
+                  <label style={styles.labelStyle}>Device</label>
+                  <select
+                    value={settings.omniAsrDevice}
+                    onChange={(e) =>
+                      saveSettings({ ...settings, omniAsrDevice: e.target.value })
+                    }
+                    style={styles.selectStyle}
+                  >
+                    {omniAsrDeviceOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
             ) : null}
             {sttStatus && (
               <div style={{ marginTop: spacing[2], display: "flex", flexDirection: "column", gap: spacing[2] }}>
@@ -1113,7 +1171,7 @@ export function SettingsView({
                 <span style={{ fontSize: typography.sm, color: colors.textMuted }}>
                   Active backend: `{sttStatus.effectiveProvider}` using `{sttStatus.effectiveModel}`.
                 </span>
-                {(settings.sttProvider === "faster-whisper" || settings.sttProvider === "parakeet") && (
+                {(settings.sttProvider === "faster-whisper" || settings.sttProvider === "parakeet" || settings.sttProvider === "omni-asr") && (
                   <button
                     style={styles.button}
                     onClick={() => onSetupStt?.()}

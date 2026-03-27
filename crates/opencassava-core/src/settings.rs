@@ -45,6 +45,12 @@ pub struct AppSettings {
 
     #[serde(default = "default_parakeet_device", alias = "parakeet_device")]
     pub parakeet_device: String,
+ 
+    #[serde(default = "default_omni_asr_model", alias = "omni_asr_model")]
+    pub omni_asr_model: String,
+ 
+    #[serde(default = "default_omni_asr_device", alias = "omni_asr_device")]
+    pub omni_asr_device: String,
 
     #[serde(default, alias = "system_audio_device_name")]
     pub system_audio_device_name: Option<String>,
@@ -168,6 +174,8 @@ impl Default for AppSettings {
             faster_whisper_device: default_faster_whisper_device(),
             parakeet_model: default_parakeet_model(),
             parakeet_device: default_parakeet_device(),
+            omni_asr_model: default_omni_asr_model(),
+            omni_asr_device: default_omni_asr_device(),
             system_audio_device_name: None,
             llm_provider: default_llm_provider(),
             embedding_provider: default_embedding_provider(),
@@ -217,6 +225,12 @@ fn default_parakeet_model() -> String {
     "nvidia/parakeet-tdt-0.6b-v3".into()
 }
 fn default_parakeet_device() -> String {
+    "auto".into()
+}
+fn default_omni_asr_model() -> String {
+    "facebook/omnilingual-asr-1b".into()
+}
+fn default_omni_asr_device() -> String {
     "auto".into()
 }
 fn default_model() -> String {
