@@ -463,7 +463,12 @@ where
         check_wsl2_available()?;
     }
     if config.setup_lock_path().exists() {
-        return Err("omni-asr setup is still running.".into());
+        if config.is_installed() {
+            // Stale lock left by a crashed install — safe to remove.
+            let _ = fs::remove_file(config.setup_lock_path());
+        } else {
+            return Err("omni-asr setup is still running.".into());
+        }
     }
     if !config.is_installed() {
         return Err("omni-asr runtime is not installed.".into());
