@@ -2,8 +2,6 @@ import json
 import os
 import sys
 import numpy as np
-import soundfile as sf
-import tempfile
 
 MODELS = {}
 
@@ -14,43 +12,35 @@ def emit(payload):
 def handle_health():
     emit({"ok": True, "result": {"status": "ready"}})
 
+def _load_pipeline(model_name, device):
+    from omnilingual_asr.models.inference import ASRInferencePipeline
+    # device=None lets the pipeline auto-select (cuda if available, else cpu)
+    dev = None if device in ("auto", None, "") else device
+    return ASRInferencePipeline(model_name, device=dev)
+
 def handle_ensure_model(payload):
     model_name = payload["model"]
     device = payload.get("device", "auto")
-    
     if model_name not in MODELS:
-        from omnilingual_asr.pipelines import ASRInferencePipeline
-        # We assume the library handles device placement or we can pass it if supported
-        pipeline = ASRInferencePipeline.from_pretrained(model_name)
-        MODELS[model_name] = pipeline
-        
+        MODELS[model_name] = _load_pipeline(model_name, device)
     emit({"ok": True, "result": {"model": model_name}})
 
 def handle_transcribe(payload):
     model_name = payload["model"]
+    device = payload.get("device", "auto")
     samples = np.asarray(payload.get("samples", []), dtype=np.float32)
-    
+
     if model_name not in MODELS:
-        from omnilingual_asr.pipelines import ASRInferencePipeline
-        pipeline = ASRInferencePipeline.from_pretrained(model_name)
-        MODELS[model_name] = pipeline
-    else:
-        pipeline = MODELS[model_name]
-    
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            tmp_path = f.name
-        sf.write(tmp_path, samples, 16000)
-        
-        # omnilingual-asr typically takes a file path
-        result = pipeline(tmp_path)
-        # Assuming result is a string or has a text attribute based on typical pipeline behavior
-        text = str(result).strip()
-        emit({"ok": True, "result": {"text": text}})
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        MODELS[model_name] = _load_pipeline(model_name, device)
+
+    pipeline = MODELS[model_name]
+
+    # Pass as a pre-decoded audio dict — no temp file needed.
+    # The pipeline resamples, normalises, and processes from here.
+    audio_input = {"waveform": samples, "sample_rate": 16000}
+    results = pipeline.transcribe([audio_input])
+    text = results[0].strip() if results else ""
+    emit({"ok": True, "result": {"text": text}})
 
 def main():
     for raw_line in sys.stdin:
@@ -73,7 +63,8 @@ def main():
             else:
                 emit({"ok": False, "error": f"Unknown command: {command}"})
         except Exception as exc:
-            emit({"ok": False, "error": str(exc)})
+            import traceback
+            emit({"ok": False, "error": str(exc), "traceback": traceback.format_exc()})
 
 if __name__ == "__main__":
     main()

@@ -9,7 +9,6 @@ use std::thread;
 
 const WORKER_SCRIPT: &str = include_str!("omni_asr_worker.py");
 const REQUIREMENTS: &str = include_str!("omni_asr_requirements.txt");
-const TORCH_VERSION: &str = "2.6.0";
 const PYTORCH_CPU_INDEX: &str = "https://download.pytorch.org/whl/cpu";
 const PYTORCH_CUDA_INDEX: &str = "https://download.pytorch.org/whl/cu124";
 const FAIRSEQ2_CPU_INDEX: &str = "https://fair.pkg.atmeta.com/fairseq2/whl/pt2.6.0/cpu";
@@ -29,6 +28,10 @@ pub struct OmniAsrConfig {
     /// If true, all Python commands are routed through WSL2 (`wsl python3 ...`).
     /// Set automatically to `true` on Windows builds.
     pub use_wsl: bool,
+    /// Linux-native path for the venv when running under WSL2.
+    /// Must be on the WSL ext4 filesystem (NOT /mnt/c/...) so that
+    /// PyTorch shared libraries (.so) can be loaded by the dynamic linker.
+    pub wsl_venv_linux_path: String,
 }
 
 impl OmniAsrConfig {
@@ -99,60 +102,16 @@ impl OmniAsrConfig {
     }
 }
 
-fn install_wsl_runtime_packages<F>(
-    venv_wsl: &str,
-    variant: &str,
-    on_line: F,
-) -> Result<(), String>
-where
-    F: Fn(&str) + Send + Clone + 'static,
-{
-    let torch_index = if variant == "cu124" {
-        PYTORCH_CUDA_INDEX
-    } else {
-        PYTORCH_CPU_INDEX
-    };
-    let fairseq2_index = if variant == "cu124" {
-        FAIRSEQ2_CUDA_INDEX
-    } else {
-        FAIRSEQ2_CPU_INDEX
-    };
-    let install_script = format!(
-        "'{venv_wsl}/bin/python3' -m pip install torch=={TORCH_VERSION} --index-url {torch_index} && \
-         '{venv_wsl}/bin/python3' -m pip install fairseq2 --extra-index-url {fairseq2_index}"
-    );
-    run_wsl_command(
-        &install_script,
-        &format!("install torch/fairseq2 runtime ({variant}, WSL)"),
-        on_line,
-    )
-}
 
 fn install_native_runtime_packages<F>(
-    python_path: &Path,
+    _python_path: &Path,
     variant: &str,
     on_line: F,
 ) -> Result<(), String>
 where
     F: Fn(&str) + Send + Clone + 'static,
 {
-    let torch_index = if variant == "cu124" {
-        PYTORCH_CUDA_INDEX
-    } else {
-        PYTORCH_CPU_INDEX
-    };
-    run_command(
-        Command::new(python_path)
-            .arg("-m")
-            .arg("pip")
-            .arg("install")
-            .arg(format!("torch=={TORCH_VERSION}"))
-            .arg("--index-url")
-            .arg(torch_index),
-        &format!("install torch runtime ({variant})"),
-        on_line.clone(),
-    )?;
-
+    // Only add the fairseq2 index — torch version is driven by omnilingual-asr's deps.
     #[cfg(target_os = "linux")]
     {
         let fairseq2_index = if variant == "cu124" {
@@ -298,6 +257,23 @@ pub fn check_native_python_available() -> Result<String, String> {
     }
 }
 
+// ── WSL venv path detection ──────────────────────────────────────────────────
+
+/// Detect the WSL home directory and return the recommended Linux-native venv path.
+/// The venv MUST live on the WSL ext4 filesystem (not /mnt/c/...) so that
+/// PyTorch shared libraries can be loaded by the Linux dynamic linker.
+pub fn detect_wsl_venv_linux_path() -> String {
+    let home = Command::new("wsl")
+        .args(["bash", "-c", "echo $HOME"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "/tmp".to_string());
+    format!("{home}/.local/share/opencassava/omni-asr/venv")
+}
+
 // ── Install runtime ──────────────────────────────────────────────────────────
 
 pub fn install_runtime<F>(config: &OmniAsrConfig, on_line: F) -> Result<(), String>
@@ -312,7 +288,21 @@ where
 
     let _lock = SetupLock::acquire(config)?;
 
-    if config.venv_path.exists() && !config.is_installed() {
+    if config.use_wsl {
+        // The WSL venv lives on the Linux-native filesystem — check and clean via WSL.
+        let venv = &config.wsl_venv_linux_path;
+        let stale = !venv.is_empty() && Command::new("wsl")
+            .args(["bash", "-c", &format!("test -d '{venv}'")])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if stale {
+            on_line("[omni-asr] Removing stale virtual environment...");
+            let _ = Command::new("wsl")
+                .args(["bash", "-c", &format!("rm -rf '{venv}'")])
+                .status();
+        }
+    } else if config.venv_path.exists() {
         on_line("[omni-asr] Removing stale virtual environment...");
         fs::remove_dir_all(&config.venv_path)
             .map_err(|e| format!("Failed to remove stale omni-asr environment: {e}"))?;
@@ -325,9 +315,15 @@ where
     };
 
     if let Err(e) = result {
-        // Clean up the partial venv so next run starts fresh instead of
-        // hitting the "removing stale venv" loop every time.
-        if config.venv_path.exists() {
+        // Clean up the partial venv so next run starts fresh.
+        if config.use_wsl {
+            let venv = &config.wsl_venv_linux_path;
+            if !venv.is_empty() {
+                let _ = Command::new("wsl")
+                    .args(["bash", "-c", &format!("rm -rf '{venv}'")])
+                    .status();
+            }
+        } else if config.venv_path.exists() {
             let _ = fs::remove_dir_all(&config.venv_path);
         }
         return Err(e);
@@ -384,7 +380,10 @@ fn install_runtime_wsl<F>(config: &OmniAsrConfig, on_line: F) -> Result<(), Stri
 where
     F: Fn(&str) + Send + Clone + 'static,
 {
-    let venv_wsl = to_wsl_path(&config.venv_path);
+    if config.wsl_venv_linux_path.is_empty() {
+        return Err("wsl_venv_linux_path is not set — cannot install omni-asr runtime.".into());
+    }
+    let venv_wsl = &config.wsl_venv_linux_path;
     let req_wsl = to_wsl_path(&config.requirements_path);
     let install_variant = config.install_variant();
 
@@ -425,14 +424,72 @@ where
     );
     run_wsl_command(&upgrade_pip_script, "upgrade pip for omni-asr (WSL)", on_line.clone())?;
 
-    // 3. Install the torch/fairseq2 pair that matches the requested runtime.
-    install_wsl_runtime_packages(&venv_wsl, install_variant, on_line.clone())?;
+    let torch_index = if install_variant == "cu124" { PYTORCH_CUDA_INDEX } else { PYTORCH_CPU_INDEX };
+    let fairseq2_index = if install_variant == "cu124" { FAIRSEQ2_CUDA_INDEX } else { FAIRSEQ2_CPU_INDEX };
 
-    // 4. Install requirements
+    if install_variant != "cu124" {
+        // 3 (CPU). Pre-install torch + torchaudio from the CPU index BEFORE omnilingual-asr
+        //          can pull CUDA builds from PyPI. pip will not re-download them when
+        //          resolving requirements as long as the installed version satisfies the
+        //          omnilingual-asr constraint.
+        //          fairseq2 pt2.6.0 requires torch 2.6.x so we pin that version.
+        let install_torch_cpu = format!(
+            "'{venv_wsl}/bin/python3' -m pip install \
+             torch==2.6.0 torchaudio==2.6.0 \
+             --index-url {torch_index}"
+        );
+        run_wsl_command(&install_torch_cpu, "install torch CPU builds (WSL)", on_line.clone())?;
+
+        // 4 (CPU). Pre-install fairseq2==0.6 from the Meta index.
+        let install_fairseq2 = format!(
+            "'{venv_wsl}/bin/python3' -m pip install 'fairseq2==0.6' \
+             --extra-index-url {fairseq2_index}"
+        );
+        run_wsl_command(&install_fairseq2, "install fairseq2 CPU (WSL)", on_line.clone())?;
+    } else {
+        // 3 (CUDA). Pre-install fairseq2==0.6 from the CUDA Meta index.
+        let install_fairseq2 = format!(
+            "'{venv_wsl}/bin/python3' -m pip install 'fairseq2==0.6' \
+             --extra-index-url {fairseq2_index}"
+        );
+        run_wsl_command(&install_fairseq2, "install fairseq2 CUDA (WSL)", on_line.clone())?;
+    }
+
+    // 5. Install all requirements. torch/torchaudio are already installed for the CPU
+    //    variant, so pip will keep them and only fetch the remaining packages from PyPI.
     let install_req_script = format!(
-        "'{venv_wsl}/bin/python3' -m pip install -r '{req_wsl}'"
+        "'{venv_wsl}/bin/python3' -m pip install -r '{req_wsl}' \
+         --extra-index-url {fairseq2_index}"
     );
-    run_wsl_command(&install_req_script, "install omni-asr dependencies (WSL)", on_line)?;
+    run_wsl_command(&install_req_script, "install omni-asr dependencies (WSL)", on_line.clone())?;
+
+    if install_variant != "cu124" {
+        // 6 (CPU). Best-effort cleanup of stray CUDA packages.
+        let cleanup_cuda_script = format!(
+            "'{venv_wsl}/bin/python3' -m pip uninstall -y \
+             triton nvidia-nccl-cu12 nvidia-cublas-cu12 nvidia-cuda-cupti-cu12 \
+             nvidia-cuda-nvrtc-cu12 nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 \
+             nvidia-cufft-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 \
+             nvidia-cusparse-cu12 2>/dev/null; exit 0"
+        );
+        run_wsl_command(&cleanup_cuda_script, "remove stray CUDA packages (WSL)", on_line.clone())?;
+    }
+
+    // 7. Create libsndfile.so.1 symlink inside the venv so fairseq2n can dlopen it.
+    //    soundfile bundles libsndfile_x86_64.so but fairseq2n looks for libsndfile.so.1.
+    //    Filenames are passed as sys.argv to avoid any quoting issues.
+    let link_sndfile_script = format!(
+        "'{venv_wsl}/bin/python3' -c \
+         'import _soundfile_data as sd,os,sys,pathlib; \
+          src=pathlib.Path(sd.__file__).parent/sys.argv[1]; \
+          dst=pathlib.Path(sys.prefix)/sys.argv[2]/sys.argv[3]; \
+          os.makedirs(str(dst.parent),exist_ok=True); \
+          dst.unlink(missing_ok=True); \
+          dst.symlink_to(src); \
+          print(str(src)+sys.argv[4]+str(dst))' \
+         libsndfile_x86_64.so lib libsndfile.so.1 ' -> '"
+    );
+    run_wsl_command(&link_sndfile_script, "link libsndfile.so.1 for fairseq2 (WSL)", on_line.clone())?;
 
     Ok(())
 }
@@ -564,7 +621,7 @@ impl OmniAsrWorker {
     }
 
     fn spawn_wsl(config: &OmniAsrConfig) -> Result<Child, String> {
-        let venv_wsl = to_wsl_path(&config.venv_path);
+        let venv_wsl = &config.wsl_venv_linux_path;
         let script_wsl = to_wsl_path(&config.worker_script_path);
         // Pass the Windows-translated models dir into WSL as an env var the worker can use.
         let models_wsl = to_wsl_path(&config.models_dir);
@@ -573,7 +630,10 @@ impl OmniAsrWorker {
             .arg("bash")
             .arg("-c")
             .arg(format!(
-                "HF_HUB_DISABLE_PROGRESS_BARS=0 TQDM_FORCE=1 OMNI_ASR_MODELS_DIR='{models_wsl}' '{venv_wsl}/bin/python3' -u '{script_wsl}'"
+                "LD_LIBRARY_PATH='{venv_wsl}/lib' \
+                 HF_HUB_DISABLE_PROGRESS_BARS=0 TQDM_FORCE=1 \
+                 OMNI_ASR_MODELS_DIR='{models_wsl}' \
+                 '{venv_wsl}/bin/python3' -u '{script_wsl}'"
             ))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -681,6 +741,13 @@ where
                                     tail_buf.push_str(&line_buf);
                                     if tail_buf.len() > 4000 {
                                         let start = tail_buf.len().saturating_sub(4000);
+                                        // Snap to the next valid char boundary so we
+                                        // don't split a multi-byte UTF-8 sequence.
+                                        let start = tail_buf
+                                            .char_indices()
+                                            .map(|(i, _)| i)
+                                            .find(|&i| i >= start)
+                                            .unwrap_or(tail_buf.len());
                                         *tail_buf = tail_buf[start..].to_string();
                                     }
                                 }

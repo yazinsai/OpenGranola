@@ -139,11 +139,20 @@ impl AppSettings {
     }
 
     pub fn load_from(path: PathBuf) -> Self {
-        if let Ok(data) = std::fs::read_to_string(&path) {
+        let mut s: Self = if let Ok(data) = std::fs::read_to_string(&path) {
             serde_json::from_str(&data).unwrap_or_default()
         } else {
             Self::default()
-        }
+        };
+        // Migrate old HuggingFace-style omni-asr model names to fairseq2 card names.
+        s.omni_asr_model = match s.omni_asr_model.as_str() {
+            "facebook/omnilingual-asr-300m" | "omnilingual-asr-300m" => "omniASR_CTC_300M",
+            "facebook/omnilingual-asr-1b"   | "omnilingual-asr-1b"   => "omniASR_CTC_1B",
+            "facebook/omnilingual-asr-3b"   | "omnilingual-asr-3b"   => "omniASR_CTC_3B",
+            "facebook/omnilingual-asr-7b"   | "omnilingual-asr-7b"   => "omniASR_LLM_7B",
+            other => other,
+        }.to_string();
+        s
     }
 
     pub fn save_to(&self, path: PathBuf) {
@@ -228,7 +237,7 @@ fn default_parakeet_device() -> String {
     "auto".into()
 }
 fn default_omni_asr_model() -> String {
-    "facebook/omnilingual-asr-1b".into()
+    "omniASR_CTC_300M".into()
 }
 fn default_omni_asr_device() -> String {
     "auto".into()

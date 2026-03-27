@@ -292,6 +292,14 @@ impl AppState {
 
     pub fn omni_asr_config(settings: &AppSettings) -> OmniAsrConfig {
         let runtime_root = Self::omni_asr_root();
+        let use_wsl = cfg!(windows);
+        // The venv must live on WSL's native ext4 filesystem so that PyTorch's
+        // shared libraries (.so) can be loaded. /mnt/c/... (NTFS) does not work.
+        let wsl_venv_linux_path = if use_wsl {
+            omni_asr::detect_wsl_venv_linux_path()
+        } else {
+            String::new()
+        };
         OmniAsrConfig {
             worker_script_path: runtime_root.join("worker.py"),
             requirements_path: runtime_root.join("requirements.txt"),
@@ -300,8 +308,8 @@ impl AppState {
             runtime_root,
             model: settings.omni_asr_model.clone(),
             device: settings.omni_asr_device.clone(),
-            // On Windows, fairseq2 is not available natively — route through WSL2.
-            use_wsl: cfg!(windows),
+            use_wsl,
+            wsl_venv_linux_path,
         }
     }
 }
