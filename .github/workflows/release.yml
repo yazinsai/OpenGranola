@@ -216,6 +216,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.release_tag || github.ref_name }}
+
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
+        run: |
+          TAG="${{ github.event.inputs.release_tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          # Extract the block between ## [VERSION] and the next ## heading
+          awk "/^## \[${VERSION}\]/,/^## \[/" CHANGELOG.md \
+            | head -n -1 \
+            | tail -n +2 \
+            > release_notes.md
+          # Fall back to a minimal note if the section wasn't found
+          if [ ! -s release_notes.md ]; then
+            echo "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details." > release_notes.md
+          fi
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -225,4 +245,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
+          body_path: release_notes.md
           files: artifacts/**/*

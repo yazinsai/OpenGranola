@@ -198,6 +198,12 @@ OpenCassava is built on a cross-platform Rust core with a shared React frontend.
 
 ---
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history and upgrade notes.
+
+---
+
 ## License
 
 MIT

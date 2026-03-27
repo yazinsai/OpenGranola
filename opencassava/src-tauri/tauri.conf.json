@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "OpenCassava",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "identifier": "com.opencassava.app",
   "build": {
     "frontendDist": "../dist",
