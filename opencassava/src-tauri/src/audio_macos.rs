@@ -40,6 +40,10 @@ mod macos_impl {
 
     type CMBlockBufferRef = *mut std::ffi::c_void;
 
+    // Compile-time constant — defined as an enum value in CoreMedia headers,
+    // NOT an exported linker symbol, so it must be a Rust const.
+    const AUDIO_BUFFER_LIST_ASSURE_16BYTE_ALIGNMENT: u32 = 1u32 << 0;
+
     #[link(name = "CoreMedia", kind = "framework")]
     extern "C" {
         fn CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
@@ -52,8 +56,6 @@ mod macos_impl {
             flags: u32,
             block_buffer_out: *mut CMBlockBufferRef,
         ) -> i32;
-
-        static kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment: u32;
     }
 
     #[link(name = "CoreFoundation", kind = "framework")]
@@ -91,7 +93,7 @@ mod macos_impl {
                 buf_size,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-                kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
+                AUDIO_BUFFER_LIST_ASSURE_16BYTE_ALIGNMENT,
                 &mut block_buf,
             );
 
