@@ -12,10 +12,40 @@ def emit(payload):
 def handle_health():
     emit({"ok": True, "result": {"status": "ready"}})
 
+def _clean_fairseq2_stale_tmp():
+    """
+    Remove stale tmp* files from the fairseq2 asset cache.
+
+    When a checkpoint cache directory contains both a complete .pt file and
+    leftover tmp* files from an interrupted download, fairseq2's cache resolver
+    returns the directory path instead of the .pt file path.  The delegating
+    checkpoint loader then fails because none of its loaders (basic/native/
+    safetensors) accept a plain directory.  Removing the orphan tmp files lets
+    the resolver return the .pt file path directly, which basic.py handles.
+    """
+    import pathlib
+    cache = pathlib.Path.home() / ".cache" / "fairseq2" / "assets"
+    removed = []
+    if cache.exists():
+        for f in cache.glob("*/tmp*"):
+            if f.is_file():
+                try:
+                    f.unlink()
+                    removed.append(f.name)
+                except OSError:
+                    pass
+    if removed:
+        print(f"[omni-asr] Removed stale fairseq2 cache tmp file(s): {', '.join(removed)}", flush=True)
+
+
 def _load_pipeline(model_name, device):
     from omnilingual_asr.models.inference import ASRInferencePipeline
     # device=None lets the pipeline auto-select (cuda if available, else cpu)
     dev = None if device in ("auto", None, "") else device
+    # Purge any orphan tmp* files left by a previously interrupted download.
+    # Their presence causes the fairseq2 cache resolver to return a directory
+    # path instead of the resolved .pt path, breaking the delegating loader.
+    _clean_fairseq2_stale_tmp()
     return ASRInferencePipeline(model_name, device=dev)
 
 def handle_ensure_model(payload):
