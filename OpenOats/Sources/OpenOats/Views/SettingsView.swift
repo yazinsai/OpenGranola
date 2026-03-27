@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreAudio
 import LaunchAtLogin
+import ServiceManagement
 import Sparkle
 
 struct SettingsView: View {
@@ -20,6 +21,7 @@ struct SettingsView: View {
     @State private var newTemplatePrompt = ""
     @FocusState private var focusedTemplateField: TemplateField?
     @State private var showAutoDetectExplanation = false
+    @State private var launchAtLoginEnabled = false
 
     var body: some View {
         Form {
@@ -313,8 +315,16 @@ struct SettingsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
-                LaunchAtLogin.Toggle("Launch at login")
+                Toggle("Launch at login", isOn: $launchAtLoginEnabled)
                     .font(.system(size: 12))
+                    .onChange(of: launchAtLoginEnabled) { _, newValue in
+                        LaunchAtLogin.isEnabled = newValue
+                    }
+                    .task {
+                        launchAtLoginEnabled = await Task.detached {
+                            SMAppService.mainApp.status == .enabled
+                        }.value
+                    }
             }
             .sheet(isPresented: $showAutoDetectExplanation) {
                 VStack(spacing: 16) {
