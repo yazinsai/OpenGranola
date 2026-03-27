@@ -35,7 +35,7 @@ struct SettingsView: View {
                 .tabItem { Label("Intelligence", systemImage: "brain") }
                 .tag(SettingsTab.intelligence)
 
-            TemplatesSettingsTab(settings: settings)
+            TemplatesSettingsTab()
                 .tabItem { Label("Templates", systemImage: "doc.text") }
                 .tag(SettingsTab.templates)
 
@@ -201,12 +201,12 @@ private struct GeneralSettingsTab: View {
 
                 Section("Updates") {
                     Toggle("Automatically check for updates", isOn: $automaticallyChecksForUpdates)
-                    .font(.system(size: 12))
-                    .onChange(of: automaticallyChecksForUpdates) { _, newValue in
-                        Task { @MainActor in
-                            updater.automaticallyChecksForUpdates = newValue
+                        .font(.system(size: 12))
+                        .onChange(of: automaticallyChecksForUpdates) { _, newValue in
+                            Task { @MainActor in
+                                updater.automaticallyChecksForUpdates = newValue
+                            }
                         }
-                    }
                 }
             }
             .formStyle(.grouped)
@@ -545,7 +545,6 @@ private struct TemplatesSettingsTab: View {
         case name
     }
 
-    @Bindable var settings: AppSettings
     @Environment(AppCoordinator.self) private var coordinator
     @State private var templates: [MeetingTemplate] = []
     @State private var isAddingTemplate = false
