@@ -46,6 +46,26 @@ $buildText = $buildText.Replace(
   'let mut bindings = bindgen::Builder::default().header("wrapper.h");',
   'let bindings = bindgen::Builder::default().header("wrapper.h");'
 )
+# Patch build.rs: add -U__ARM_FEATURE_MATMUL_INT8 cflag for macOS ARM.
+#
+# Root cause: Apple Clang defines __ARM_FEATURE_MATMUL_INT8 based on the
+# native CPU's i8mm capability even when -mcpu=...+noi8mm disables i8mm code
+# generation.  ggml-cpu-quants.c uses always_inline vmmlaq_s32 (which requires
+# the i8mm target feature) inside a block guarded only by
+# #ifdef __ARM_FEATURE_MATMUL_INT8.  When that macro is defined but the
+# enclosing function is compiled without i8mm support the compiler emits a
+# fatal "always_inline function requires target feature 'i8mm'" error.
+#
+# Undefining the macro via cflag/cxxflag forces ggml to take the non-i8mm
+# fallback path.  Using config.cflag() / config.cxxflag() (rather than
+# config.define("CMAKE_C_FLAGS", ...)) is essential: the cmake Rust crate
+# builds its own CMAKE_C_FLAGS from the cc crate and appends it to the cmake
+# command AFTER any user-supplied .define() calls, overriding them.  The
+# cflag/cxxflag values, by contrast, are appended to the crate's own flags.
+$buildText = $buildText.Replace(
+  '    let destination = config.build();',
+  '    if target.contains("apple") { config.cflag("-U__ARM_FEATURE_MATMUL_INT8"); config.cxxflag("-U__ARM_FEATURE_MATMUL_INT8"); }' + "`n" + '    let destination = config.build();'
+)
 Set-Content -Path $sysBuild -Value $buildText -NoNewline
 
 $bindingsText = Get-Content $sysBindings -Raw
