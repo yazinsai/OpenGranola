@@ -74,14 +74,18 @@ def handle_transcribe(payload):
     results = pipeline.transcribe([audio_input], lang=lang_list)
     text = results[0].strip() if results else ""
 
-    # For CTC models, lang is ignored and the model auto-detects. When the
-    # caller requested a Latin-script language (e.g. eng_Latn) but the output
-    # contains only non-Latin characters, the model misidentified the language
-    # — drop the result rather than surfacing garbage.
+    # When a Latin-script language is requested but the model outputs mostly
+    # non-Latin characters (Arabic, Odia, etc.), the audio was too short/noisy
+    # for reliable detection — drop the result rather than surfacing garbage.
+    # Applies to both CTC (which ignores lang entirely) and LLM models (which
+    # can still hallucinate wrong script on very short or silent clips).
+    # Threshold: fewer than 50 % of non-whitespace characters are Latin → drop.
     if lang and lang.endswith("_Latn") and text:
-        latin_chars = sum(1 for ch in text if ch.isascii() or "A" <= ch <= "\u024f")
-        if latin_chars == 0:
-            text = ""
+        non_space = [ch for ch in text if not ch.isspace()]
+        if non_space:
+            latin_chars = sum(1 for ch in non_space if ch.isascii() or "A" <= ch <= "\u024f")
+            if latin_chars / len(non_space) < 0.5:
+                text = ""
 
     emit({"ok": True, "result": {"text": text}})
 

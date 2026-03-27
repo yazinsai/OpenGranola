@@ -144,7 +144,7 @@ impl StreamingTranscriber {
                                     on_progress(SegmentProgress::Processed);
                                 }
                                 if !text.is_empty() {
-                                    log::info!("[transcriber] {}", &text[..text.len().min(80)]);
+                                    log::info!("[transcriber] {}", text.chars().take(80).collect::<String>());
                                     on_final(text, None);
                                 }
                             }
@@ -161,7 +161,7 @@ impl StreamingTranscriber {
                                         if let Some(ref on_progress) = progress_for_backend {
                                             on_progress(SegmentProgress::Processed);
                                         }
-                                        log::info!("[transcriber] {}", &text[..text.len().min(80)]);
+                                        log::info!("[transcriber] {}", text.chars().take(80).collect::<String>());
                                         on_final(text, None);
                                     }
                                     Ok(_) => {
@@ -231,7 +231,7 @@ impl StreamingTranscriber {
                                         if let Some(ref on_progress) = progress_for_backend {
                                             on_progress(SegmentProgress::Processed);
                                         }
-                                        log::info!("[transcriber] {}", &text[..text.len().min(80)]);
+                                        log::info!("[transcriber] {}", text.chars().take(80).collect::<String>());
                                         let speaker_id = if diarization_enabled {
                                             match worker.speaker_id(&diarization_buf) {
                                                 Ok(Some(id)) => {
@@ -276,7 +276,7 @@ impl StreamingTranscriber {
                                         if let Some(ref on_progress) = progress_for_backend {
                                             on_progress(SegmentProgress::Processed);
                                         }
-                                        log::info!("[transcriber] {}", &text[..text.len().min(80)]);
+                                        log::info!("[transcriber] {}", text.chars().take(80).collect::<String>());
                                         on_final(text, None);
                                     }
                                     Ok(_) => {
