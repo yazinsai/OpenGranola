@@ -52,7 +52,6 @@ fn ensure_overlay_window(app: &AppHandle) -> Result<WebviewWindow, String> {
         .inner_size(380.0, 160.0)
         .resizable(false)
         .decorations(false)
-        .transparent(true)
         .always_on_top(true)
         .visible(false)
         .skip_taskbar(true)
