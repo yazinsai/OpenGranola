@@ -3,32 +3,62 @@ $ErrorActionPreference = "Stop"
 $workspaceRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $buildRoot = Join-Path $workspaceRoot ".build"
 $whisperRoot = Join-Path $buildRoot "whisper-rs"
-$repoUrl = "https://codeberg.org/tazz4843/whisper-rs.git"
+$repoUrls = @(
+  "https://codeberg.org/tazz4843/whisper-rs.git",
+  "https://github.com/tazz4843/whisper-rs.git"
+)
 $repoCommit = "b202069aa891d8243206f89599c04f0e8e6a3d27"
 $cacheStamp = Join-Path $whisperRoot ".openoats-patched-commit"
+
+function Remove-WhisperRoot {
+  if (Test-Path $whisperRoot) {
+    Remove-Item -Recurse -Force $whisperRoot
+  }
+}
+
+function Invoke-WhisperClone {
+  $failures = New-Object System.Collections.Generic.List[string]
+
+  foreach ($repoUrl in $repoUrls) {
+    Remove-WhisperRoot
+    Write-Host "Cloning whisper-rs from $repoUrl"
+
+    & git clone $repoUrl $whisperRoot
+    if ($LASTEXITCODE -ne 0) {
+      $failures.Add("${repoUrl}: git clone failed with exit code $LASTEXITCODE")
+      continue
+    }
+
+    & git -C $whisperRoot checkout $repoCommit
+    if ($LASTEXITCODE -ne 0) {
+      $failures.Add("${repoUrl}: git checkout $repoCommit failed with exit code $LASTEXITCODE")
+      continue
+    }
+
+    & git -C $whisperRoot submodule update --init --recursive
+    if ($LASTEXITCODE -ne 0) {
+      $failures.Add("${repoUrl}: git submodule update failed with exit code $LASTEXITCODE")
+      continue
+    }
+
+    return
+  }
+
+  Remove-WhisperRoot
+  throw "Failed to prepare whisper-rs from all configured remotes.`n$($failures -join "`n")"
+}
 
 New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
 
 if (-not (Test-Path $whisperRoot)) {
-  git clone $repoUrl $whisperRoot | Out-Host
-  git -C $whisperRoot checkout $repoCommit | Out-Host
-  git -C $whisperRoot submodule update --init --recursive | Out-Host
+  Invoke-WhisperClone
 } elseif (Test-Path $cacheStamp) {
   $cachedCommit = (Get-Content $cacheStamp -Raw).Trim()
   if ($cachedCommit -ne $repoCommit) {
-    Remove-Item -Recurse -Force $whisperRoot
-    git clone $repoUrl $whisperRoot | Out-Host
-    git -C $whisperRoot checkout $repoCommit | Out-Host
-    git -C $whisperRoot submodule update --init --recursive | Out-Host
+    Invoke-WhisperClone
   }
 } elseif (-not (Test-Path (Join-Path $whisperRoot ".git"))) {
-  if (Test-Path $whisperRoot) {
-    Remove-Item -Recurse -Force $whisperRoot
-  }
-
-  git clone $repoUrl $whisperRoot | Out-Host
-  git -C $whisperRoot checkout $repoCommit | Out-Host
-  git -C $whisperRoot submodule update --init --recursive | Out-Host
+  Invoke-WhisperClone
 }
 
 $sysRoot = Join-Path $whisperRoot "sys"
@@ -36,6 +66,16 @@ $sysBuild = Join-Path $sysRoot "build.rs"
 $sysBindings = Join-Path $sysRoot "src" "bindings.rs"
 $commonLogging = Join-Path $whisperRoot "src" "common_logging.rs"
 $grammar = Join-Path $whisperRoot "src" "whisper_grammar.rs"
+
+if (
+  -not (Test-Path $sysBuild) -or
+  -not (Test-Path $sysBindings) -or
+  -not (Test-Path $commonLogging) -or
+  -not (Test-Path $grammar)
+) {
+  Write-Host "whisper-rs checkout is incomplete, refreshing clone"
+  Invoke-WhisperClone
+}
 
 $buildText = Get-Content $sysBuild -Raw
 $buildText = $buildText.Replace(
