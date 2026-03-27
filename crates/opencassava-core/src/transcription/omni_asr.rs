@@ -10,6 +10,8 @@ use std::thread;
 const WORKER_SCRIPT: &str = include_str!("omni_asr_worker.py");
 const REQUIREMENTS: &str = include_str!("omni_asr_requirements.txt");
 const TORCH_VERSION: &str = "2.6.0";
+const PYTORCH_CPU_INDEX: &str = "https://download.pytorch.org/whl/cpu";
+const PYTORCH_CUDA_INDEX: &str = "https://download.pytorch.org/whl/cu124";
 const FAIRSEQ2_CPU_INDEX: &str = "https://fair.pkg.atmeta.com/fairseq2/whl/pt2.6.0/cpu";
 const FAIRSEQ2_CUDA_INDEX: &str = "https://fair.pkg.atmeta.com/fairseq2/whl/pt2.6.0/cu124";
 
@@ -105,13 +107,18 @@ fn install_wsl_runtime_packages<F>(
 where
     F: Fn(&str) + Send + Clone + 'static,
 {
+    let torch_index = if variant == "cu124" {
+        PYTORCH_CUDA_INDEX
+    } else {
+        PYTORCH_CPU_INDEX
+    };
     let fairseq2_index = if variant == "cu124" {
         FAIRSEQ2_CUDA_INDEX
     } else {
         FAIRSEQ2_CPU_INDEX
     };
     let install_script = format!(
-        "{venv_wsl}/bin/python3 -m pip install torch=={TORCH_VERSION} && \
+        "{venv_wsl}/bin/python3 -m pip install torch=={TORCH_VERSION} --index-url {torch_index} && \
          {venv_wsl}/bin/python3 -m pip install fairseq2 --extra-index-url {fairseq2_index}"
     );
     run_wsl_command(
@@ -129,12 +136,19 @@ fn install_native_runtime_packages<F>(
 where
     F: Fn(&str) + Send + Clone + 'static,
 {
+    let torch_index = if variant == "cu124" {
+        PYTORCH_CUDA_INDEX
+    } else {
+        PYTORCH_CPU_INDEX
+    };
     run_command(
         Command::new(python_path)
             .arg("-m")
             .arg("pip")
             .arg("install")
-            .arg(format!("torch=={TORCH_VERSION}")),
+            .arg(format!("torch=={TORCH_VERSION}"))
+            .arg("--index-url")
+            .arg(torch_index),
         &format!("install torch runtime ({variant})"),
         on_line.clone(),
     )?;
