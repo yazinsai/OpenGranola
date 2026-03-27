@@ -741,14 +741,18 @@ where
                     let text = String::from_utf8_lossy(&buf[..n]);
                     for c in text.chars() {
                         if c == '\n' || c == '\r' {
-                            if !line_buf.is_empty() {
-                                log::warn!("[omni-asr] {}", line_buf);
-                                on_line(&line_buf);
+                            // Trim trailing whitespace — progress bars pad with spaces
+                            // to overwrite longer previous lines when using \r.
+                            let trimmed = line_buf.trim_end().to_string();
+                            line_buf.clear();
+                            if !trimmed.is_empty() {
+                                log::warn!("[omni-asr] {trimmed}");
+                                on_line(&trimmed);
                                 if let Ok(mut tail_buf) = tail.lock() {
                                     if !tail_buf.is_empty() {
                                         tail_buf.push('\n');
                                     }
-                                    tail_buf.push_str(&line_buf);
+                                    tail_buf.push_str(&trimmed);
                                     if tail_buf.len() > 4000 {
                                         let start = tail_buf.len().saturating_sub(4000);
                                         // Snap to the next valid char boundary so we
@@ -761,7 +765,6 @@ where
                                         *tail_buf = tail_buf[start..].to_string();
                                     }
                                 }
-                                line_buf.clear();
                             }
                         } else {
                             line_buf.push(c);
