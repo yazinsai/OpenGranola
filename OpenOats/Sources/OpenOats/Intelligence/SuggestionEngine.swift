@@ -606,9 +606,10 @@ final class SuggestionEngine {
 
         Format rules:
         - Lead with a **bold** one-line takeaway
-        - Follow with 2-4 short bullet points containing specific names, numbers, or quotes from the evidence
+        - Follow with 2-4 short bullet points containing specific names, numbers, or quotes extracted directly from the evidence
         - Each bullet should be one line — scannable at a glance
-        - No filler, no hedging, no preamble
+        - Always include specific company names, dollar amounts, and metrics from the evidence — never paraphrase into vague summaries
+        - No filler, no hedging, no preamble, no "why this is relevant" explanations
         - Use **bold** for company names, dollar amounts, and key metrics
 
         \(formatInstruction)
