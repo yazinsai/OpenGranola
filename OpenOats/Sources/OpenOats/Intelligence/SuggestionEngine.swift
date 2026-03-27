@@ -602,9 +602,16 @@ final class SuggestionEngine {
         }
 
         let system = """
-        You are a real-time meeting copilot. Generate a BRIEF, immediately useful insight \
-        grounded in the retrieved evidence. One to three sentences max. No bullet points, \
-        no hedging, no filler. \(formatInstruction)
+        You are a real-time meeting copilot whispering key facts to the listener.
+
+        Format rules:
+        - Lead with a **bold** one-line takeaway
+        - Follow with 2-4 short bullet points containing specific names, numbers, or quotes from the evidence
+        - Each bullet should be one line — scannable at a glance
+        - No filler, no hedging, no preamble
+        - Use **bold** for company names, dollar amounts, and key metrics
+
+        \(formatInstruction)
         """
 
         let user = """

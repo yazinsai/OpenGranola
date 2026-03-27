@@ -94,10 +94,17 @@ private struct SuggestionPanelCard: View {
             }
 
             // Main text (raw snippet or streamed synthesis)
-            Text(suggestion.displayText)
-                .font(.system(size: isPrimary ? 12 : 11))
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
+            if let md = try? AttributedString(markdown: suggestion.displayText, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+                Text(md)
+                    .font(.system(size: isPrimary ? 12 : 11))
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+            } else {
+                Text(suggestion.displayText)
+                    .font(.system(size: isPrimary ? 12 : 11))
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+            }
 
             // Streaming indicator
             if suggestion.lifecycle == .streaming {
