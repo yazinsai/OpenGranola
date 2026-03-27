@@ -166,7 +166,7 @@ pub fn locale_to_fairseq_lang(locale: &str) -> String {
 }
 
 fn install_native_runtime_packages<F>(
-    _python_path: &Path,
+    python_path: &Path,
     variant: &str,
     on_line: F,
 ) -> Result<(), String>
