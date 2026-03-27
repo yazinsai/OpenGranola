@@ -118,8 +118,8 @@ where
         FAIRSEQ2_CPU_INDEX
     };
     let install_script = format!(
-        "{venv_wsl}/bin/python3 -m pip install torch=={TORCH_VERSION} --index-url {torch_index} && \
-         {venv_wsl}/bin/python3 -m pip install fairseq2 --extra-index-url {fairseq2_index}"
+        "'{venv_wsl}/bin/python3' -m pip install torch=={TORCH_VERSION} --index-url {torch_index} && \
+         '{venv_wsl}/bin/python3' -m pip install fairseq2 --extra-index-url {fairseq2_index}"
     );
     run_wsl_command(
         &install_script,
@@ -305,6 +305,11 @@ where
     F: Fn(&str) + Send + Clone + 'static,
 {
     config.ensure_files()?;
+
+    if config.is_installed() {
+        return Ok(());
+    }
+
     let _lock = SetupLock::acquire(config)?;
 
     if config.venv_path.exists() && !config.is_installed() {
@@ -313,12 +318,25 @@ where
             .map_err(|e| format!("Failed to remove stale omni-asr environment: {e}"))?;
     }
 
+    let result = if config.use_wsl {
+        install_runtime_wsl(config, on_line)
+    } else {
+        install_runtime_native(config, on_line)
+    };
+
+    if let Err(e) = result {
+        // Clean up the partial venv so next run starts fresh instead of
+        // hitting the "removing stale venv" loop every time.
+        if config.venv_path.exists() {
+            let _ = fs::remove_dir_all(&config.venv_path);
+        }
+        return Err(e);
+    }
+
     if config.use_wsl {
-        install_runtime_wsl(config, on_line)?;
         fs::write(config.wsl_install_stamp_path(), config.install_stamp_contents())
             .map_err(|e| e.to_string())?;
     } else {
-        install_runtime_native(config, on_line)?;
         fs::write(config.install_stamp_path(), config.install_stamp_contents())
             .map_err(|e| e.to_string())?;
     }
@@ -397,13 +415,13 @@ where
 
     // 1. Create venv inside WSL
     let create_venv_script = format!(
-        "python3 -m venv {venv_wsl} 2>&1 && echo 'venv created'"
+        "python3 -m venv '{venv_wsl}' 2>&1 && echo 'venv created'"
     );
     run_wsl_command(&create_venv_script, "create omni-asr WSL virtual environment", on_line.clone())?;
 
     // 2. Upgrade pip
     let upgrade_pip_script = format!(
-        "{venv_wsl}/bin/python3 -m pip install --upgrade pip"
+        "'{venv_wsl}/bin/python3' -m pip install --upgrade pip"
     );
     run_wsl_command(&upgrade_pip_script, "upgrade pip for omni-asr (WSL)", on_line.clone())?;
 
@@ -412,7 +430,7 @@ where
 
     // 4. Install requirements
     let install_req_script = format!(
-        "{venv_wsl}/bin/python3 -m pip install -r {req_wsl}"
+        "'{venv_wsl}/bin/python3' -m pip install -r '{req_wsl}'"
     );
     run_wsl_command(&install_req_script, "install omni-asr dependencies (WSL)", on_line)?;
 
@@ -550,7 +568,7 @@ impl OmniAsrWorker {
             .arg("bash")
             .arg("-c")
             .arg(format!(
-                "HF_HUB_DISABLE_PROGRESS_BARS=0 TQDM_FORCE=1 OMNI_ASR_MODELS_DIR={models_wsl} {venv_wsl}/bin/python3 -u {script_wsl}"
+                "HF_HUB_DISABLE_PROGRESS_BARS=0 TQDM_FORCE=1 OMNI_ASR_MODELS_DIR='{models_wsl}' '{venv_wsl}/bin/python3' -u '{script_wsl}'"
             ))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
