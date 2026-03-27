@@ -25,7 +25,7 @@ enum WebhookService {
     }
 
     /// Fire the webhook if configured. Runs detached so it never blocks finalization.
-    static func fireIfEnabled(
+    @MainActor static func fireIfEnabled(
         settings: AppSettings,
         sessionIndex: SessionIndex,
         utterances: [Utterance]
