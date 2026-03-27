@@ -66,7 +66,10 @@ impl FasterWhisperConfig {
     }
 }
 
-pub fn install_runtime(config: &FasterWhisperConfig) -> Result<(), String> {
+pub fn install_runtime<F>(config: &FasterWhisperConfig, on_line: F) -> Result<(), String>
+where
+    F: Fn(&str) + Send + Clone + 'static,
+{
     config.ensure_files()?;
     let _lock = SetupLock::acquire(config)?;
     if !config.python_path().exists() {
@@ -78,6 +81,7 @@ pub fn install_runtime(config: &FasterWhisperConfig) -> Result<(), String> {
             .arg("venv")
             .arg(&config.venv_path),
             "create faster-whisper virtual environment",
+            on_line.clone(),
         )?;
     }
 
@@ -87,9 +91,11 @@ pub fn install_runtime(config: &FasterWhisperConfig) -> Result<(), String> {
         .arg("-m")
         .arg("pip")
         .arg("install")
+        .arg("-v")
         .arg("--upgrade")
         .arg("pip"),
         "upgrade pip for faster-whisper",
+        on_line.clone(),
     )?;
 
     run_command(
@@ -97,9 +103,11 @@ pub fn install_runtime(config: &FasterWhisperConfig) -> Result<(), String> {
         .arg("-m")
         .arg("pip")
         .arg("install")
+        .arg("-v")
         .arg("-r")
         .arg(&config.requirements_path),
         "install faster-whisper runtime dependencies",
+        on_line,
     )?;
 
     fs::write(config.install_stamp_path(), REQUIREMENTS).map_err(|e| e.to_string())?;
@@ -119,9 +127,12 @@ pub fn health_check(config: &FasterWhisperConfig) -> Result<(), String> {
     Ok(())
 }
 
-pub fn ensure_model(config: &FasterWhisperConfig) -> Result<(), String> {
+pub fn ensure_model<F>(config: &FasterWhisperConfig, on_line: F) -> Result<(), String>
+where
+    F: Fn(&str) + Send + Clone + 'static,
+{
     if !config.is_installed() {
-        install_runtime(config)?;
+        install_runtime(config, on_line)?;
     }
     let mut worker = FasterWhisperWorker::spawn(config)?;
     worker.ensure_model()?;
@@ -306,21 +317,90 @@ fn format_worker_exit_error(status: Option<std::process::ExitStatus>, stderr: &s
     message
 }
 
-fn run_command(command: &mut Command, description: &str) -> Result<(), String> {
+fn run_command<F>(command: &mut Command, description: &str, on_line: F) -> Result<(), String>
+where
+    F: Fn(&str) + Send + Clone + 'static,
+{
     log::info!("[faster-whisper] Starting {description}");
-    let output = command
-        .output()
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| format!("Failed to {description}: {e}"))?;
-    if output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.trim().is_empty() {
-            log::info!("[faster-whisper] {description} stderr: {}", stderr.trim());
+
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+
+    let on_line_stdout = on_line.clone();
+    let stdout_thread = thread::spawn(move || {
+        let mut stdout = stdout;
+        let mut buf_all = Vec::new();
+        let mut line_buf = String::new();
+        let mut buf = [0u8; 1024];
+        loop {
+            match stdout.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    buf_all.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&buf[..n]);
+                    for c in text.chars() {
+                        if c == '\n' || c == '\r' {
+                            if !line_buf.is_empty() {
+                                log::info!("[faster-whisper] {}", line_buf);
+                                on_line_stdout(&line_buf);
+                                line_buf.clear();
+                            }
+                        } else {
+                            line_buf.push(c);
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
         }
+        buf_all
+    });
+    let stderr_thread = thread::spawn(move || {
+        let mut stderr = stderr;
+        let mut buf_all = Vec::new();
+        let mut line_buf = String::new();
+        let mut buf = [0u8; 1024];
+        loop {
+            match stderr.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    buf_all.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&buf[..n]);
+                    for c in text.chars() {
+                        if c == '\n' || c == '\r' {
+                            if !line_buf.is_empty() {
+                                log::info!("[faster-whisper] {}", line_buf);
+                                on_line(&line_buf);
+                                line_buf.clear();
+                            }
+                        } else {
+                            line_buf.push(c);
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        buf_all
+    });
+
+    let status = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for {description}: {e}"))?;
+    let stdout_buf = stdout_thread.join().unwrap_or_default();
+    let stderr_buf = stderr_thread.join().unwrap_or_default();
+
+    if status.success() {
         return Ok(());
     }
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&stderr_buf);
+    let stdout = String::from_utf8_lossy(&stdout_buf);
     let mut message = format!("Failed to {description}.");
     if !stderr.trim().is_empty() {
         message.push_str(" stderr: ");

@@ -1,4 +1,5 @@
+--extra-index-url https://fair.pkg.atmeta.com/fairseq2/whl/pt2.6.0/cu124
 omnilingual-asr
 numpy
 soundfile
-torch
+torch==2.6.0

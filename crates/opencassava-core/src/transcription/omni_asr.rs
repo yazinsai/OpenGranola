@@ -584,26 +584,60 @@ where
 
     let on_line_stdout = on_line.clone();
     let stdout_thread = thread::spawn(move || {
-        let reader = BufReader::new(stdout);
-        let mut buf = Vec::new();
-        for line in reader.lines().map_while(Result::ok) {
-            log::info!("[omni-asr] {}", line);
-            on_line_stdout(&line);
-            buf.extend_from_slice(line.as_bytes());
-            buf.push(b'\n');
+        let mut stdout = stdout;
+        let mut buf_all = Vec::new();
+        let mut line_buf = String::new();
+        let mut buf = [0u8; 1024];
+        loop {
+            match stdout.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    buf_all.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&buf[..n]);
+                    for c in text.chars() {
+                        if c == '\n' || c == '\r' {
+                            if !line_buf.is_empty() {
+                                log::info!("[omni-asr] {}", line_buf);
+                                on_line_stdout(&line_buf);
+                                line_buf.clear();
+                            }
+                        } else {
+                            line_buf.push(c);
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
         }
-        buf
+        buf_all
     });
     let stderr_thread = thread::spawn(move || {
-        let reader = BufReader::new(stderr);
-        let mut buf = Vec::new();
-        for line in reader.lines().map_while(Result::ok) {
-            log::info!("[omni-asr] {}", line);
-            on_line(&line);
-            buf.extend_from_slice(line.as_bytes());
-            buf.push(b'\n');
+        let mut stderr = stderr;
+        let mut buf_all = Vec::new();
+        let mut line_buf = String::new();
+        let mut buf = [0u8; 1024];
+        loop {
+            match stderr.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    buf_all.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&buf[..n]);
+                    for c in text.chars() {
+                        if c == '\n' || c == '\r' {
+                            if !line_buf.is_empty() {
+                                log::info!("[omni-asr] {}", line_buf);
+                                on_line(&line_buf);
+                                line_buf.clear();
+                            }
+                        } else {
+                            line_buf.push(c);
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
         }
-        buf
+        buf_all
     });
 
     let status = child

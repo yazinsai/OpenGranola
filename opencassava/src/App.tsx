@@ -77,6 +77,7 @@ function resolveWhisperModel(settings: AppSettings | null): Exclude<WhisperModel
 function sttProviderLabel(provider: string): string {
   if (provider === "faster-whisper") return "faster-whisper";
   if (provider === "parakeet") return "parakeet";
+  if (provider === "omni-asr") return "omni-asr";
   return "whisper-rs";
 }
 
@@ -449,8 +450,8 @@ function App() {
             </p>
           )}
           <button onClick={handleDownload} style={primaryBtn}>
-            {settings?.sttProvider === "faster-whisper"
-              ? "Set up faster-whisper"
+            {settings?.sttProvider && settings.sttProvider !== "whisper-rs"
+              ? `Set up ${sttProviderLabel(settings.sttProvider)}`
               : `Download ${activeWhisperModel} (~150 MB)`}
           </button>
         </div>
@@ -479,8 +480,8 @@ function App() {
           )}
           
           <p style={{ color: colors.textSecondary, fontSize: 12, margin: 0 }}>
-            {settings?.sttProvider === "faster-whisper"
-              ? `Preparing faster-whisper... ${isModelStage ? `${downloadProgress}%` : ''}`
+            {settings?.sttProvider && settings.sttProvider !== "whisper-rs"
+              ? `Preparing ${sttProviderLabel(settings.sttProvider)}... ${isModelStage ? `${downloadProgress}%` : ''}`
               : `Downloading ${activeWhisperModel}... ${isModelStage ? `${downloadProgress}%` : ''}`}
           </p>
           {sttSetupMessage && (

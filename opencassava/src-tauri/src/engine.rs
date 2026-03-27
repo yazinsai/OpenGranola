@@ -1572,7 +1572,10 @@ pub async fn download_stt_model(
             },
         )
         .ok();
-        faster_whisper::install_runtime(&config)?;
+        let app_log = app.clone();
+        faster_whisper::install_runtime(&config, move |line| {
+            app_log.emit("stt-install-log", line).ok();
+        })?;
         app.emit("model-download-progress", 35).ok();
         app.emit(
             "stt-setup-status",
@@ -1592,7 +1595,10 @@ pub async fn download_stt_model(
             },
         )
         .ok();
-        faster_whisper::ensure_model(&config)?;
+        let app_log2 = app.clone();
+        faster_whisper::ensure_model(&config, move |line| {
+            app_log2.emit("stt-install-log", line).ok();
+        })?;
         app.emit("model-download-progress", 100).ok();
         app.emit(
             "stt-setup-status",
