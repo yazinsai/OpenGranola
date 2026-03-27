@@ -34,17 +34,50 @@ For first-time setup with LM Studio, start here: [LM Studio Setup Guide](docs/lm
 
 ## Features
 
+### During a live call
+
 - **Invisible to the other side** - the overlay window is hidden from screen sharing by default, so no one knows you're using it.
-- **Multi-language transcription** - supports both `whisper-rs` and [NVIDIA Parakeet](https://github.com/NVIDIA/NeMo) (25+ languages) for local, offline speech recognition; no audio ever leaves your device.
-- **Cleaner call audio capture** - built-in echo cancellation helps suppress speaker playback leaking back into your mic, and a configurable mic voice threshold reduces low-level background noise when you are not speaking.
-- **Runs 100% locally** - tested primarily with LM Studio for LLM suggestions and local embeddings. It may also work with other local providers like [Ollama](https://ollama.com/), ensuring nothing touches the network at all.
-- **Flexible AI Integration** - pick any LLM. Use [OpenRouter](https://openrouter.ai/) for cloud models (GPT-4o, Claude, Gemini). *(Note: The Cloud AI version is currently untested, but will be reviewed at a later time).*
-- **Live transcript & Search** - see both sides of the conversation as it happens, search the active transcript in real-time, and copy or export the whole thing with one click.
-- **Session History** - automatically saves every session. Access your past sessions directly from the **History Sidebar**.
-- **Auto-summarize during calls** - enable periodic meeting summary generation with live diff highlighting showing what's new. Configure the interval (30s to 10m), review summary history, and manually regenerate at any time.
-- **Customizable note & suggestion prompts** - create and edit custom note templates beyond the built-in presets. Fine-tune the system prompts used for knowledge base surfacing, suggestion synthesis, and smart question generation.
-- **Formatted Notes generation** - after each session, produce structured markdown notes from the transcript using your custom or built-in templates.
-- **Knowledge base search** - point it at a folder of notes and it retrieves what's relevant using Voyage AI embeddings, local Ollama embeddings, or any OpenAI-compatible endpoint.
+- **Live transcript + instant search** - see both sides of the conversation in real time, search while people are speaking, and copy/export when needed.
+- **Smarter call capture** - built-in echo cancellation suppresses speaker bleed into your mic, and a configurable mic voice threshold reduces low-level noise.
+- **Auto summaries while you talk** - generate periodic summaries (30 seconds to 10 minutes), review summary history, and regenerate on demand.
+- **Contextual talking points** - when the conversation hits a key moment, OpenCassava retrieves related knowledge and suggests useful responses.
+
+### Knowledge and note workflows
+
+- **Knowledge base search** - point OpenCassava to a folder of `.md`/`.txt` notes and retrieve relevant passages with embeddings.
+- **Custom prompts and templates** - tailor prompts for retrieval, suggestions, question generation, and post-call note formatting.
+- **Structured note generation** - convert transcripts into clean markdown notes using built-in or custom templates.
+- **Session history** - every session is automatically saved and accessible from the History sidebar.
+
+### AI & deployment flexibility
+
+- **Runs 100% locally** - tested primarily with LM Studio for LLM suggestions and local embeddings; no audio has to leave your device.
+- **Flexible AI providers** - use local providers like Ollama, or cloud endpoints through OpenRouter and OpenAI-compatible APIs.
+- **Multi-language transcription** - supports both `whisper-rs` and [NVIDIA Parakeet](https://github.com/NVIDIA/NeMo) for local speech recognition.
+
+---
+
+## Product Design
+
+OpenCassava is designed for high-pressure conversations (interviews, sales calls, support escalations, technical meetings) where speed and clarity matter.
+
+### Design principles
+
+- **Stay out of the way:** an always-available overlay that doesn't steal focus from your call.
+- **Readability first:** high-contrast dark UI, clear grouping, and low visual noise so you can skim under pressure.
+- **Fast path to value:** get useful output in seconds (transcript, suggestions, summary) with minimal setup friction.
+- **Progressive power:** simple defaults for first-time users with advanced controls in Settings for deeper customization.
+- **Privacy by architecture:** local-first transcription and local model support are built into the core workflow.
+
+### Interface map
+
+- **Control Bar** — start/stop sessions, status, and live session actions.
+- **Suggestions View** — real-time AI guidance sourced from your knowledge base.
+- **Transcript View** — dual-speaker timeline for "you" and "them".
+- **Search + Export** — quickly find moments and export transcript artifacts.
+- **Notes View** — generated notes and template-based post-call output.
+- **Session Sidebar** — access and review prior sessions.
+- **Settings** — provider setup, prompts, transcription options, and knowledge base pathing.
 
 ---
 
@@ -52,9 +85,9 @@ For first-time setup with LM Studio, start here: [LM Studio Setup Guide](docs/lm
 
 1. You start a call and click **Start Session**.
 2. OpenCassava captures your microphone and (on Windows & Mac) system audio - the other side's voice is captured as "them".
-3. When the conversation hits a moment that matters - a question, a decision point, a claim worth backing up - it searches your notes and surfaces relevant talking points.
-4. After the session, use the **Export** menu to save your transcript, or generate structured markdown notes using a meeting template.
-5. Review your past transcripts securely using your Session History.
+3. As important moments happen, it searches your notes and surfaces relevant talking points.
+4. During or after the call, use summaries and note templates to turn raw dialogue into structured documentation.
+5. Review, search, and export session artifacts from Session History.
 
 ---
 
@@ -95,18 +128,18 @@ The installers are output to `opencassava/src-tauri/target/release/bundle/`.
 ### Windows & macOS
 
 - **OS:** Windows 10/11 (64-bit) or macOS 15+ (Apple Silicon)
-- **For local mode (Tested)**: LM Studio (or potentially [Ollama](https://ollama.com/)) running locally with your preferred models (e.g., `qwen3:8b` for suggestions, `nomic-embed-text` for embeddings).
-- **For cloud mode (Untested)**: [OpenRouter](https://openrouter.ai/) API key + [Voyage AI](https://www.voyageai.com/) API key.
-- **For OpenAI-compatible embeddings**: any server implementing `/v1/embeddings`.
+- **For local mode (Tested):** LM Studio (or potentially [Ollama](https://ollama.com/)) running locally with your preferred models (e.g., `qwen3:8b` for suggestions, `nomic-embed-text` for embeddings).
+- **For cloud mode (Untested):** [OpenRouter](https://openrouter.ai/) API key + [Voyage AI](https://www.voyageai.com/) API key.
+- **For OpenAI-compatible embeddings:** any server implementing `/v1/embeddings`.
 
 ---
 
 ## Quick start
 
 1. Open the app and grant microphone permissions (and system audio recording on Windows).
-2. Open Settings (`Cmd+,` or `Ctrl+,`) and configure your chosen Cloud or Local providers. *(Note: Cloud mode is currently untested).*
+2. Open Settings (`Cmd+,` or `Ctrl+,`) and configure your chosen cloud or local providers.
 3. Point it at a folder of `.md` or `.txt` files - that's your knowledge base.
-4. Click **Start Session** to go live. *(The first run downloads the required local Whisper speech model).*
+4. Click **Start Session** to go live. *(The first run downloads the required local Whisper speech model.)*
 
 ---
 

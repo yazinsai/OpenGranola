@@ -1,73 +1,41 @@
-# React + TypeScript + Vite
+# OpenCassava Frontend (React + TypeScript)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This package contains the desktop UI layer for OpenCassava.
 
-Currently, two official plugins are available:
+- **Runtime:** Tauri + React 18 + TypeScript + Vite
+- **Entry point:** `src/main.tsx`
+- **Main shell:** `src/App.tsx`
+- **Desktop host integration:** `src-tauri/`
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## UI Areas
 
-## React Compiler
+- `src/components/ControlBar.tsx` - session lifecycle controls and quick actions.
+- `src/components/SuggestionsView.tsx` - live AI suggestions during calls.
+- `src/components/TranscriptView.tsx` - real-time transcript stream.
+- `src/components/NotesView.tsx` - structured notes and template output.
+- `src/components/SessionSidebar.tsx` - history and session selection.
+- `src/components/SettingsView.tsx` - model providers, prompts, and app behavior.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Design Goals
 
-## Expanding the ESLint configuration
+The frontend emphasizes:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+1. **At-a-glance readability** in high-focus conversations.
+2. **Low-friction control** (keyboard shortcuts + minimal click depth).
+3. **Stable information hierarchy** (suggestions, transcript, and notes each have clear zones).
+4. **Dark, contrast-forward styling** to reduce distraction while screen-sharing.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Development
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd opencassava
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Build
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
+npm run tauri -- build
 ```
