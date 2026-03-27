@@ -267,7 +267,6 @@ actor SessionRepository {
             } else {
                 snapshot = nil
             }
-            let latestSuggestion = await suggestionEngine?.activeSuggestions.first
             let summary = await transcriptStore?.conversationState.shortSummary
 
             let refinedText: String?
@@ -281,10 +280,10 @@ actor SessionRepository {
                 speaker: baseRecord.speaker,
                 text: baseRecord.text,
                 timestamp: baseRecord.timestamp,
-                suggestions: snapshot.map { [$0.surfacedText] } ?? latestSuggestion.map { [$0.displayText] },
-                kbHits: snapshot?.kbHitPaths ?? latestSuggestion?.contextPacks.map(\.relativePath),
+                suggestions: snapshot.map { [$0.surfacedText] },
+                kbHits: snapshot?.kbHitPaths,
                 suggestionDecision: nil,
-                surfacedSuggestionText: snapshot?.surfacedText ?? latestSuggestion?.displayText,
+                surfacedSuggestionText: snapshot?.surfacedText,
                 conversationStateSummary: summary?.isEmpty == false ? summary : nil,
                 refinedText: refinedText,
                 suggestionID: snapshot?.suggestionID,

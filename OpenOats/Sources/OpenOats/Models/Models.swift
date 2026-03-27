@@ -194,6 +194,7 @@ struct RealtimeSuggestionCandidate: Sendable {
     let triggerFingerprint: String?
     let contextPacks: [KBContextPack]
     let score: Double
+    let createdAt: Date
 
     init(
         triggerKind: RealtimeTriggerKind,
@@ -209,6 +210,12 @@ struct RealtimeSuggestionCandidate: Sendable {
         self.triggerFingerprint = triggerFingerprint
         self.contextPacks = contextPacks
         self.score = score
+        self.createdAt = .now
+    }
+
+    /// Whether this candidate is too old to surface (e.g. KB results arrived after speech moved on).
+    var isStale: Bool {
+        Date.now.timeIntervalSince(createdAt) > 8
     }
 }
 

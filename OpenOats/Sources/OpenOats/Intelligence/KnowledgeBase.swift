@@ -11,7 +11,7 @@ struct KBChunk: Codable, Sendable {
     let folderBreadcrumb: String // e.g. "sales"
     let documentTitle: String    // first H1 or filename sans extension
 
-    init(text: String, sourceFile: String, headerContext: String, embedding: [Float], relativePath: String, folderBreadcrumb: String, documentTitle: String) {
+    init(text: String, sourceFile: String, headerContext: String, embedding: [Float], relativePath: String = "", folderBreadcrumb: String = "", documentTitle: String = "") {
         self.text = text
         self.sourceFile = sourceFile
         self.headerContext = headerContext

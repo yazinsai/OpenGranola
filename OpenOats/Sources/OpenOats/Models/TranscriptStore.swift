@@ -46,6 +46,7 @@ final class TranscriptStore {
 
     /// Ratio of question-bearing utterances in the rolling 60-second window.
     var questionDensity: Double {
+        pruneTimestamps()
         guard !recentUtteranceTimestamps.isEmpty else { return 0 }
         return Double(recentQuestionTimestamps.count) / Double(recentUtteranceTimestamps.count)
     }

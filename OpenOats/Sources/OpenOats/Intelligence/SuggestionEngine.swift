@@ -25,9 +25,16 @@ final class SuggestionEngine {
 
     // MARK: - Compatibility Shims
 
-    /// Compatibility projection for mini bar and existing code that reads `[Suggestion]`.
+    /// Cached projection keyed by active suggestion IDs to avoid generating new UUIDs on every read.
+    @ObservationIgnored nonisolated(unsafe) private var _cachedSuggestions: [Suggestion] = []
+    @ObservationIgnored nonisolated(unsafe) private var _cachedSuggestionSourceIDs: [UUID] = []
+
+    /// Compatibility projection for mini bar. Stable IDs: only recomputed when activeSuggestions change.
     var suggestions: [Suggestion] {
-        activeSuggestions.compactMap { rs in
+        let currentIDs = activeSuggestions.map(\.id)
+        if currentIDs == _cachedSuggestionSourceIDs { return _cachedSuggestions }
+        _cachedSuggestionSourceIDs = currentIDs
+        _cachedSuggestions = activeSuggestions.compactMap { rs in
             guard !rs.displayText.isEmpty else { return nil }
             let kbHits = rs.contextPacks.map { pack in
                 KBResult(
@@ -42,6 +49,7 @@ final class SuggestionEngine {
                 kbHits: kbHits
             )
         }
+        return _cachedSuggestions
     }
 
     /// Alias for existing polling code.
@@ -286,6 +294,7 @@ final class SuggestionEngine {
         )
 
         guard throttleDecision.shouldShow else { return }
+        guard !candidate.isStale else { return }
 
         surfaceCandidate(candidate)
     }
@@ -417,6 +426,7 @@ final class SuggestionEngine {
                 if let idx = activeSuggestions.firstIndex(where: { $0.id == suggestionID }),
                    activeSuggestions[idx].lifecycle != .superseded {
                     activeSuggestions[idx].lifecycle = .failed
+                    updateLogSnapshotLifecycle(suggestionID: suggestionID, triggerUtteranceID: triggerUtteranceID, lifecycle: .failed)
                 }
             }
         }
@@ -426,7 +436,23 @@ final class SuggestionEngine {
         if let idx = activeSuggestions.firstIndex(where: { $0.id == suggestionID }),
            activeSuggestions[idx].lifecycle != .superseded {
             activeSuggestions[idx].lifecycle = .superseded
+            updateLogSnapshotLifecycle(suggestionID: suggestionID, triggerUtteranceID: activeSuggestions[idx].triggerUtteranceID, lifecycle: .superseded)
         }
+    }
+
+    /// Update the log snapshot lifecycle for a suggestion, preserving the surfaced text.
+    private func updateLogSnapshotLifecycle(suggestionID: UUID, triggerUtteranceID: UUID?, lifecycle: SuggestionLifecycle) {
+        guard let triggerID = triggerUtteranceID,
+              var existing = logSnapshots[triggerID],
+              existing.suggestionID == suggestionID else { return }
+        logSnapshots[triggerID] = LogSnapshot(
+            suggestionID: existing.suggestionID,
+            triggerUtteranceID: existing.triggerUtteranceID,
+            lifecycle: lifecycle,
+            surfacedText: existing.surfacedText,
+            kbHitPaths: existing.kbHitPaths,
+            createdAt: existing.createdAt
+        )
     }
 
     // MARK: - Log Snapshot API
