@@ -1,5 +1,7 @@
 # OpenOats
 
+[![Auto-Maintainer](https://am.whhite.com/badge/yazinsai/openoats)](https://am.whhite.com)
+
 A meeting note-taker that talks back.
 
 <p align="center">
