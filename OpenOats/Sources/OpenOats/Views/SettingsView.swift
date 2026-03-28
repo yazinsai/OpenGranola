@@ -402,8 +402,7 @@ private struct IntelligenceSettingsTab: View {
                         TextField("Ollama URL", text: $settings.ollamaBaseURL, prompt: Text("http://localhost:11434"))
                             .font(.system(size: 12, design: .monospaced))
 
-                        TextField("Model", text: $settings.ollamaLLMModel, prompt: Text("e.g. qwen3:8b"))
-                            .font(.system(size: 12, design: .monospaced))
+                        OllamaModelField(modelName: $settings.ollamaLLMModel, baseURL: settings.ollamaBaseURL, placeholder: "e.g. qwen3:8b")
                     case .mlx:
                         TextField("MLX Server URL", text: $settings.mlxBaseURL, prompt: Text("http://localhost:8080"))
                             .font(.system(size: 12, design: .monospaced))
@@ -435,8 +434,7 @@ private struct IntelligenceSettingsTab: View {
                         SecureField("API Key", text: $settings.voyageApiKey)
                             .font(.system(size: 12, design: .monospaced))
                     case .ollama:
-                        TextField("Embedding Model", text: $settings.ollamaEmbedModel, prompt: Text("e.g. nomic-embed-text"))
-                            .font(.system(size: 12, design: .monospaced))
+                        OllamaModelField(modelName: $settings.ollamaEmbedModel, baseURL: settings.ollamaBaseURL, placeholder: "e.g. nomic-embed-text")
 
                         if settings.llmProvider != .ollama && settings.llmProvider != .mlx {
                             TextField("Ollama URL", text: $settings.ollamaBaseURL, prompt: Text("http://localhost:11434"))
@@ -469,8 +467,7 @@ private struct IntelligenceSettingsTab: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     case .ollama:
-                        TextField("Speed Model", text: $settings.realtimeOllamaModel, prompt: Text("Leave empty to use main model"))
-                            .font(.system(size: 12, design: .monospaced))
+                        OllamaModelField(modelName: $settings.realtimeOllamaModel, baseURL: settings.ollamaBaseURL, placeholder: "Leave empty to use main model")
                         Text("Optional Ollama model for real-time suggestions. Uses your main model if empty.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
