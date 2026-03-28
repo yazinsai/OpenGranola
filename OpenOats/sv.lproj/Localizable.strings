@@ -1,0 +1,395 @@
+// OpenOats/Sources/OpenOats/App/AppUpdaterController.swift:34
+"unable_to_check_for_updates" = "Kan inte söka efter uppdateringar";
+
+// OpenOats/Sources/OpenOats/App/AppUpdaterController.swift:35
+"the_updater_failed_to_start_please_verify_you_have" = "Uppdateraren kunde inte starta. Kontrollera att du har den senaste versionen av OpenOats och kontakta utvecklaren om problemet kvarstår.";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:74
+"toggle_meeting" = "Växla möte";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:79
+"past_meetings" = "Tidigare möten";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:84
+"import_meeting_recording" = "Importera mötesupptagning...";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:90
+"github_repository" = "GitHub-förråd...";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:139
+"import_meeting_recording_1" = "Importera mötesupptagning";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:314
+"recording_in_progress" = "Inspelning pågår";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:315
+"stop_recording_and_quit" = "Stoppa inspelning och avsluta?";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:317
+"stop_quit" = "Stoppa och avsluta";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:318
+"cancel" = "Avbryt";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:374
+"openoats_is_still_running" = "OpenOats körs fortfarande";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:375
+"meeting_detection_is_active_click_the_menu_bar_ico" = "Mötesdetektering är aktiv. Klicka på menyfältsikonen för att komma åt kontroller.";
+
+// OpenOats/Sources/OpenOats/Meeting/NotificationService.swift:97
+"meeting_detected" = "Möte upptäckt";
+
+// OpenOats/Sources/OpenOats/Meeting/NotificationService.swift:98
+"appname_is_using_your_microphone_tap_to_start_tran" = "\(appName) använder din mikrofon. Tryck för att börja transkribera.";
+
+// OpenOats/Sources/OpenOats/Meeting/NotificationService.swift:100
+"microphone_active" = "Mikrofon aktiv";
+
+// OpenOats/Sources/OpenOats/Meeting/NotificationService.swift:101
+"a_meeting_may_be_in_progress_tap_to_start_transcri" = "Ett möte kan pågå. Tryck för att börja transkribera.";
+
+// OpenOats/Sources/OpenOats/Meeting/NotificationService.swift:138
+"transcript_enhanced" = "Transkript förbättrat";
+
+// OpenOats/Sources/OpenOats/Meeting/NotificationService.swift:139
+"batch_transcription_is_complete_your_meeting_trans" = "Batchtranskription är klar. Ditt mötesTranskript har uppdaterats med högkvalitativ text.";
+
+// OpenOats/Sources/OpenOats/Views/CheckForUpdatesView.swift:12
+"check_for_updates" = "Sök efter uppdateringar...";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:32
+"openoats" = "OpenOats";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:51
+"past_meetings_1" = "Tidigare möten";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:60
+"view_past_meeting_notes" = "Visa anteckningar från tidigare möten";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:71
+"session_ended_u00b7_lastsessionutterancecount_utte" = "Session avslutad · \(lastSession.utteranceCount) yttranden";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:80
+"view_notes" = "Visa anteckningar";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:90
+"generate_notes" = "Generera anteckningar";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:184
+"transcript" = "Transkript";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:187
+"controllerstatelivetranscriptcount" = "(\(controllerState.liveTranscript.count))";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:203
+"open_transcript_in_separate_window" = "Öppna transkript i separat fönster";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:215
+"copy_transcript" = "Kopiera transkript";
+
+// OpenOats/Sources/OpenOats/Views/ControlBar.swift:35
+"download_now" = "Hämta nu";
+
+// OpenOats/Sources/OpenOats/Views/ControlBar.swift:80
+"start" = "Starta";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:37
+"show_openoats" = "Visa OpenOats";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:47
+"check_for_updates_1" = "Sök efter uppdateringar…";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:59
+"quit_openoats" = "Avsluta OpenOats";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:93
+"recording_formattedtime" = "Spelar in - \(formattedTime)";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:99
+"listening_for_meetings" = "Lyssnar efter möten...";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:106
+"idle" = "Overksam";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:120
+"stop_recording" = "Stoppa inspelning";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:135
+"start_recording" = "Starta inspelning";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:84
+"select_all" = "Markera allt";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:92
+"delete_bulkdeleteselectioncount" = "Ta bort \(bulkDeleteSelection.count)";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:99
+"done" = "Klar";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:125
+"rename" = "Byt namn...";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:129
+"edit_tags" = "Redigera taggar...";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:138
+"select_multiple" = "Välj flera...";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:167
+"this_will_permanently_delete_the_transcript_and_an" = "Detta kommer att permanent ta bort transkriptet och alla genererade anteckningar.";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:177
+"this_will_permanently_delete_the_selected_transcri" = "Detta kommer att permanent ta bort de valda transkripten och alla genererade anteckningar.";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:217
+"sessionutterancecount_utterances" = "\(session.utteranceCount) yttranden";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:294
+"tags" = "Taggar";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:330
+"add" = "Lägg till";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:366
+"maximum_5_tags_per_session" = "Högst 5 taggar per session";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:410
+"choose_a_session_from_the_sidebar_to_view_or_gener" = "Välj en session från sidofältet för att visa eller generera anteckningar.";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:453
+"copy" = "Kopiera";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:459
+"copy_to_clipboard" = "Kopiera till urklipp";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:473
+"clean_up" = "Rensa";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:478
+"remove_filler_words_and_fix_punctuation" = "Ta bort fyllnadsord och fixa interpunktion";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:483
+"completedtotal_cleaning" = "\(completed)/\(total) rensar...";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:486
+"cancel_1" = "Avbryt";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:499
+"clean_up_1" = "Rensa";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:503
+"clean_up_remaining_utterances" = "Rensa kvarvarande yttranden";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:517
+"show_original" = "Visa original";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:546
+"click_to_regenerate_or_pick_a_different_template" = "Klicka för att återgenerera, eller välj en annan mall";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:558
+"from_fileu2026" = "Från fil…";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:563
+"from_clipboard" = "Från urklipp";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:569
+"capture_screenshot" = "Ta skärmbild";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:572
+"insert_image" = "Infoga bild";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:579
+"insert_an_image_into_notes" = "Infoga en bild i anteckningar";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:591
+"choose_an_image_to_insert_into_notes" = "Välj en bild att infoga i anteckningar";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:661
+"generating_notes" = "Genererar anteckningar...";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:666
+"cancel_2" = "Avbryt";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:689
+"generate_notes_1" = "Generera anteckningar";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:691
+"summarize_this_transcript_into_structured_meeting_" = "Sammanfatta detta transkript till strukturerade mötesanteckningar.";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:702
+"generate_notes_2" = "Generera anteckningar";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:715
+"this_session_has_no_recorded_utterances" = "Denna session har inga inspelade yttranden.";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:747
+"cleaning_up_transcript_completedtotal_sections" = "Rensar transkript... \(completed)/\(total) avsnitt";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:752
+"cancel_3" = "Avbryt";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:835
+"image_not_found" = "Bild hittades inte";
+
+// OpenOats/Sources/OpenOats/Views/OnboardingView.swift:72
+"skip" = "Hoppa över";
+
+// OpenOats/Sources/OpenOats/Views/OverlayContent.swift:16
+"openoats_1" = "OpenOats";
+
+// OpenOats/Sources/OpenOats/Views/OverlayContent.swift:41
+"waiting_for_conversation" = "Väntar på konversation...";
+
+// OpenOats/Sources/OpenOats/Views/OverlayContent.swift:50
+"evaluating" = "Utvärderar...";
+
+// OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift:21
+"recording_consent_notice" = "Medgivande för inspelning";
+
+// OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift:52
+"i_understand_and_accept_these_obligations" = "Jag förstår och accepterar dessa skyldigheter";
+
+// OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift:60
+"cancel_4" = "Avbryt";
+
+// OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift:77
+"i_agree" = "Jag godkänner";
+
+// OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift:98
+"u2022" = "•";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:27
+"where_meeting_transcripts_are_saved_as_plain_text_" = "Här sparas mötesTranskript som rena textfiler.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:39
+"choose" = "Välj...";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:46
+"optional_point_this_to_a_folder_of_notes_docs_or_r" = "Valfritt. Peka detta på en mapp med anteckningar, dokument eller referensmaterial (.md, .txt). Under möten söker OpenOats i denna mapp för att visa relevant kontext och diskussionspunkter.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:60
+"clear" = "Rensa";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:66
+"choose_1" = "Välj...";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:159
+"system_default" = "Systemstandard";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:171
+"save_a_local_audio_file_m4a_alongside_each_transcr" = "Spara en lokal ljudfil (.m4a) tillsammans med varje transkript. Ljud lämnar aldrig din enhet.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:177
+"reduces_duplicate_transcription_when_using_speaker" = "Minskar dubblettTranskription när du använder högtalare och mikrofon samtidigt. För närvarande inaktiverad under inspelning eftersom det står i konflikt med systemljudfångst på macOS.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:204
+"when_disabled_the_transcript_panel_is_hidden_durin" = "När inaktiverat döljs transkriptpanelen under möten. Transkription körs fortfarande i bakgrunden för förslag och anteckningar.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:210
+"automatically_removes_filler_words_and_fixes_punct" = "Tar automatiskt bort fyllnadsord och fixar interpunktion medan du spelar in. Du kan alltid rensa tidigare transkript manuellt från anteckningsfönstret.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:215
+"custom_keywords" = "Anpassade nyckelord";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:221
+"one_term_per_line_optional_aliases_openoats_open_o" = "Ett begrepp per rad. Valfria alias: OpenOats: open oats";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:252
+"retranscribes_audio_with_a_higherquality_model_aft" = "Omtranskriberar ljud med en högkvalitetsmodell efter varje möte för bättre precision. Körs i bakgrunden.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:269
+"uses_lseend_to_distinguish_different_speakers_on_s" = "Använder LS-EEND för att urskilja olika talare på systemljud. Kräver en engångsmodellnedladdning (~50 MB).";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:286
+"when_enabled_the_app_is_invisible_during_screen_sh" = "När aktiverat är appen osynlig under skärmdelning och inspelning.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:301
+"when_enabled_openoats_monitors_microphone_activati" = "När aktiverat övervakar OpenOats mikrofonaktivering för att upptäcka när en mötesapp startar ett samtal. Inget ljud fångas förrän du accepterar aviseringen.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:314
+"how_meeting_detection_works" = "Så fungerar mötesdetektering";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:318
+"openoats_watches_for_microphone_activation_by_meet" = "OpenOats bevakar mikrofonaktivering av mötesappar (Zoom, Teams, FaceTime, etc.)";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:319
+"only_activation_status_is_checked_no_audio_is_capt" = "Endast aktiveringsstatus kontrolleras. Inget ljud fångas eller spelas in förrän du accepterar.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:320
+"when_a_meeting_is_detected_you_get_a_macos_notific" = "När ett möte upptäcks får du en macOS-avisering för att börja transkribera.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:327
+"cancel_5" = "Avbryt";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:332
+"enable_detection" = "Aktivera detektering";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:348
+"silence_timeout" = "Tystnadstimeout";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:355
+"min" = "min";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:359
+"autodetected_sessions_stop_after_this_many_minutes" = "Automatiskt upptäckta sessioner stoppar efter så här många minuters tystnad.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:365
+"print_detection_events_to_the_system_console_for_d" = "Skriv ut detekteringshändelser till systemkonsolen för felsökning.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:393
+"reset" = "Återställ";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:416
+"name" = "Namn";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:428
+"icon" = "Ikon";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:436
+"notes_prompt" = "Anteckningspromppt";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:439
+"instructions_for_how_the_ai_should_format_notes_fo" = "Instruktioner för hur AI:n ska formatera anteckningar för denna mötestyp.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:464
+"cancel_6" = "Avbryt";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:468
+"save" = "Spara";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:485
+"new_template" = "Ny mall";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:543
+"choose_a_folder_containing_your_knowledge_base_doc" = "Välj en mapp som innehåller dina kunskapsbasdokument (.md, .txt)";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:555
+"choose_where_to_save_meeting_transcripts" = "Välj var mötesTranskript ska sparas";
+
+// OpenOats/Sources/OpenOats/Views/SuggestionsView.swift:15
+"evaluating_1" = "Utvärderar...";
+
+// OpenOats/Sources/OpenOats/Views/SuggestionsView.swift:32
+"no_suggestions_yet" = "Inga förslag än";
+
+// OpenOats/Sources/OpenOats/Views/SuggestionsView.swift:35
+"suggestions_appear_when_the_conversation_reaches_a" = "Förslag visas när konversationen når ett ögonblick där din kunskapsbas kan hjälpa.";
+
+// OpenOats/Sources/OpenOats/Views/TranscriptView.swift:50
+"clear_search" = "Rensa sökning";
+
+// OpenOats/Sources/OpenOats/Views/TranscriptView.swift:76
+"no_matches" = "Inga träffar";
+
+// OpenOats/Sources/OpenOats/Views/TranscriptView.swift:142
+"resume_autoscroll" = "Återuppta automatisk rullning";
+
+// OpenOats/Sources/OpenOats/Views/TranscriptWindowView.swift:10
+"live_transcript" = "Livetranskript";
+
+// OpenOats/Sources/OpenOats/Views/TranscriptWindowView.swift:17
+"copy_1" = "Kopiera";
+
+// OpenOats/Sources/OpenOats/Views/TranscriptWindowView.swift:22
+"copy_transcript_to_clipboard" = "Kopiera transkript till urklipp";
