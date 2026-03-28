@@ -22,6 +22,7 @@ struct LiveSessionState {
     var errorMessage: String? = nil
     var needsDownload: Bool = false
     var downloadProgress: Double? = nil
+    var downloadDetail: DownloadProgressDetail? = nil
     var transcriptionPrompt: String = ""
     var modelDisplayName: String = ""
     var showLiveTranscript: Bool = true
@@ -481,6 +482,7 @@ final class LiveSessionController {
         next.errorMessage = coordinator.transcriptionEngine?.lastError
         next.needsDownload = coordinator.transcriptionEngine?.needsModelDownload ?? false
         next.downloadProgress = coordinator.transcriptionEngine?.downloadProgress
+        next.downloadDetail = coordinator.transcriptionEngine?.downloadDetail
         next.transcriptionPrompt = settings.transcriptionModel.downloadPrompt
         next.modelDisplayName = activeModelRaw.split(separator: "/").last.map(String.init) ?? activeModelRaw
         next.showLiveTranscript = settings.showLiveTranscript

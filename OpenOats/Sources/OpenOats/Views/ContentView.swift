@@ -253,6 +253,7 @@ struct ContentView: View {
                 errorMessage: controllerState.errorMessage,
                 needsDownload: controllerState.needsDownload,
                 downloadProgress: controllerState.downloadProgress,
+                downloadDetail: controllerState.downloadDetail,
                 onToggle: {
                     pendingControlBarAction = .toggle
                 },

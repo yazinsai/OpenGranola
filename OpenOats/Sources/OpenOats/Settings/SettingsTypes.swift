@@ -117,6 +117,17 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Approximate total download size in bytes, used for progress display.
+    /// Returns nil when the size is unknown.
+    var estimatedDownloadBytes: Int64? {
+        switch self {
+        case .whisperBase: 142_000_000
+        case .whisperSmall: 244_000_000
+        case .whisperLargeV3Turbo: 800_000_000
+        case .parakeetV2, .parakeetV3, .qwen3ASR06B: nil
+        }
+    }
+
     var supportsExplicitLanguageHint: Bool {
         true
     }
