@@ -94,11 +94,11 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
         let content = UNMutableNotificationContent()
         if let appName {
-            content.title = "Meeting Detected"
-            content.body = "\(appName) is using your microphone. Tap to start transcribing."
+            content.title = String(localized: "meeting_detected")
+            content.body = String(localized: "appname_is_using_your_microphone_tap_to_start_tran")
         } else {
-            content.title = "Microphone Active"
-            content.body = "A meeting may be in progress. Tap to start transcribing."
+            content.title = String(localized: "microphone_active")
+            content.body = String(localized: "a_meeting_may_be_in_progress_tap_to_start_transcri")
         }
         content.sound = .default
         content.categoryIdentifier = Self.categoryID
@@ -135,8 +135,8 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         guard await ensurePermission() else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "Transcript Enhanced"
-        content.body = "Batch transcription is complete. Your meeting transcript has been updated with higher-quality text."
+        content.title = String(localized: "transcript_enhanced")
+        content.body = String(localized: "batch_transcription_is_complete_your_meeting_trans")
         content.sound = .default
 
         let request = UNNotificationRequest(

@@ -13,7 +13,7 @@ struct OverlayContent: View {
                 Circle()
                     .fill(isGenerating ? Color.orange : Color.green)
                     .frame(width: 6, height: 6)
-                Text("OpenOats")
+                Text(String(localized: "openoats"))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -38,7 +38,7 @@ struct OverlayContent: View {
             }
 
             if suggestions.isEmpty && !isGenerating {
-                Text("Waiting for conversation...")
+                Text(String(localized: "waiting_for_conversation"))
                     .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
             }
@@ -47,7 +47,7 @@ struct OverlayContent: View {
                 HStack(spacing: 4) {
                     ProgressView()
                         .controlSize(.mini)
-                    Text("Evaluating...")
+                    Text(String(localized: "evaluating"))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }

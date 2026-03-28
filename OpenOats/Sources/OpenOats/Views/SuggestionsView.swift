@@ -12,7 +12,7 @@ struct SuggestionsView: View {
                     HStack(spacing: 6) {
                         ProgressView()
                             .controlSize(.mini)
-                        Text("Evaluating...")
+                        Text(String(localized: "evaluating"))
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
@@ -29,10 +29,10 @@ struct SuggestionsView: View {
 
                 if suggestions.isEmpty && !isGenerating {
                     VStack(spacing: 8) {
-                        Text("No suggestions yet")
+                        Text(String(localized: "no_suggestions_yet"))
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(.secondary)
-                        Text("Suggestions appear when the conversation reaches a moment where your knowledge base can help.")
+                        Text(String(localized: "suggestions_appear_when_the_conversation_reaches_a"))
                             .font(.system(size: 12))
                             .foregroundStyle(.tertiary)
                             .multilineTextAlignment(.center)

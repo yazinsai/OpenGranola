@@ -32,7 +32,7 @@ struct ControlBar: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Download Now") {
+                    Button(String(localized: "download_now")) {
                         onConfirmDownload()
                     }
                     .buttonStyle(.borderedProminent)
@@ -77,7 +77,7 @@ struct ControlBar: View {
                                 .font(.system(size: 11))
                                 .foregroundStyle(.white)
 
-                            Text("Start")
+                            Text(String(localized: "start"))
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.white)
                         }

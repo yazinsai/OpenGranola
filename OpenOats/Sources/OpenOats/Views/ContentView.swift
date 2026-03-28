@@ -29,7 +29,7 @@ struct ContentView: View {
         return VStack(spacing: 0) {
             // Compact header
             HStack {
-                Text("OpenOats")
+                Text(String(localized: "openoats"))
                     .font(.system(size: 13, weight: .semibold))
 
                 Spacer()
@@ -48,7 +48,7 @@ struct ContentView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "note.text")
                             .font(.system(size: 11))
-                        Text("Past Meetings")
+                        Text(String(localized: "past_meetings"))
                             .font(.system(size: 11))
                     }
                     .padding(.horizontal, 6)
@@ -57,7 +57,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("View past meeting notes")
+                .help(String(localized: "view_past_meeting_notes"))
                 .accessibilityIdentifier("app.pastMeetingsButton")
             }
             .padding(.horizontal, 16)
@@ -68,7 +68,7 @@ struct ContentView: View {
             // Post-session banner
             if let lastSession = controllerState.lastEndedSession, lastSession.utteranceCount > 0 {
                 HStack {
-                    Text("Session ended \u{00B7} \(lastSession.utteranceCount) utterances")
+                    Text(String(localized: "session_ended_u00b7_lastsessionutterancecount_utte"))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("app.sessionEndedBanner")
@@ -77,7 +77,7 @@ struct ContentView: View {
                         Button {
                             openWindow(id: "notes")
                         } label: {
-                            Label("View Notes", systemImage: "doc.text")
+                            Label(String(localized: "view_notes"), systemImage: "doc.text")
                                 .font(.system(size: 12))
                         }
                         .buttonStyle(.bordered)
@@ -87,7 +87,7 @@ struct ContentView: View {
                         Button {
                             openWindow(id: "notes")
                         } label: {
-                            Label("Generate Notes", systemImage: "sparkles")
+                            Label(String(localized: "generate_notes"), systemImage: "sparkles")
                                 .font(.system(size: 12))
                         }
                         .buttonStyle(.borderedProminent)
@@ -181,10 +181,10 @@ struct ContentView: View {
                     .frame(height: 150)
                 } label: {
                     HStack(spacing: 6) {
-                        Text("Transcript")
+                        Text(String(localized: "transcript"))
                             .font(.system(size: 12, weight: .medium))
                         if !controllerState.liveTranscript.isEmpty {
-                            Text("(\(controllerState.liveTranscript.count))")
+                            Text(String(localized: "controllerstatelivetranscriptcount"))
                                 .font(.system(size: 11))
                                 .foregroundStyle(.tertiary)
                         }
@@ -200,7 +200,7 @@ struct ContentView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 4))
                             }
                             .buttonStyle(.plain)
-                            .help("Open transcript in separate window")
+                            .help(String(localized: "open_transcript_in_separate_window"))
 
                             Button {
                                 copyTranscript()
@@ -212,7 +212,7 @@ struct ContentView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 4))
                             }
                             .buttonStyle(.plain)
-                            .help("Copy transcript")
+                            .help(String(localized: "copy_transcript"))
                         }
                     }
                 }

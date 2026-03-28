@@ -7,19 +7,19 @@ struct TranscriptWindowView: View {
         let store = coordinator.transcriptStore
         VStack(spacing: 0) {
             HStack {
-                Text("Live Transcript")
+                Text(String(localized: "live_transcript"))
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
                 if !store.utterances.isEmpty {
                     Button {
                         copyTranscript(store.utterances)
                     } label: {
-                        Label("Copy", systemImage: "doc.on.doc")
+                        Label(String(localized: "copy"), systemImage: "doc.on.doc")
                             .font(.system(size: 11))
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .help("Copy transcript to clipboard")
+                    .help(String(localized: "copy_transcript_to_clipboard"))
                 }
             }
             .padding(.horizontal, 16)

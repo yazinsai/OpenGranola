@@ -69,7 +69,7 @@ struct OnboardingView: View {
 
             // Buttons
             HStack {
-                Button("Skip") {
+                Button(String(localized: "skip")) {
                     finish()
                 }
                 .buttonStyle(.plain)

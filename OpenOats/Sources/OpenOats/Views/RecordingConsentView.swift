@@ -18,7 +18,7 @@ struct RecordingConsentView: View {
 
             Spacer().frame(height: 20)
 
-            Text("Recording Consent Notice")
+            Text(String(localized: "recording_consent_notice"))
                 .font(.system(size: 16, weight: .semibold))
                 .multilineTextAlignment(.center)
 
@@ -49,7 +49,7 @@ struct RecordingConsentView: View {
             Spacer().frame(height: 16)
 
             Toggle(isOn: $acknowledged) {
-                Text("I understand and accept these obligations")
+                Text(String(localized: "i_understand_and_accept_these_obligations"))
                     .font(.system(size: 12, weight: .medium))
             }
             .toggleStyle(.checkbox)
@@ -57,7 +57,7 @@ struct RecordingConsentView: View {
             Spacer()
 
             HStack {
-                Button("Cancel") {
+                Button(String(localized: "cancel")) {
                     withAnimation(.easeOut(duration: 0.2)) {
                         isPresented = false
                     }
@@ -74,7 +74,7 @@ struct RecordingConsentView: View {
                         isPresented = false
                     }
                 } label: {
-                    Text("I Agree")
+                    Text(String(localized: "i_agree"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 20)
@@ -95,7 +95,7 @@ struct RecordingConsentView: View {
 
     private func consentBullet(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 6) {
-            Text("\u{2022}")
+            Text(String(localized: "u2022"))
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
             Text(text)

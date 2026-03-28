@@ -71,23 +71,23 @@ public struct OpenOatsRootApp: App {
                     Divider()
                 }
 
-                Button("Toggle Meeting") {
+                Button(String(localized: "toggle_meeting")) {
                     appDelegate.toggleMeeting()
                 }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
 
-                Button("Past Meetings") {
+                Button(String(localized: "past_meetings")) {
                     openNotesWindow()
                 }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
 
-                Button("Import Meeting Recording...") {
+                Button(String(localized: "import_meeting_recording")) {
                     importMeetingRecording()
                 }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(coordinator.isRecording || isBatchEngineBusy)
 
-                Button("GitHub Repository...") {
+                Button(String(localized: "github_repository")) {
                     if let url = URL(string: "https://github.com/yazinsai/OpenOats") {
                         NSWorkspace.shared.open(url)
                     }
@@ -136,7 +136,7 @@ extension OpenOatsRootApp {
 
     private func importMeetingRecording() {
         let panel = NSOpenPanel()
-        panel.title = "Import Meeting Recording"
+        panel.title = String(localized: "import_meeting_recording_1")
         panel.allowedContentTypes = [
             .audio,
             .init(filenameExtension: "m4a")!,
@@ -311,11 +311,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         let alert = NSAlert()
-        alert.messageText = "Recording in Progress"
-        alert.informativeText = "Stop recording and quit?"
+        alert.messageText = String(localized: "recording_in_progress")
+        alert.informativeText = String(localized: "stop_recording_and_quit")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Stop & Quit")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: String(localized: "stop_quit"))
+        alert.addButton(withTitle: String(localized: "cancel"))
 
         let response = alert.runModal()
         guard response == .alertFirstButtonReturn else {
@@ -371,8 +371,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard granted == true else { return }
 
             let content = UNMutableNotificationContent()
-            content.title = "OpenOats is still running"
-            content.body = "Meeting detection is active. Click the menu bar icon to access controls."
+            content.title = String(localized: "openoats_is_still_running")
+            content.body = String(localized: "meeting_detection_is_active_click_the_menu_bar_ico")
 
             let request = UNNotificationRequest(
                 identifier: "background-mode-hint",

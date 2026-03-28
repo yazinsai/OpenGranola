@@ -1,0 +1,395 @@
+// OpenOats/Sources/OpenOats/App/AppUpdaterController.swift:34
+"unable_to_check_for_updates" = "Unable to Check For Updates";
+
+// OpenOats/Sources/OpenOats/App/AppUpdaterController.swift:35
+"the_updater_failed_to_start_please_verify_you_have" = "The updater failed to start. Please verify you have the latest version of OpenOats and contact the developer if the issue persists.";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:74
+"toggle_meeting" = "Toggle Meeting";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:79
+"past_meetings" = "Past Meetings";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:84
+"import_meeting_recording" = "Import Meeting Recording...";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:90
+"github_repository" = "GitHub Repository...";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:139
+"import_meeting_recording_1" = "Import Meeting Recording";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:314
+"recording_in_progress" = "Recording in Progress";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:315
+"stop_recording_and_quit" = "Stop recording and quit?";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:317
+"stop_quit" = "Stop & Quit";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:318
+"cancel" = "Cancel";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:374
+"openoats_is_still_running" = "OpenOats is still running";
+
+// OpenOats/Sources/OpenOats/App/OpenOatsApp.swift:375
+"meeting_detection_is_active_click_the_menu_bar_ico" = "Meeting detection is active. Click the menu bar icon to access controls.";
+
+// OpenOats/Sources/OpenOats/Meeting/NotificationService.swift:97
+"meeting_detected" = "Meeting Detected";
+
+// OpenOats/Sources/OpenOats/Meeting/NotificationService.swift:98
+"appname_is_using_your_microphone_tap_to_start_tran" = "\(appName) is using your microphone. Tap to start transcribing.";
+
+// OpenOats/Sources/OpenOats/Meeting/NotificationService.swift:100
+"microphone_active" = "Microphone Active";
+
+// OpenOats/Sources/OpenOats/Meeting/NotificationService.swift:101
+"a_meeting_may_be_in_progress_tap_to_start_transcri" = "A meeting may be in progress. Tap to start transcribing.";
+
+// OpenOats/Sources/OpenOats/Meeting/NotificationService.swift:138
+"transcript_enhanced" = "Transcript Enhanced";
+
+// OpenOats/Sources/OpenOats/Meeting/NotificationService.swift:139
+"batch_transcription_is_complete_your_meeting_trans" = "Batch transcription is complete. Your meeting transcript has been updated with higher-quality text.";
+
+// OpenOats/Sources/OpenOats/Views/CheckForUpdatesView.swift:12
+"check_for_updates" = "Check for Updates...";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:32
+"openoats" = "OpenOats";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:51
+"past_meetings_1" = "Past Meetings";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:60
+"view_past_meeting_notes" = "View past meeting notes";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:71
+"session_ended_u00b7_lastsessionutterancecount_utte" = "Session ended \u{00B7} \(lastSession.utteranceCount) utterances";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:80
+"view_notes" = "View Notes";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:90
+"generate_notes" = "Generate Notes";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:184
+"transcript" = "Transcript";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:187
+"controllerstatelivetranscriptcount" = "(\(controllerState.liveTranscript.count))";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:203
+"open_transcript_in_separate_window" = "Open transcript in separate window";
+
+// OpenOats/Sources/OpenOats/Views/ContentView.swift:215
+"copy_transcript" = "Copy transcript";
+
+// OpenOats/Sources/OpenOats/Views/ControlBar.swift:35
+"download_now" = "Download Now";
+
+// OpenOats/Sources/OpenOats/Views/ControlBar.swift:80
+"start" = "Start";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:37
+"show_openoats" = "Show OpenOats";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:47
+"check_for_updates_1" = "Check for Updates…";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:59
+"quit_openoats" = "Quit OpenOats";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:93
+"recording_formattedtime" = "Recording - \(formattedTime)";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:99
+"listening_for_meetings" = "Listening for meetings...";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:106
+"idle" = "Idle";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:120
+"stop_recording" = "Stop Recording";
+
+// OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift:135
+"start_recording" = "Start Recording";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:84
+"select_all" = "Select All";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:92
+"delete_bulkdeleteselectioncount" = "Delete \(bulkDeleteSelection.count)";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:99
+"done" = "Done";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:125
+"rename" = "Rename...";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:129
+"edit_tags" = "Edit Tags...";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:138
+"select_multiple" = "Select Multiple...";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:167
+"this_will_permanently_delete_the_transcript_and_an" = "This will permanently delete the transcript and any generated notes.";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:177
+"this_will_permanently_delete_the_selected_transcri" = "This will permanently delete the selected transcripts and any generated notes.";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:217
+"sessionutterancecount_utterances" = "\(session.utteranceCount) utterances";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:294
+"tags" = "Tags";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:330
+"add" = "Add";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:366
+"maximum_5_tags_per_session" = "Maximum 5 tags per session";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:410
+"choose_a_session_from_the_sidebar_to_view_or_gener" = "Choose a session from the sidebar to view or generate notes.";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:453
+"copy" = "Copy";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:459
+"copy_to_clipboard" = "Copy to clipboard";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:473
+"clean_up" = "Clean Up";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:478
+"remove_filler_words_and_fix_punctuation" = "Remove filler words and fix punctuation";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:483
+"completedtotal_cleaning" = "\(completed)/\(total) cleaning...";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:486
+"cancel_1" = "Cancel";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:499
+"clean_up_1" = "Clean Up";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:503
+"clean_up_remaining_utterances" = "Clean up remaining utterances";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:517
+"show_original" = "Show Original";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:546
+"click_to_regenerate_or_pick_a_different_template" = "Click to regenerate, or pick a different template";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:558
+"from_fileu2026" = "From File\u{2026}";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:563
+"from_clipboard" = "From Clipboard";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:569
+"capture_screenshot" = "Capture Screenshot";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:572
+"insert_image" = "Insert Image";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:579
+"insert_an_image_into_notes" = "Insert an image into notes";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:591
+"choose_an_image_to_insert_into_notes" = "Choose an image to insert into notes";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:661
+"generating_notes" = "Generating notes...";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:666
+"cancel_2" = "Cancel";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:689
+"generate_notes_1" = "Generate Notes";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:691
+"summarize_this_transcript_into_structured_meeting_" = "Summarize this transcript into structured meeting notes.";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:702
+"generate_notes_2" = "Generate Notes";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:715
+"this_session_has_no_recorded_utterances" = "This session has no recorded utterances.";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:747
+"cleaning_up_transcript_completedtotal_sections" = "Cleaning up transcript... \(completed)/\(total) sections";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:752
+"cancel_3" = "Cancel";
+
+// OpenOats/Sources/OpenOats/Views/NotesView.swift:835
+"image_not_found" = "Image not found";
+
+// OpenOats/Sources/OpenOats/Views/OnboardingView.swift:72
+"skip" = "Skip";
+
+// OpenOats/Sources/OpenOats/Views/OverlayContent.swift:16
+"openoats_1" = "OpenOats";
+
+// OpenOats/Sources/OpenOats/Views/OverlayContent.swift:41
+"waiting_for_conversation" = "Waiting for conversation...";
+
+// OpenOats/Sources/OpenOats/Views/OverlayContent.swift:50
+"evaluating" = "Evaluating...";
+
+// OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift:21
+"recording_consent_notice" = "Recording Consent Notice";
+
+// OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift:52
+"i_understand_and_accept_these_obligations" = "I understand and accept these obligations";
+
+// OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift:60
+"cancel_4" = "Cancel";
+
+// OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift:77
+"i_agree" = "I Agree";
+
+// OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift:98
+"u2022" = "\u{2022}";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:27
+"where_meeting_transcripts_are_saved_as_plain_text_" = "Where meeting transcripts are saved as plain text files.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:39
+"choose" = "Choose...";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:46
+"optional_point_this_to_a_folder_of_notes_docs_or_r" = "Optional. Point this to a folder of notes, docs, or reference material (.md, .txt). During meetings, OpenOats searches this folder to surface relevant context and talking points.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:60
+"clear" = "Clear";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:66
+"choose_1" = "Choose...";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:159
+"system_default" = "System Default";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:171
+"save_a_local_audio_file_m4a_alongside_each_transcr" = "Save a local audio file (.m4a) alongside each transcript. Audio never leaves your device.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:177
+"reduces_duplicate_transcription_when_using_speaker" = "Reduces duplicate transcription when using speakers and microphone simultaneously. Currently disabled during recording because it conflicts with system audio capture on macOS.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:204
+"when_disabled_the_transcript_panel_is_hidden_durin" = "When disabled, the transcript panel is hidden during meetings. Transcription still runs in the background for suggestions and notes.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:210
+"automatically_removes_filler_words_and_fixes_punct" = "Automatically removes filler words and fixes punctuation as you record. You can always clean up past transcripts manually from the Notes window.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:215
+"custom_keywords" = "Custom Keywords";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:221
+"one_term_per_line_optional_aliases_openoats_open_o" = "One term per line. Optional aliases: OpenOats: open oats";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:252
+"retranscribes_audio_with_a_higherquality_model_aft" = "Re-transcribes audio with a higher-quality model after each meeting for better accuracy. Runs in the background.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:269
+"uses_lseend_to_distinguish_different_speakers_on_s" = "Uses LS-EEND to distinguish different speakers on system audio. Requires a one-time model download (~50 MB).";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:286
+"when_enabled_the_app_is_invisible_during_screen_sh" = "When enabled, the app is invisible during screen sharing and recording.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:301
+"when_enabled_openoats_monitors_microphone_activati" = "When enabled, OpenOats monitors microphone activation to detect when a meeting app starts a call. No audio is captured until you accept the notification.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:314
+"how_meeting_detection_works" = "How Meeting Detection Works";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:318
+"openoats_watches_for_microphone_activation_by_meet" = "OpenOats watches for microphone activation by meeting apps (Zoom, Teams, FaceTime, etc.)";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:319
+"only_activation_status_is_checked_no_audio_is_capt" = "Only activation status is checked. No audio is captured or recorded until you accept.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:320
+"when_a_meeting_is_detected_you_get_a_macos_notific" = "When a meeting is detected, you get a macOS notification to start transcribing.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:327
+"cancel_5" = "Cancel";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:332
+"enable_detection" = "Enable Detection";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:348
+"silence_timeout" = "Silence timeout";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:355
+"min" = "min";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:359
+"autodetected_sessions_stop_after_this_many_minutes" = "Auto-detected sessions stop after this many minutes of silence.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:365
+"print_detection_events_to_the_system_console_for_d" = "Print detection events to the system console for debugging.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:393
+"reset" = "Reset";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:416
+"name" = "Name";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:428
+"icon" = "Icon";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:436
+"notes_prompt" = "Notes Prompt";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:439
+"instructions_for_how_the_ai_should_format_notes_fo" = "Instructions for how the AI should format notes for this meeting type.";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:464
+"cancel_6" = "Cancel";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:468
+"save" = "Save";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:485
+"new_template" = "New Template";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:543
+"choose_a_folder_containing_your_knowledge_base_doc" = "Choose a folder containing your knowledge base documents (.md, .txt)";
+
+// OpenOats/Sources/OpenOats/Views/SettingsView.swift:555
+"choose_where_to_save_meeting_transcripts" = "Choose where to save meeting transcripts";
+
+// OpenOats/Sources/OpenOats/Views/SuggestionsView.swift:15
+"evaluating_1" = "Evaluating...";
+
+// OpenOats/Sources/OpenOats/Views/SuggestionsView.swift:32
+"no_suggestions_yet" = "No suggestions yet";
+
+// OpenOats/Sources/OpenOats/Views/SuggestionsView.swift:35
+"suggestions_appear_when_the_conversation_reaches_a" = "Suggestions appear when the conversation reaches a moment where your knowledge base can help.";
+
+// OpenOats/Sources/OpenOats/Views/TranscriptView.swift:50
+"clear_search" = "Clear search";
+
+// OpenOats/Sources/OpenOats/Views/TranscriptView.swift:76
+"no_matches" = "No matches";
+
+// OpenOats/Sources/OpenOats/Views/TranscriptView.swift:142
+"resume_autoscroll" = "Resume auto-scroll";
+
+// OpenOats/Sources/OpenOats/Views/TranscriptWindowView.swift:10
+"live_transcript" = "Live Transcript";
+
+// OpenOats/Sources/OpenOats/Views/TranscriptWindowView.swift:17
+"copy_1" = "Copy";
+
+// OpenOats/Sources/OpenOats/Views/TranscriptWindowView.swift:22
+"copy_transcript_to_clipboard" = "Copy transcript to clipboard";

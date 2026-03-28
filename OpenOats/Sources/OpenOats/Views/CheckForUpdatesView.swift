@@ -9,7 +9,7 @@ struct CheckForUpdatesView: View {
     }
 
     var body: some View {
-        Button("Check for Updates...") {
+        Button(String(localized: "check_for_updates")) {
             checkForUpdatesViewModel.updater.checkForUpdates()
         }
         .disabled(!checkForUpdatesViewModel.canCheckForUpdates)

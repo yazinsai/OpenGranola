@@ -1,0 +1,794 @@
+[
+  {
+    "value": "Unable to Check For Updates",
+    "line": 34,
+    "file": "OpenOats/Sources/OpenOats/App/AppUpdaterController.swift",
+    "context": "        let alert = NSAlert()\n        alert.messageText = \"Unable to Check For Updates\"\n        alert.informativeText = \"The updater failed to start. Please verify you have the latest version of OpenOats and contact the developer if the issue persists.\""
+  },
+  {
+    "value": "The updater failed to start. Please verify you have the latest version of OpenOats and contact the developer if the issue persists.",
+    "line": 35,
+    "file": "OpenOats/Sources/OpenOats/App/AppUpdaterController.swift",
+    "context": "        alert.messageText = \"Unable to Check For Updates\"\n        alert.informativeText = \"The updater failed to start. Please verify you have the latest version of OpenOats and contact the developer if the issue persists.\"\n        alert.runModal()"
+  },
+  {
+    "value": "Toggle Meeting",
+    "line": 74,
+    "file": "OpenOats/Sources/OpenOats/App/OpenOatsApp.swift",
+    "context": "\n                Button(\"Toggle Meeting\") {\n                    appDelegate.toggleMeeting()"
+  },
+  {
+    "value": "Past Meetings",
+    "line": 79,
+    "file": "OpenOats/Sources/OpenOats/App/OpenOatsApp.swift",
+    "context": "\n                Button(\"Past Meetings\") {\n                    openNotesWindow()"
+  },
+  {
+    "value": "Import Meeting Recording...",
+    "line": 84,
+    "file": "OpenOats/Sources/OpenOats/App/OpenOatsApp.swift",
+    "context": "\n                Button(\"Import Meeting Recording...\") {\n                    importMeetingRecording()"
+  },
+  {
+    "value": "GitHub Repository...",
+    "line": 90,
+    "file": "OpenOats/Sources/OpenOats/App/OpenOatsApp.swift",
+    "context": "\n                Button(\"GitHub Repository...\") {\n                    if let url = URL(string: \"https://github.com/yazinsai/OpenOats\") {"
+  },
+  {
+    "value": "Import Meeting Recording",
+    "line": 139,
+    "file": "OpenOats/Sources/OpenOats/App/OpenOatsApp.swift",
+    "context": "        let panel = NSOpenPanel()\n        panel.title = \"Import Meeting Recording\"\n        panel.allowedContentTypes = ["
+  },
+  {
+    "value": "Recording in Progress",
+    "line": 314,
+    "file": "OpenOats/Sources/OpenOats/App/OpenOatsApp.swift",
+    "context": "        let alert = NSAlert()\n        alert.messageText = \"Recording in Progress\"\n        alert.informativeText = \"Stop recording and quit?\""
+  },
+  {
+    "value": "Stop recording and quit?",
+    "line": 315,
+    "file": "OpenOats/Sources/OpenOats/App/OpenOatsApp.swift",
+    "context": "        alert.messageText = \"Recording in Progress\"\n        alert.informativeText = \"Stop recording and quit?\"\n        alert.alertStyle = .warning"
+  },
+  {
+    "value": "Stop & Quit",
+    "line": 317,
+    "file": "OpenOats/Sources/OpenOats/App/OpenOatsApp.swift",
+    "context": "        alert.alertStyle = .warning\n        alert.addButton(withTitle: \"Stop & Quit\")\n        alert.addButton(withTitle: \"Cancel\")"
+  },
+  {
+    "value": "Cancel",
+    "line": 318,
+    "file": "OpenOats/Sources/OpenOats/App/OpenOatsApp.swift",
+    "context": "        alert.addButton(withTitle: \"Stop & Quit\")\n        alert.addButton(withTitle: \"Cancel\")\n"
+  },
+  {
+    "value": "OpenOats is still running",
+    "line": 374,
+    "file": "OpenOats/Sources/OpenOats/App/OpenOatsApp.swift",
+    "context": "            let content = UNMutableNotificationContent()\n            content.title = \"OpenOats is still running\"\n            content.body = \"Meeting detection is active. Click the menu bar icon to access controls.\""
+  },
+  {
+    "value": "Meeting detection is active. Click the menu bar icon to access controls.",
+    "line": 375,
+    "file": "OpenOats/Sources/OpenOats/App/OpenOatsApp.swift",
+    "context": "            content.title = \"OpenOats is still running\"\n            content.body = \"Meeting detection is active. Click the menu bar icon to access controls.\"\n"
+  },
+  {
+    "value": "Meeting Detected",
+    "line": 97,
+    "file": "OpenOats/Sources/OpenOats/Meeting/NotificationService.swift",
+    "context": "        if let appName {\n            content.title = \"Meeting Detected\"\n            content.body = \"\\(appName) is using your microphone. Tap to start transcribing.\""
+  },
+  {
+    "value": "\\(appName) is using your microphone. Tap to start transcribing.",
+    "line": 98,
+    "file": "OpenOats/Sources/OpenOats/Meeting/NotificationService.swift",
+    "context": "            content.title = \"Meeting Detected\"\n            content.body = \"\\(appName) is using your microphone. Tap to start transcribing.\"\n        } else {"
+  },
+  {
+    "value": "Microphone Active",
+    "line": 100,
+    "file": "OpenOats/Sources/OpenOats/Meeting/NotificationService.swift",
+    "context": "        } else {\n            content.title = \"Microphone Active\"\n            content.body = \"A meeting may be in progress. Tap to start transcribing.\""
+  },
+  {
+    "value": "A meeting may be in progress. Tap to start transcribing.",
+    "line": 101,
+    "file": "OpenOats/Sources/OpenOats/Meeting/NotificationService.swift",
+    "context": "            content.title = \"Microphone Active\"\n            content.body = \"A meeting may be in progress. Tap to start transcribing.\"\n        }"
+  },
+  {
+    "value": "Transcript Enhanced",
+    "line": 138,
+    "file": "OpenOats/Sources/OpenOats/Meeting/NotificationService.swift",
+    "context": "        let content = UNMutableNotificationContent()\n        content.title = \"Transcript Enhanced\"\n        content.body = \"Batch transcription is complete. Your meeting transcript has been updated with higher-quality text.\""
+  },
+  {
+    "value": "Batch transcription is complete. Your meeting transcript has been updated with higher-quality text.",
+    "line": 139,
+    "file": "OpenOats/Sources/OpenOats/Meeting/NotificationService.swift",
+    "context": "        content.title = \"Transcript Enhanced\"\n        content.body = \"Batch transcription is complete. Your meeting transcript has been updated with higher-quality text.\"\n        content.sound = .default"
+  },
+  {
+    "value": "Check for Updates...",
+    "line": 12,
+    "file": "OpenOats/Sources/OpenOats/Views/CheckForUpdatesView.swift",
+    "context": "    var body: some View {\n        Button(\"Check for Updates...\") {\n            checkForUpdatesViewModel.updater.checkForUpdates()"
+  },
+  {
+    "value": "OpenOats",
+    "line": 32,
+    "file": "OpenOats/Sources/OpenOats/Views/ContentView.swift",
+    "context": "            HStack {\n                Text(\"OpenOats\")\n                    .font(.system(size: 13, weight: .semibold))"
+  },
+  {
+    "value": "Past Meetings",
+    "line": 51,
+    "file": "OpenOats/Sources/OpenOats/Views/ContentView.swift",
+    "context": "                            .font(.system(size: 11))\n                        Text(\"Past Meetings\")\n                            .font(.system(size: 11))"
+  },
+  {
+    "value": "View past meeting notes",
+    "line": 60,
+    "file": "OpenOats/Sources/OpenOats/Views/ContentView.swift",
+    "context": "                .foregroundStyle(.secondary)\n                .help(\"View past meeting notes\")\n                .accessibilityIdentifier(\"app.pastMeetingsButton\")"
+  },
+  {
+    "value": "Session ended \\u{00B7} \\(lastSession.utteranceCount) utterances",
+    "line": 71,
+    "file": "OpenOats/Sources/OpenOats/Views/ContentView.swift",
+    "context": "                HStack {\n                    Text(\"Session ended \\u{00B7} \\(lastSession.utteranceCount) utterances\")\n                        .font(.system(size: 12))"
+  },
+  {
+    "value": "View Notes",
+    "line": 80,
+    "file": "OpenOats/Sources/OpenOats/Views/ContentView.swift",
+    "context": "                        } label: {\n                            Label(\"View Notes\", systemImage: \"doc.text\")\n                                .font(.system(size: 12))"
+  },
+  {
+    "value": "Generate Notes",
+    "line": 90,
+    "file": "OpenOats/Sources/OpenOats/Views/ContentView.swift",
+    "context": "                        } label: {\n                            Label(\"Generate Notes\", systemImage: \"sparkles\")\n                                .font(.system(size: 12))"
+  },
+  {
+    "value": "Transcript",
+    "line": 184,
+    "file": "OpenOats/Sources/OpenOats/Views/ContentView.swift",
+    "context": "                    HStack(spacing: 6) {\n                        Text(\"Transcript\")\n                            .font(.system(size: 12, weight: .medium))"
+  },
+  {
+    "value": "(\\(controllerState.liveTranscript.count))",
+    "line": 187,
+    "file": "OpenOats/Sources/OpenOats/Views/ContentView.swift",
+    "context": "                        if !controllerState.liveTranscript.isEmpty {\n                            Text(\"(\\(controllerState.liveTranscript.count))\")\n                                .font(.system(size: 11))"
+  },
+  {
+    "value": "Open transcript in separate window",
+    "line": 203,
+    "file": "OpenOats/Sources/OpenOats/Views/ContentView.swift",
+    "context": "                            .buttonStyle(.plain)\n                            .help(\"Open transcript in separate window\")\n"
+  },
+  {
+    "value": "Copy transcript",
+    "line": 215,
+    "file": "OpenOats/Sources/OpenOats/Views/ContentView.swift",
+    "context": "                            .buttonStyle(.plain)\n                            .help(\"Copy transcript\")\n                        }"
+  },
+  {
+    "value": "Download Now",
+    "line": 35,
+    "file": "OpenOats/Sources/OpenOats/Views/ControlBar.swift",
+    "context": "                        .frame(maxWidth: .infinity, alignment: .leading)\n                    Button(\"Download Now\") {\n                        onConfirmDownload()"
+  },
+  {
+    "value": "Start",
+    "line": 80,
+    "file": "OpenOats/Sources/OpenOats/Views/ControlBar.swift",
+    "context": "\n                            Text(\"Start\")\n                                .font(.system(size: 12, weight: .semibold))"
+  },
+  {
+    "value": "Show OpenOats",
+    "line": 37,
+    "file": "OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift",
+    "context": "                HStack {\n                    Text(\"Show OpenOats\")\n                    Spacer()"
+  },
+  {
+    "value": "Check for Updates…",
+    "line": 47,
+    "file": "OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift",
+    "context": "                HStack {\n                    Text(\"Check for Updates…\")\n                    Spacer()"
+  },
+  {
+    "value": "Quit OpenOats",
+    "line": 59,
+    "file": "OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift",
+    "context": "                HStack {\n                    Text(\"Quit OpenOats\")\n                    Spacer()"
+  },
+  {
+    "value": "Recording - \\(formattedTime)",
+    "line": 93,
+    "file": "OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift",
+    "context": "                    .frame(width: 8, height: 8)\n                Text(\"Recording - \\(formattedTime)\")\n                    .font(.system(size: 13, weight: .medium))"
+  },
+  {
+    "value": "Listening for meetings...",
+    "line": 99,
+    "file": "OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift",
+    "context": "                    .frame(width: 8, height: 8)\n                Text(\"Listening for meetings...\")\n                    .font(.system(size: 13))"
+  },
+  {
+    "value": "Idle",
+    "line": 106,
+    "file": "OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift",
+    "context": "                    .frame(width: 8, height: 8)\n                Text(\"Idle\")\n                    .font(.system(size: 13))"
+  },
+  {
+    "value": "Stop Recording",
+    "line": 120,
+    "file": "OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift",
+    "context": "            }) {\n                Text(\"Stop Recording\")\n                    .font(.system(size: 13, weight: .medium))"
+  },
+  {
+    "value": "Start Recording",
+    "line": 135,
+    "file": "OpenOats/Sources/OpenOats/Views/MenuBarPopoverView.swift",
+    "context": "            }) {\n                Text(\"Start Recording\")\n                    .font(.system(size: 13, weight: .medium))"
+  },
+  {
+    "value": "Select All",
+    "line": 84,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                HStack(spacing: 8) {\n                    Button(\"Select All\") {\n                        bulkDeleteSelection = Set(controller.filteredSessions.map(\\.id))"
+  },
+  {
+    "value": "Delete \\(bulkDeleteSelection.count)",
+    "line": 92,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                    if !bulkDeleteSelection.isEmpty {\n                        Button(\"Delete \\(bulkDeleteSelection.count)\") {\n                            showBulkDeleteConfirmation = true"
+  },
+  {
+    "value": "Done",
+    "line": 99,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                    }\n                    Button(\"Done\") {\n                        bulkDeleteMode = false"
+  },
+  {
+    "value": "Rename...",
+    "line": 125,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                        .contextMenu {\n                            Button(\"Rename...\") {\n                                renameText = session.title ?? \"\""
+  },
+  {
+    "value": "Edit Tags...",
+    "line": 129,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                            }\n                            Button(\"Edit Tags...\") {\n                                editingTags = session.tags ?? []"
+  },
+  {
+    "value": "Select Multiple...",
+    "line": 138,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                            Divider()\n                            Button(\"Select Multiple...\") {\n                                bulkDeleteMode = true"
+  },
+  {
+    "value": "This will permanently delete the transcript and any generated notes.",
+    "line": 167,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "        } message: {\n            Text(\"This will permanently delete the transcript and any generated notes.\")\n        }"
+  },
+  {
+    "value": "This will permanently delete the selected transcripts and any generated notes.",
+    "line": 177,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "        } message: {\n            Text(\"This will permanently delete the selected transcripts and any generated notes.\")\n        }"
+  },
+  {
+    "value": "\\(session.utteranceCount) utterances",
+    "line": 217,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                Spacer()\n                Text(\"\\(session.utteranceCount) utterances\")\n            }"
+  },
+  {
+    "value": "Tags",
+    "line": 294,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "        VStack(alignment: .leading, spacing: 10) {\n            Text(\"Tags\")\n                .font(.headline)"
+  },
+  {
+    "value": "Add",
+    "line": 330,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                        }\n                    Button(\"Add\") {\n                        commitNewTag(controller: controller, sessionID: sessionID)"
+  },
+  {
+    "value": "Maximum 5 tags per session",
+    "line": 366,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            } else {\n                Text(\"Maximum 5 tags per session\")\n                    .font(.caption)"
+  },
+  {
+    "value": "Choose a session from the sidebar to view or generate notes.",
+    "line": 410,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "        } else {\n            ContentUnavailableView(\"Select a Session\", systemImage: \"doc.text\", description: Text(\"Choose a session from the sidebar to view or generate notes.\"))\n        }"
+  },
+  {
+    "value": "Copy",
+    "line": 453,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            } label: {\n                Label(\"Copy\", systemImage: \"doc.on.doc\")\n                    .font(.system(size: 12))"
+  },
+  {
+    "value": "Copy to clipboard",
+    "line": 459,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            .disabled(copyContentIsEmpty(state: state))\n            .help(\"Copy to clipboard\")\n        }"
+  },
+  {
+    "value": "Clean Up",
+    "line": 473,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            } label: {\n                Label(\"Clean Up\", systemImage: \"sparkles\")\n                    .font(.system(size: 12))"
+  },
+  {
+    "value": "Remove filler words and fix punctuation",
+    "line": 478,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            .disabled(state.loadedTranscript.isEmpty)\n            .help(\"Remove filler words and fix punctuation\")\n"
+  },
+  {
+    "value": "\\(completed)/\\(total) cleaning...",
+    "line": 483,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                HStack(spacing: 6) {\n                    Text(\"\\(completed)/\\(total) cleaning...\")\n                        .font(.system(size: 12))"
+  },
+  {
+    "value": "Cancel",
+    "line": 486,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                        .foregroundStyle(.secondary)\n                    Button(\"Cancel\") {\n                        controller.cancelCleanup()"
+  },
+  {
+    "value": "Clean Up",
+    "line": 499,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            } label: {\n                Label(\"Clean Up\", systemImage: \"sparkles\")\n                    .font(.system(size: 12))"
+  },
+  {
+    "value": "Clean up remaining utterances",
+    "line": 503,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            .buttonStyle(.borderedProminent)\n            .help(\"Clean up remaining utterances\")\n"
+  },
+  {
+    "value": "Show Original",
+    "line": 517,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "        } label: {\n            Label(\"Show Original\", systemImage: state.showingOriginal ? \"text.badge.checkmark\" : \"text.badge.minus\")\n                .font(.system(size: 12))"
+  },
+  {
+    "value": "Click to regenerate, or pick a different template",
+    "line": 546,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            .fixedSize()\n            .help(\"Click to regenerate, or pick a different template\")\n        }"
+  },
+  {
+    "value": "From File\\u{2026}",
+    "line": 558,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            } label: {\n                Label(\"From File\\u{2026}\", systemImage: \"folder\")\n            }"
+  },
+  {
+    "value": "From Clipboard",
+    "line": 563,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            } label: {\n                Label(\"From Clipboard\", systemImage: \"doc.on.clipboard\")\n            }"
+  },
+  {
+    "value": "Capture Screenshot",
+    "line": 569,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            } label: {\n                Label(\"Capture Screenshot\", systemImage: \"camera.viewfinder\")\n            }"
+  },
+  {
+    "value": "Insert Image",
+    "line": 572,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "        } label: {\n            Label(\"Insert Image\", systemImage: \"photo.badge.plus\")\n                .font(.system(size: 12))"
+  },
+  {
+    "value": "Insert an image into notes",
+    "line": 579,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "        .disabled(state.notesGenerationStatus == .generating || state.selectedSessionID == nil)\n        .help(\"Insert an image into notes\")\n    }"
+  },
+  {
+    "value": "Choose an image to insert into notes",
+    "line": 591,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "        panel.allowsMultipleSelection = false\n        panel.message = \"Choose an image to insert into notes\"\n        guard panel.runModal() == .OK, let url = panel.url else { return }"
+  },
+  {
+    "value": "Generating notes...",
+    "line": 661,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                        .controlSize(.small)\n                    Text(\"Generating notes...\")\n                        .font(.system(size: 12))"
+  },
+  {
+    "value": "Cancel",
+    "line": 666,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                    Spacer()\n                    Button(\"Cancel\") {\n                        controller.cancelGeneration()"
+  },
+  {
+    "value": "Generate Notes",
+    "line": 689,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "        ContentUnavailableView {\n            Label(\"Generate Notes\", systemImage: \"sparkles\")\n        } description: {"
+  },
+  {
+    "value": "Summarize this transcript into structured meeting notes.",
+    "line": 691,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "        } description: {\n            Text(\"Summarize this transcript into structured meeting notes.\")\n        } actions: {"
+  },
+  {
+    "value": "Generate Notes",
+    "line": 702,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            } label: {\n                Label(\"Generate Notes\", systemImage: \"sparkles\")\n            }"
+  },
+  {
+    "value": "This session has no recorded utterances.",
+    "line": 715,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "        if state.loadedTranscript.isEmpty {\n            ContentUnavailableView(\"No Transcript\", systemImage: \"waveform\", description: Text(\"This session has no recorded utterances.\"))\n        } else {"
+  },
+  {
+    "value": "Cleaning up transcript... \\(completed)/\\(total) sections",
+    "line": 747,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                .controlSize(.small)\n            Text(\"Cleaning up transcript... \\(completed)/\\(total) sections\")\n                .font(.system(size: 12))"
+  },
+  {
+    "value": "Cancel",
+    "line": 752,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "            Spacer()\n            Button(\"Cancel\") {\n                controller.cancelCleanup()"
+  },
+  {
+    "value": "Image not found",
+    "line": 835,
+    "file": "OpenOats/Sources/OpenOats/Views/NotesView.swift",
+    "context": "                } else {\n                    Label(\"Image not found\", systemImage: \"photo\")\n                        .font(.system(size: 12))"
+  },
+  {
+    "value": "Skip",
+    "line": 72,
+    "file": "OpenOats/Sources/OpenOats/Views/OnboardingView.swift",
+    "context": "            HStack {\n                Button(\"Skip\") {\n                    finish()"
+  },
+  {
+    "value": "OpenOats",
+    "line": 16,
+    "file": "OpenOats/Sources/OpenOats/Views/OverlayContent.swift",
+    "context": "                    .frame(width: 6, height: 6)\n                Text(\"OpenOats\")\n                    .font(.system(size: 11, weight: .semibold))"
+  },
+  {
+    "value": "Waiting for conversation...",
+    "line": 41,
+    "file": "OpenOats/Sources/OpenOats/Views/OverlayContent.swift",
+    "context": "            if suggestions.isEmpty && !isGenerating {\n                Text(\"Waiting for conversation...\")\n                    .font(.system(size: 12))"
+  },
+  {
+    "value": "Evaluating...",
+    "line": 50,
+    "file": "OpenOats/Sources/OpenOats/Views/OverlayContent.swift",
+    "context": "                        .controlSize(.mini)\n                    Text(\"Evaluating...\")\n                        .font(.system(size: 11))"
+  },
+  {
+    "value": "Recording Consent Notice",
+    "line": 21,
+    "file": "OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift",
+    "context": "\n            Text(\"Recording Consent Notice\")\n                .font(.system(size: 16, weight: .semibold))"
+  },
+  {
+    "value": "I understand and accept these obligations",
+    "line": 52,
+    "file": "OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift",
+    "context": "            Toggle(isOn: $acknowledged) {\n                Text(\"I understand and accept these obligations\")\n                    .font(.system(size: 12, weight: .medium))"
+  },
+  {
+    "value": "Cancel",
+    "line": 60,
+    "file": "OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift",
+    "context": "            HStack {\n                Button(\"Cancel\") {\n                    withAnimation(.easeOut(duration: 0.2)) {"
+  },
+  {
+    "value": "I Agree",
+    "line": 77,
+    "file": "OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift",
+    "context": "                } label: {\n                    Text(\"I Agree\")\n                        .font(.system(size: 13, weight: .medium))"
+  },
+  {
+    "value": "\\u{2022}",
+    "line": 98,
+    "file": "OpenOats/Sources/OpenOats/Views/RecordingConsentView.swift",
+    "context": "        HStack(alignment: .top, spacing: 6) {\n            Text(\"\\u{2022}\")\n                .font(.system(size: 13))"
+  },
+  {
+    "value": "Where meeting transcripts are saved as plain text files.",
+    "line": 27,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "            Section(\"Meeting Notes\") {\n                Text(\"Where meeting transcripts are saved as plain text files.\")\n                    .font(.system(size: 11))"
+  },
+  {
+    "value": "Choose...",
+    "line": 39,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "\n                    Button(\"Choose...\") {\n                        chooseNotesFolder()"
+  },
+  {
+    "value": "Optional. Point this to a folder of notes, docs, or reference material (.md, .txt). During meetings, OpenOats searches this folder to surface relevant context and talking points.",
+    "line": 46,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "            Section(\"Knowledge Base\") {\n                Text(\"Optional. Point this to a folder of notes, docs, or reference material (.md, .txt). During meetings, OpenOats searches this folder to surface relevant context and talking points.\")\n                    .font(.system(size: 11))"
+  },
+  {
+    "value": "Clear",
+    "line": 60,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                    if !settings.kbFolderPath.isEmpty {\n                        Button(\"Clear\") {\n                            settings.kbFolderPath = \"\""
+  },
+  {
+    "value": "Choose...",
+    "line": 66,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "\n                    Button(\"Choose...\") {\n                        chooseKBFolder()"
+  },
+  {
+    "value": "System Default",
+    "line": 159,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                Picker(\"Microphone\", selection: $settings.inputDeviceID) {\n                    Text(\"System Default\").tag(AudioDeviceID(0))\n                    ForEach(inputDevices, id: \\.id) { device in"
+  },
+  {
+    "value": "Save a local audio file (.m4a) alongside each transcript. Audio never leaves your device.",
+    "line": 171,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                    .font(.system(size: 12))\n                Text(\"Save a local audio file (.m4a) alongside each transcript. Audio never leaves your device.\")\n                    .font(.system(size: 11))"
+  },
+  {
+    "value": "Reduces duplicate transcription when using speakers and microphone simultaneously. Currently disabled during recording because it conflicts with system audio capture on macOS.",
+    "line": 177,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                    .font(.system(size: 12))\n                Text(\"Reduces duplicate transcription when using speakers and microphone simultaneously. Currently disabled during recording because it conflicts with system audio capture on macOS.\")\n                    .font(.system(size: 11))"
+  },
+  {
+    "value": "When disabled, the transcript panel is hidden during meetings. Transcription still runs in the background for suggestions and notes.",
+    "line": 204,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                    .font(.system(size: 12))\n                Text(\"When disabled, the transcript panel is hidden during meetings. Transcription still runs in the background for suggestions and notes.\")\n                    .font(.system(size: 11))"
+  },
+  {
+    "value": "Automatically removes filler words and fixes punctuation as you record. You can always clean up past transcripts manually from the Notes window.",
+    "line": 210,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                    .font(.system(size: 12))\n                Text(\"Automatically removes filler words and fixes punctuation as you record. You can always clean up past transcripts manually from the Notes window.\")\n                    .font(.system(size: 11))"
+  },
+  {
+    "value": "Custom Keywords",
+    "line": 215,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                VStack(alignment: .leading, spacing: 3) {\n                    Text(\"Custom Keywords\")\n                        .font(.system(size: 11, weight: .medium))"
+  },
+  {
+    "value": "One term per line. Optional aliases: OpenOats: open oats",
+    "line": 221,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                        if settings.transcriptionCustomVocabulary.isEmpty {\n                            Text(\"One term per line. Optional aliases: OpenOats: open oats\")\n                                .font(.system(size: 11))"
+  },
+  {
+    "value": "Re-transcribes audio with a higher-quality model after each meeting for better accuracy. Runs in the background.",
+    "line": 252,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                    .font(.system(size: 12))\n                Text(\"Re-transcribes audio with a higher-quality model after each meeting for better accuracy. Runs in the background.\")\n                    .font(.system(size: 11))"
+  },
+  {
+    "value": "Uses LS-EEND to distinguish different speakers on system audio. Requires a one-time model download (~50 MB).",
+    "line": 269,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                    .font(.system(size: 12))\n                Text(\"Uses LS-EEND to distinguish different speakers on system audio. Requires a one-time model download (~50 MB).\")\n                    .font(.system(size: 11))"
+  },
+  {
+    "value": "When enabled, the app is invisible during screen sharing and recording.",
+    "line": 286,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                    .font(.system(size: 12))\n                Text(\"When enabled, the app is invisible during screen sharing and recording.\")\n                    .font(.system(size: 11))"
+  },
+  {
+    "value": "When enabled, OpenOats monitors microphone activation to detect when a meeting app starts a call. No audio is captured until you accept the notification.",
+    "line": 301,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "\n                Text(\"When enabled, OpenOats monitors microphone activation to detect when a meeting app starts a call. No audio is captured until you accept the notification.\")\n                    .font(.system(size: 11))"
+  },
+  {
+    "value": "How Meeting Detection Works",
+    "line": 314,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "\n                    Text(\"How Meeting Detection Works\")\n                        .font(.headline)"
+  },
+  {
+    "value": "OpenOats watches for microphone activation by meeting apps (Zoom, Teams, FaceTime, etc.)",
+    "line": 318,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                    VStack(alignment: .leading, spacing: 10) {\n                        Label(\"OpenOats watches for microphone activation by meeting apps (Zoom, Teams, FaceTime, etc.)\", systemImage: \"mic\")\n                        Label(\"Only activation status is checked. No audio is captured or recorded until you accept.\", systemImage: \"lock.shield\")"
+  },
+  {
+    "value": "Only activation status is checked. No audio is captured or recorded until you accept.",
+    "line": 319,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                        Label(\"OpenOats watches for microphone activation by meeting apps (Zoom, Teams, FaceTime, etc.)\", systemImage: \"mic\")\n                        Label(\"Only activation status is checked. No audio is captured or recorded until you accept.\", systemImage: \"lock.shield\")\n                        Label(\"When a meeting is detected, you get a macOS notification to start transcribing.\", systemImage: \"bell\")"
+  },
+  {
+    "value": "When a meeting is detected, you get a macOS notification to start transcribing.",
+    "line": 320,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                        Label(\"Only activation status is checked. No audio is captured or recorded until you accept.\", systemImage: \"lock.shield\")\n                        Label(\"When a meeting is detected, you get a macOS notification to start transcribing.\", systemImage: \"bell\")\n                        Label(\"You can always dismiss the notification or mark it as \\\"not a meeting\\\".\", systemImage: \"hand.raised\")"
+  },
+  {
+    "value": "Cancel",
+    "line": 327,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                    HStack {\n                        Button(\"Cancel\") {\n                            showAutoDetectExplanation = false"
+  },
+  {
+    "value": "Enable Detection",
+    "line": 332,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "\n                        Button(\"Enable Detection\") {\n                            settings.hasShownAutoDetectExplanation = true"
+  },
+  {
+    "value": "Silence timeout",
+    "line": 348,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                    HStack {\n                        Text(\"Silence timeout\")\n                            .font(.system(size: 12))"
+  },
+  {
+    "value": "min",
+    "line": 355,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                            .multilineTextAlignment(.trailing)\n                        Text(\"min\")\n                            .font(.system(size: 12))"
+  },
+  {
+    "value": "Auto-detected sessions stop after this many minutes of silence.",
+    "line": 359,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                    }\n                    Text(\"Auto-detected sessions stop after this many minutes of silence.\")\n                        .font(.system(size: 11))"
+  },
+  {
+    "value": "Print detection events to the system console for debugging.",
+    "line": 365,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                        .font(.system(size: 12))\n                    Text(\"Print detection events to the system console for debugging.\")\n                        .font(.system(size: 11))"
+  },
+  {
+    "value": "Reset",
+    "line": 393,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                                .foregroundStyle(.tertiary)\n                            Button(\"Reset\") {\n                                resetTemplate(id: template.id)"
+  },
+  {
+    "value": "Name",
+    "line": 416,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                        VStack(alignment: .leading, spacing: 3) {\n                            Text(\"Name\")\n                                .font(.system(size: 11, weight: .medium))"
+  },
+  {
+    "value": "Icon",
+    "line": 428,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                        VStack(alignment: .leading, spacing: 3) {\n                            Text(\"Icon\")\n                                .font(.system(size: 11, weight: .medium))"
+  },
+  {
+    "value": "Notes Prompt",
+    "line": 436,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                        VStack(alignment: .leading, spacing: 3) {\n                            Text(\"Notes Prompt\")\n                                .font(.system(size: 11, weight: .medium))"
+  },
+  {
+    "value": "Instructions for how the AI should format notes for this meeting type.",
+    "line": 439,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                                .foregroundStyle(.secondary)\n                            Text(\"Instructions for how the AI should format notes for this meeting type.\")\n                                .font(.system(size: 10))"
+  },
+  {
+    "value": "Cancel",
+    "line": 464,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                        HStack {\n                            Button(\"Cancel\") {\n                                resetNewTemplateForm()"
+  },
+  {
+    "value": "Save",
+    "line": 468,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                            .buttonStyle(.plain)\n                            Button(\"Save\") {\n                                let template = MeetingTemplate("
+  },
+  {
+    "value": "New Template",
+    "line": 485,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "                } else {\n                    Button(\"New Template\") {\n                        isAddingTemplate = true"
+  },
+  {
+    "value": "Choose a folder containing your knowledge base documents (.md, .txt)",
+    "line": 543,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "        panel.allowsMultipleSelection = false\n        panel.message = \"Choose a folder containing your knowledge base documents (.md, .txt)\"\n"
+  },
+  {
+    "value": "Choose where to save meeting transcripts",
+    "line": 555,
+    "file": "OpenOats/Sources/OpenOats/Views/SettingsView.swift",
+    "context": "        panel.allowsMultipleSelection = false\n        panel.message = \"Choose where to save meeting transcripts\"\n"
+  },
+  {
+    "value": "Evaluating...",
+    "line": 15,
+    "file": "OpenOats/Sources/OpenOats/Views/SuggestionsView.swift",
+    "context": "                            .controlSize(.mini)\n                        Text(\"Evaluating...\")\n                            .font(.system(size: 11, weight: .medium))"
+  },
+  {
+    "value": "No suggestions yet",
+    "line": 32,
+    "file": "OpenOats/Sources/OpenOats/Views/SuggestionsView.swift",
+    "context": "                    VStack(spacing: 8) {\n                        Text(\"No suggestions yet\")\n                            .font(.system(size: 13, weight: .medium))"
+  },
+  {
+    "value": "Suggestions appear when the conversation reaches a moment where your knowledge base can help.",
+    "line": 35,
+    "file": "OpenOats/Sources/OpenOats/Views/SuggestionsView.swift",
+    "context": "                            .foregroundStyle(.secondary)\n                        Text(\"Suggestions appear when the conversation reaches a moment where your knowledge base can help.\")\n                            .font(.system(size: 12))"
+  },
+  {
+    "value": "Clear search",
+    "line": 50,
+    "file": "OpenOats/Sources/OpenOats/Views/TranscriptView.swift",
+    "context": "                .buttonStyle(.plain)\n                .help(\"Clear search\")\n            }"
+  },
+  {
+    "value": "No matches",
+    "line": 76,
+    "file": "OpenOats/Sources/OpenOats/Views/TranscriptView.swift",
+    "context": "                if visible.isEmpty && isSearching {\n                    Text(\"No matches\")\n                        .font(.system(size: 12))"
+  },
+  {
+    "value": "Resume auto-scroll",
+    "line": 142,
+    "file": "OpenOats/Sources/OpenOats/Views/TranscriptView.swift",
+    "context": "                    .buttonStyle(.plain)\n                    .help(\"Resume auto-scroll\")\n                    .padding(12)"
+  },
+  {
+    "value": "Live Transcript",
+    "line": 10,
+    "file": "OpenOats/Sources/OpenOats/Views/TranscriptWindowView.swift",
+    "context": "            HStack {\n                Text(\"Live Transcript\")\n                    .font(.system(size: 13, weight: .semibold))"
+  },
+  {
+    "value": "Copy",
+    "line": 17,
+    "file": "OpenOats/Sources/OpenOats/Views/TranscriptWindowView.swift",
+    "context": "                    } label: {\n                        Label(\"Copy\", systemImage: \"doc.on.doc\")\n                            .font(.system(size: 11))"
+  },
+  {
+    "value": "Copy transcript to clipboard",
+    "line": 22,
+    "file": "OpenOats/Sources/OpenOats/Views/TranscriptWindowView.swift",
+    "context": "                    .controlSize(.small)\n                    .help(\"Copy transcript to clipboard\")\n                }"
+  }
+]

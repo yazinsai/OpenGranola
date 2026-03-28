@@ -81,7 +81,7 @@ struct NotesView: View {
             // Bulk delete toolbar
             if bulkDeleteMode {
                 HStack(spacing: 8) {
-                    Button("Select All") {
+                    Button(String(localized: "select_all")) {
                         bulkDeleteSelection = Set(controller.filteredSessions.map(\.id))
                     }
                     .font(.system(size: 11))
@@ -89,14 +89,14 @@ struct NotesView: View {
                     .foregroundStyle(Color.accentColor)
                     Spacer()
                     if !bulkDeleteSelection.isEmpty {
-                        Button("Delete \(bulkDeleteSelection.count)") {
+                        Button(String(localized: "delete_bulkdeleteselectioncount")) {
                             showBulkDeleteConfirmation = true
                         }
                         .font(.system(size: 11, weight: .medium))
                         .buttonStyle(.plain)
                         .foregroundStyle(.red)
                     }
-                    Button("Done") {
+                    Button(String(localized: "done")) {
                         bulkDeleteMode = false
                         bulkDeleteSelection = []
                     }
@@ -122,11 +122,11 @@ struct NotesView: View {
                 List(controller.filteredSessions, selection: selectedBinding) { session in
                     sessionRow(controller: controller, session: session)
                         .contextMenu {
-                            Button("Rename...") {
+                            Button(String(localized: "rename")) {
                                 renameText = session.title ?? ""
                                 renamingSessionID = session.id
                             }
-                            Button("Edit Tags...") {
+                            Button(String(localized: "edit_tags")) {
                                 editingTags = session.tags ?? []
                                 newTagText = ""
                                 editingTagsSessionID = session.id
@@ -135,7 +135,7 @@ struct NotesView: View {
                                 }
                             }
                             Divider()
-                            Button("Select Multiple...") {
+                            Button(String(localized: "select_multiple")) {
                                 bulkDeleteMode = true
                                 bulkDeleteSelection = [session.id]
                             }
@@ -164,7 +164,7 @@ struct NotesView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will permanently delete the transcript and any generated notes.")
+            Text(String(localized: "this_will_permanently_delete_the_transcript_and_an"))
         }
         .alert("Delete \(bulkDeleteSelection.count) Meetings?", isPresented: $showBulkDeleteConfirmation) {
             Button("Delete \(bulkDeleteSelection.count)", role: .destructive) {
@@ -174,7 +174,7 @@ struct NotesView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will permanently delete the selected transcripts and any generated notes.")
+            Text(String(localized: "this_will_permanently_delete_the_selected_transcri"))
         }
     }
 
@@ -214,7 +214,7 @@ struct NotesView: View {
                 Text(session.startedAt, style: .date)
                 Text(session.startedAt, style: .time)
                 Spacer()
-                Text("\(session.utteranceCount) utterances")
+                Text(String(localized: "sessionutterancecount_utterances"))
             }
             .font(.system(size: 11))
             .foregroundStyle(.tertiary)
@@ -291,7 +291,7 @@ struct NotesView: View {
     @ViewBuilder
     private func tagEditorPopover(controller: NotesController, sessionID: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Tags")
+            Text(String(localized: "tags"))
                 .font(.headline)
 
             // Current tags as removable chips
@@ -327,7 +327,7 @@ struct NotesView: View {
                         .onSubmit {
                             commitNewTag(controller: controller, sessionID: sessionID)
                         }
-                    Button("Add") {
+                    Button(String(localized: "add")) {
                         commitNewTag(controller: controller, sessionID: sessionID)
                     }
                     .disabled(newTagText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -363,7 +363,7 @@ struct NotesView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 4))
                 }
             } else {
-                Text("Maximum 5 tags per session")
+                Text(String(localized: "maximum_5_tags_per_session"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -407,7 +407,7 @@ struct NotesView: View {
                 .accessibilityHidden(true)
             }
         } else {
-            ContentUnavailableView("Select a Session", systemImage: "doc.text", description: Text("Choose a session from the sidebar to view or generate notes."))
+            ContentUnavailableView("Select a Session", systemImage: "doc.text", description: Text(String(localized: "choose_a_session_from_the_sidebar_to_view_or_gener")))
         }
     }
 
@@ -450,13 +450,13 @@ struct NotesView: View {
             Button {
                 copyCurrentContent(state: state)
             } label: {
-                Label("Copy", systemImage: "doc.on.doc")
+                Label(String(localized: "copy"), systemImage: "doc.on.doc")
                     .font(.system(size: 12))
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.bordered)
             .disabled(copyContentIsEmpty(state: state))
-            .help("Copy to clipboard")
+            .help(String(localized: "copy_to_clipboard"))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -470,20 +470,20 @@ struct NotesView: View {
             Button {
                 controller.cleanUpTranscript(settings: settings)
             } label: {
-                Label("Clean Up", systemImage: "sparkles")
+                Label(String(localized: "clean_up"), systemImage: "sparkles")
                     .font(.system(size: 12))
             }
             .buttonStyle(.borderedProminent)
             .disabled(state.loadedTranscript.isEmpty)
-            .help("Remove filler words and fix punctuation")
+            .help(String(localized: "remove_filler_words_and_fix_punctuation"))
 
         case .inProgress:
             if case .inProgress(let completed, let total) = state.cleanupStatus {
                 HStack(spacing: 6) {
-                    Text("\(completed)/\(total) cleaning...")
+                    Text(String(localized: "completedtotal_cleaning"))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
-                    Button("Cancel") {
+                    Button(String(localized: "cancel")) {
                         controller.cancelCleanup()
                     }
                     .buttonStyle(.bordered)
@@ -496,11 +496,11 @@ struct NotesView: View {
             Button {
                 controller.cleanUpTranscript(settings: settings)
             } label: {
-                Label("Clean Up", systemImage: "sparkles")
+                Label(String(localized: "clean_up"), systemImage: "sparkles")
                     .font(.system(size: 12))
             }
             .buttonStyle(.borderedProminent)
-            .help("Clean up remaining utterances")
+            .help(String(localized: "clean_up_remaining_utterances"))
 
             showOriginalButton(controller: controller, state: state)
 
@@ -514,7 +514,7 @@ struct NotesView: View {
         Button {
             controller.toggleShowingOriginal()
         } label: {
-            Label("Show Original", systemImage: state.showingOriginal ? "text.badge.checkmark" : "text.badge.minus")
+            Label(String(localized: "show_original"), systemImage: state.showingOriginal ? "text.badge.checkmark" : "text.badge.minus")
                 .font(.system(size: 12))
         }
         .buttonStyle(.bordered)
@@ -543,7 +543,7 @@ struct NotesView: View {
             .menuStyle(.button)
             .buttonStyle(.bordered)
             .fixedSize()
-            .help("Click to regenerate, or pick a different template")
+            .help(String(localized: "click_to_regenerate_or_pick_a_different_template"))
         }
 
         imageInsertMenu(controller: controller, state: state)
@@ -555,28 +555,28 @@ struct NotesView: View {
             Button {
                 insertImageFromFile(controller: controller)
             } label: {
-                Label("From File\u{2026}", systemImage: "folder")
+                Label(String(localized: "from_fileu2026"), systemImage: "folder")
             }
             Button {
                 insertImageFromClipboard(controller: controller)
             } label: {
-                Label("From Clipboard", systemImage: "doc.on.clipboard")
+                Label(String(localized: "from_clipboard"), systemImage: "doc.on.clipboard")
             }
             .disabled(!clipboardHasImage())
             Button {
                 captureScreenshot(controller: controller)
             } label: {
-                Label("Capture Screenshot", systemImage: "camera.viewfinder")
+                Label(String(localized: "capture_screenshot"), systemImage: "camera.viewfinder")
             }
         } label: {
-            Label("Insert Image", systemImage: "photo.badge.plus")
+            Label(String(localized: "insert_image"), systemImage: "photo.badge.plus")
                 .font(.system(size: 12))
         }
         .menuStyle(.button)
         .buttonStyle(.bordered)
         .fixedSize()
         .disabled(state.notesGenerationStatus == .generating || state.selectedSessionID == nil)
-        .help("Insert an image into notes")
+        .help(String(localized: "insert_an_image_into_notes"))
     }
 
     private func clipboardHasImage() -> Bool {
@@ -588,7 +588,7 @@ struct NotesView: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
         panel.allowsMultipleSelection = false
-        panel.message = "Choose an image to insert into notes"
+        panel.message = String(localized: "choose_an_image_to_insert_into_notes")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard let nsImage = NSImage(contentsOf: url),
               let tiff = nsImage.tiffRepresentation,
@@ -658,12 +658,12 @@ struct NotesView: View {
                 HStack {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Generating notes...")
+                    Text(String(localized: "generating_notes"))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("notes.generating")
                     Spacer()
-                    Button("Cancel") {
+                    Button(String(localized: "cancel")) {
                         controller.cancelGeneration()
                     }
                     .buttonStyle(.bordered)
@@ -686,9 +686,9 @@ struct NotesView: View {
 
     private func notesEmptyState(controller: NotesController, state: NotesState, sessionID: String) -> some View {
         ContentUnavailableView {
-            Label("Generate Notes", systemImage: "sparkles")
+            Label(String(localized: "generate_notes"), systemImage: "sparkles")
         } description: {
-            Text("Summarize this transcript into structured meeting notes.")
+            Text(String(localized: "summarize_this_transcript_into_structured_meeting_"))
         } actions: {
             if case .error(let error) = state.notesGenerationStatus {
                 Text(error)
@@ -699,7 +699,7 @@ struct NotesView: View {
             Button {
                 controller.generateNotes(sessionID: sessionID, settings: settings)
             } label: {
-                Label("Generate Notes", systemImage: "sparkles")
+                Label(String(localized: "generate_notes"), systemImage: "sparkles")
             }
             .buttonStyle(.borderedProminent)
             .disabled(state.loadedTranscript.isEmpty)
@@ -712,7 +712,7 @@ struct NotesView: View {
     @ViewBuilder
     private func transcriptView(controller: NotesController, state: NotesState) -> some View {
         if state.loadedTranscript.isEmpty {
-            ContentUnavailableView("No Transcript", systemImage: "waveform", description: Text("This session has no recorded utterances."))
+            ContentUnavailableView("No Transcript", systemImage: "waveform", description: Text(String(localized: "this_session_has_no_recorded_utterances")))
         } else {
             ScrollView {
                 if case .inProgress(let completed, let total) = state.cleanupStatus {
@@ -744,12 +744,12 @@ struct NotesView: View {
         HStack(spacing: 8) {
             ProgressView()
                 .controlSize(.small)
-            Text("Cleaning up transcript... \(completed)/\(total) sections")
+            Text(String(localized: "cleaning_up_transcript_completedtotal_sections"))
                 .font(.system(size: 12))
                 .lineLimit(1)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Cancel") {
+            Button(String(localized: "cancel")) {
                 controller.cancelCleanup()
             }
             .buttonStyle(.bordered)
@@ -832,7 +832,7 @@ struct NotesView: View {
                         .frame(maxWidth: 500, maxHeight: 400)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 } else {
-                    Label("Image not found", systemImage: "photo")
+                    Label(String(localized: "image_not_found"), systemImage: "photo")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }

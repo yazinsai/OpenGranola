@@ -34,7 +34,7 @@ struct MenuBarPopoverView: View {
 
             Button(action: onShowMainWindow) {
                 HStack {
-                    Text("Show OpenOats")
+                    Text(String(localized: "show_openoats"))
                     Spacer()
                 }
             }
@@ -44,7 +44,7 @@ struct MenuBarPopoverView: View {
 
             Button(action: onCheckForUpdates) {
                 HStack {
-                    Text("Check for Updates…")
+                    Text(String(localized: "check_for_updates_1"))
                     Spacer()
                 }
             }
@@ -56,7 +56,7 @@ struct MenuBarPopoverView: View {
 
             Button(action: onQuit) {
                 HStack {
-                    Text("Quit OpenOats")
+                    Text(String(localized: "quit_openoats"))
                     Spacer()
                 }
             }
@@ -90,20 +90,20 @@ struct MenuBarPopoverView: View {
                 Circle()
                     .fill(.red)
                     .frame(width: 8, height: 8)
-                Text("Recording - \(formattedTime)")
+                Text(String(localized: "recording_formattedtime"))
                     .font(.system(size: 13, weight: .medium))
             } else if settings.meetingAutoDetectEnabled {
                 Circle()
                     .fill(.secondary)
                     .frame(width: 8, height: 8)
-                Text("Listening for meetings...")
+                Text(String(localized: "listening_for_meetings"))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             } else {
                 Circle()
                     .fill(.secondary.opacity(0.5))
                     .frame(width: 8, height: 8)
-                Text("Idle")
+                Text(String(localized: "idle"))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
@@ -117,7 +117,7 @@ struct MenuBarPopoverView: View {
             Button(action: {
                 coordinator.handle(.userStopped, settings: settings)
             }) {
-                Text("Stop Recording")
+                Text(String(localized: "stop_recording"))
                     .font(.system(size: 13, weight: .medium))
                     .frame(maxWidth: .infinity)
             }
@@ -132,7 +132,7 @@ struct MenuBarPopoverView: View {
                 }
                 coordinator.handle(.userStarted(.manual()), settings: settings)
             }) {
-                Text("Start Recording")
+                Text(String(localized: "start_recording"))
                     .font(.system(size: 13, weight: .medium))
                     .frame(maxWidth: .infinity)
             }

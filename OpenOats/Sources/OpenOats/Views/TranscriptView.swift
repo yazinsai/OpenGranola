@@ -47,7 +47,7 @@ struct TranscriptView: View {
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
-                .help("Clear search")
+                .help(String(localized: "clear_search"))
             }
 
             Divider()
@@ -73,7 +73,7 @@ struct TranscriptView: View {
             ScrollView {
                 let visible = filteredUtterances
                 if visible.isEmpty && isSearching {
-                    Text("No matches")
+                    Text(String(localized: "no_matches"))
                         .font(.system(size: 12))
                         .foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity, minHeight: 60)
@@ -139,7 +139,7 @@ struct TranscriptView: View {
                             .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
                     }
                     .buttonStyle(.plain)
-                    .help("Resume auto-scroll")
+                    .help(String(localized: "resume_autoscroll"))
                     .padding(12)
                     .transition(.opacity.combined(with: .scale))
                 }

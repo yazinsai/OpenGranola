@@ -24,7 +24,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Meeting Notes") {
-                Text("Where meeting transcripts are saved as plain text files.")
+                Text(String(localized: "where_meeting_transcripts_are_saved_as_plain_text_"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
@@ -36,14 +36,14 @@ struct SettingsView: View {
 
                     Spacer()
 
-                    Button("Choose...") {
+                    Button(String(localized: "choose")) {
                         chooseNotesFolder()
                     }
                 }
             }
 
             Section("Knowledge Base") {
-                Text("Optional. Point this to a folder of notes, docs, or reference material (.md, .txt). During meetings, OpenOats searches this folder to surface relevant context and talking points.")
+                Text(String(localized: "optional_point_this_to_a_folder_of_notes_docs_or_r"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
@@ -57,13 +57,13 @@ struct SettingsView: View {
                     Spacer()
 
                     if !settings.kbFolderPath.isEmpty {
-                        Button("Clear") {
+                        Button(String(localized: "clear")) {
                             settings.kbFolderPath = ""
                         }
                         .font(.system(size: 12))
                     }
 
-                    Button("Choose...") {
+                    Button(String(localized: "choose")) {
                         chooseKBFolder()
                     }
                 }
@@ -156,7 +156,7 @@ struct SettingsView: View {
 
             Section("Audio Input") {
                 Picker("Microphone", selection: $settings.inputDeviceID) {
-                    Text("System Default").tag(AudioDeviceID(0))
+                    Text(String(localized: "system_default")).tag(AudioDeviceID(0))
                     ForEach(inputDevices, id: \.id) { device in
                         Text(device.name).tag(device.id)
                     }
@@ -168,13 +168,13 @@ struct SettingsView: View {
             Section("Recording") {
                 Toggle("Save audio recording", isOn: $settings.saveAudioRecording)
                     .font(.system(size: 12))
-                Text("Save a local audio file (.m4a) alongside each transcript. Audio never leaves your device.")
+                Text(String(localized: "save_a_local_audio_file_m4a_alongside_each_transcr"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
                 Toggle("Echo cancellation", isOn: $settings.enableEchoCancellation)
                     .font(.system(size: 12))
-                Text("Reduces duplicate transcription when using speakers and microphone simultaneously. Currently disabled during recording because it conflicts with system audio capture on macOS.")
+                Text(String(localized: "reduces_duplicate_transcription_when_using_speaker"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -201,24 +201,24 @@ struct SettingsView: View {
 
                 Toggle("Show live transcript", isOn: $settings.showLiveTranscript)
                     .font(.system(size: 12))
-                Text("When disabled, the transcript panel is hidden during meetings. Transcription still runs in the background for suggestions and notes.")
+                Text(String(localized: "when_disabled_the_transcript_panel_is_hidden_durin"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
                 Toggle("Clean up transcript during recording", isOn: $settings.enableTranscriptRefinement)
                     .font(.system(size: 12))
-                Text("Automatically removes filler words and fixes punctuation as you record. You can always clean up past transcripts manually from the Notes window.")
+                Text(String(localized: "automatically_removes_filler_words_and_fixes_punct"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Custom Keywords")
+                    Text(String(localized: "custom_keywords"))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
 
                     ZStack(alignment: .topLeading) {
                         if settings.transcriptionCustomVocabulary.isEmpty {
-                            Text("One term per line. Optional aliases: OpenOats: open oats")
+                            Text(String(localized: "one_term_per_line_optional_aliases_openoats_open_o"))
                                 .font(.system(size: 11))
                                 .foregroundStyle(.quaternary)
                                 .padding(.top, 6)
@@ -249,7 +249,7 @@ struct SettingsView: View {
             Section("Batch Refinement") {
                 Toggle("Enhance transcript after meeting", isOn: $settings.enableBatchRefinement)
                     .font(.system(size: 12))
-                Text("Re-transcribes audio with a higher-quality model after each meeting for better accuracy. Runs in the background.")
+                Text(String(localized: "retranscribes_audio_with_a_higherquality_model_aft"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
@@ -266,7 +266,7 @@ struct SettingsView: View {
             Section("Speaker Diarization") {
                 Toggle("Identify multiple remote speakers", isOn: $settings.enableDiarization)
                     .font(.system(size: 12))
-                Text("Uses LS-EEND to distinguish different speakers on system audio. Requires a one-time model download (~50 MB).")
+                Text(String(localized: "uses_lseend_to_distinguish_different_speakers_on_s"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
@@ -283,7 +283,7 @@ struct SettingsView: View {
             Section("Privacy") {
                 Toggle("Hide from screen sharing", isOn: $settings.hideFromScreenShare)
                     .font(.system(size: 12))
-                Text("When enabled, the app is invisible during screen sharing and recording.")
+                Text(String(localized: "when_enabled_the_app_is_invisible_during_screen_sh"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -298,7 +298,7 @@ struct SettingsView: View {
                         }
                     }
 
-                Text("When enabled, OpenOats monitors microphone activation to detect when a meeting app starts a call. No audio is captured until you accept the notification.")
+                Text(String(localized: "when_enabled_openoats_monitors_microphone_activati"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
@@ -311,25 +311,25 @@ struct SettingsView: View {
                         .font(.system(size: 40))
                         .foregroundStyle(.tint)
 
-                    Text("How Meeting Detection Works")
+                    Text(String(localized: "how_meeting_detection_works"))
                         .font(.headline)
 
                     VStack(alignment: .leading, spacing: 10) {
-                        Label("OpenOats watches for microphone activation by meeting apps (Zoom, Teams, FaceTime, etc.)", systemImage: "mic")
-                        Label("Only activation status is checked. No audio is captured or recorded until you accept.", systemImage: "lock.shield")
-                        Label("When a meeting is detected, you get a macOS notification to start transcribing.", systemImage: "bell")
+                        Label(String(localized: "openoats_watches_for_microphone_activation_by_meet"), systemImage: "mic")
+                        Label(String(localized: "only_activation_status_is_checked_no_audio_is_capt"), systemImage: "lock.shield")
+                        Label(String(localized: "when_a_meeting_is_detected_you_get_a_macos_notific"), systemImage: "bell")
                         Label("You can always dismiss the notification or mark it as \"not a meeting\".", systemImage: "hand.raised")
                     }
                     .font(.system(size: 12))
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     HStack {
-                        Button("Cancel") {
+                        Button(String(localized: "cancel")) {
                             showAutoDetectExplanation = false
                         }
                         .keyboardShortcut(.cancelAction)
 
-                        Button("Enable Detection") {
+                        Button(String(localized: "enable_detection")) {
                             settings.hasShownAutoDetectExplanation = true
                             settings.meetingAutoDetectEnabled = true
                             showAutoDetectExplanation = false
@@ -345,24 +345,24 @@ struct SettingsView: View {
             if settings.meetingAutoDetectEnabled {
                 DisclosureGroup("Advanced Detection Settings") {
                     HStack {
-                        Text("Silence timeout")
+                        Text(String(localized: "silence_timeout"))
                             .font(.system(size: 12))
                         Spacer()
                         TextField("", value: $settings.silenceTimeoutMinutes, format: .number)
                             .font(.system(size: 12, design: .monospaced))
                             .frame(width: 50)
                             .multilineTextAlignment(.trailing)
-                        Text("min")
+                        Text(String(localized: "min"))
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                     }
-                    Text("Auto-detected sessions stop after this many minutes of silence.")
+                    Text(String(localized: "autodetected_sessions_stop_after_this_many_minutes"))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
 
                     Toggle("Detection log", isOn: $settings.detectionLogEnabled)
                         .font(.system(size: 12))
-                    Text("Print detection events to the system console for debugging.")
+                    Text(String(localized: "print_detection_events_to_the_system_console_for_d"))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -390,7 +390,7 @@ struct SettingsView: View {
                             Image(systemName: "lock")
                                 .font(.system(size: 10))
                                 .foregroundStyle(.tertiary)
-                            Button("Reset") {
+                            Button(String(localized: "reset")) {
                                 resetTemplate(id: template.id)
                             }
                             .font(.system(size: 11))
@@ -413,7 +413,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         // Name
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Name")
+                            Text(String(localized: "name"))
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
                             TextField("e.g. Sprint Planning", text: $newTemplateName)
@@ -425,7 +425,7 @@ struct SettingsView: View {
 
                         // Icon picker
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Icon")
+                            Text(String(localized: "icon"))
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
                             IconPickerGrid(selected: $newTemplateIcon)
@@ -433,10 +433,10 @@ struct SettingsView: View {
 
                         // System prompt
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Notes Prompt")
+                            Text(String(localized: "notes_prompt"))
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
-                            Text("Instructions for how the AI should format notes for this meeting type.")
+                            Text(String(localized: "instructions_for_how_the_ai_should_format_notes_fo"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(.tertiary)
                             ZStack(alignment: .topLeading) {
@@ -461,11 +461,11 @@ struct SettingsView: View {
                         }
 
                         HStack {
-                            Button("Cancel") {
+                            Button(String(localized: "cancel")) {
                                 resetNewTemplateForm()
                             }
                             .buttonStyle(.plain)
-                            Button("Save") {
+                            Button(String(localized: "save")) {
                                 let template = MeetingTemplate(
                                     id: UUID(),
                                     name: trimmedTemplateName,
@@ -482,7 +482,7 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 4)
                 } else {
-                    Button("New Template") {
+                    Button(String(localized: "new_template")) {
                         isAddingTemplate = true
                         Task { @MainActor in
                             focusedTemplateField = .name
@@ -540,7 +540,7 @@ struct SettingsView: View {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = "Choose a folder containing your knowledge base documents (.md, .txt)"
+        panel.message = String(localized: "choose_a_folder_containing_your_knowledge_base_doc")
 
         if panel.runModal() == .OK, let url = panel.url {
             settings.kbFolderPath = url.path
@@ -552,7 +552,7 @@ struct SettingsView: View {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = "Choose where to save meeting transcripts"
+        panel.message = String(localized: "choose_where_to_save_meeting_transcripts")
 
         if panel.runModal() == .OK, let url = panel.url {
             settings.notesFolderPath = url.path
