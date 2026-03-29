@@ -127,7 +127,7 @@ final class MarkdownMeetingWriterTests: XCTestCase {
         XCTAssertTrue(output.contains("[00:00:05] **Them:** Hi there"))
     }
 
-    func testTranscriptLinePrefersRefinedText() {
+    func testTranscriptLinePrefersCleanedText() {
         let start = Date()
         let record = SessionRecord(
             speaker: .them,

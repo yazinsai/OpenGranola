@@ -424,10 +424,10 @@ struct NotesView: View {
     private func cleanupState(from status: CleanupStatus, transcript: [SessionRecord]) -> CleanupState {
         if case .inProgress = status { return .inProgress }
         guard !transcript.isEmpty else { return .notCleaned }
-        let hasAnyRefined = transcript.contains(where: { $0.cleanedText != nil })
-        if !hasAnyRefined { return .notCleaned }
-        let allRefined = !transcript.contains(where: { $0.cleanedText == nil })
-        return allRefined ? .cleaned : .partiallyCleaned
+        let hasAnyCleaned = transcript.contains(where: { $0.cleanedText != nil })
+        if !hasAnyCleaned { return .notCleaned }
+        let allCleaned = !transcript.contains(where: { $0.cleanedText == nil })
+        return allCleaned ? .cleaned : .partiallyCleaned
     }
 
     @ViewBuilder

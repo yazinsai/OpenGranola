@@ -560,7 +560,6 @@ private struct TemplatesSettingsTab: View {
             Form {
                 Section("Meeting Templates") {
                     ForEach(templates) { template in
-
                         HStack {
                             Image(systemName: template.icon)
                                 .frame(width: 20)
