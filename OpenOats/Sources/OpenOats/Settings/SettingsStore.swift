@@ -640,7 +640,7 @@ final class SettingsStore {
         } else {
             self._suggestionPanelEnabled = defaults.bool(forKey: "suggestionPanelEnabled")
         }
-        self._sidebarMode = SidebarMode(rawValue: defaults.string(forKey: "sidebarMode") ?? "") ?? .sidecast
+        self._sidebarMode = SidebarMode(rawValue: defaults.string(forKey: "sidebarMode") ?? "") ?? .classicSuggestions
         self._sidecastIntensity = SidecastIntensity(rawValue: defaults.string(forKey: "sidecastIntensity") ?? "") ?? .balanced
         self._sidecastPersonas = Self.decodePersonas(defaults.data(forKey: "sidecastPersonas")) ?? SidecastPersona.starterPack
         self._preFetchIntervalSeconds = defaults.object(forKey: "preFetchIntervalSeconds") != nil

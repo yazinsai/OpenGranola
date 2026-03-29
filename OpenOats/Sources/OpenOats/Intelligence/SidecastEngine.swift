@@ -124,29 +124,6 @@ final class SidecastEngine {
         lastSpokenAtByPersona.removeAll()
     }
 
-    /// Inject demo messages for design preview.
-    func injectDemoMessages(personas: [SidecastPersona]) {
-        let demoTexts = [
-            "That stat is from 2023 — the most recent report (Q3 2024) shows ~15% growth, not 25%",
-            "For context: this company raised a $12M Series A in 2023 on almost the same thesis.",
-            "Bold strategy: announce world domination right after missing last quarter's numbers.",
-            "\"Revolutionary\" = \"we copied it and slapped AI on the landing page.\" I'll take that bet.",
-        ]
-        var demoMessages: [SidecastMessage] = []
-        for (index, persona) in personas.prefix(4).enumerated() {
-            demoMessages.append(SidecastMessage(
-                personaID: persona.id,
-                personaName: persona.name,
-                text: demoTexts[index % demoTexts.count],
-                timestamp: Date.now.addingTimeInterval(-Double(index) * 15),
-                confidence: index == 0 ? 0.9 : 0.6,
-                priority: Double(4 - index) / 4.0,
-                sourceBreadcrumb: index == 0 ? "Q3 2024 Earnings Report" : ""
-            ))
-        }
-        messages = demoMessages
-    }
-
     private func apply(
         _ response: SidecastResponse,
         personas: [SidecastPersona],

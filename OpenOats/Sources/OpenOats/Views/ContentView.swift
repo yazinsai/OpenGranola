@@ -164,7 +164,7 @@ struct ContentView: View {
             }
 
             // Suggestion panel status
-            if controllerState.isRunning || settings.sidebarMode == .sidecast {
+            if controllerState.isRunning {
                 HStack(spacing: 6) {
                     Circle()
                         .fill(controllerState.isGeneratingSuggestions ? Color.orange : Color.green)
@@ -435,11 +435,6 @@ struct ContentView: View {
         case .classicSuggestions:
             overlayManager.toggle(content: SuggestionPanelContent(engine: coordinator.suggestionEngine))
         case .sidecast:
-            // Inject demo data if engine has no messages yet (for preview)
-            if let engine = coordinator.sidecastEngine,
-               engine.messages.isEmpty {
-                engine.injectDemoMessages(personas: settings.enabledSidecastPersonas)
-            }
             overlayManager.toggleSidecast(content: sidecastContent())
         }
     }
