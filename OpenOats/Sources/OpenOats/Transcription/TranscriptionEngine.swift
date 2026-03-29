@@ -110,12 +110,12 @@ final class TranscriptionEngine {
     private let settings: AppSettings
     private let mode: Mode
 
-    /// Audio level from mic for the UI meter.
-    /// nonisolated is safe here — micCapture.audioLevel is thread-safe (NSLock).
+    /// Combined audio level (mic + system) for the UI meter.
+    /// nonisolated is safe here — both audioLevel properties are thread-safe (NSLock).
     nonisolated var audioLevel: Float {
         switch mode {
         case .live:
-            micCapture.audioLevel
+            max(micCapture.audioLevel, systemCapture.audioLevel)
         case .scripted:
             _isRunning ? 0.35 : 0
         }
