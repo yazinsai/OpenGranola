@@ -770,22 +770,23 @@ final class SettingsStore {
 
     // MARK: - Computed Properties
 
-    /// Returns the cloud ASR API key for the current transcription model.
-    var cloudASRApiKey: String {
-        switch transcriptionModel {
+    /// Returns the cloud ASR API key for the given transcription model.
+    func cloudASRApiKey(for model: TranscriptionModel) -> String {
+        switch model {
         case .assemblyAI: assemblyAIApiKey
         case .elevenLabsScribe: elevenLabsApiKey
         default: ""
         }
     }
 
+    /// Returns the cloud ASR API key for the current transcription model.
+    var cloudASRApiKey: String {
+        cloudASRApiKey(for: transcriptionModel)
+    }
+
     /// Returns the cloud ASR API key for the current batch transcription model.
     var batchCloudASRApiKey: String {
-        switch batchTranscriptionModel {
-        case .assemblyAI: assemblyAIApiKey
-        case .elevenLabsScribe: elevenLabsApiKey
-        default: ""
-        }
+        cloudASRApiKey(for: batchTranscriptionModel)
     }
 
     var kbFolderURL: URL? {

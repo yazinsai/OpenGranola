@@ -213,7 +213,8 @@ final class TranscriptionEngine {
         beginDownloadTracking(for: transcriptionModel)
 
         let vocab = settings.transcriptionCustomVocabulary
-        let backend = transcriptionModel.makeBackend(customVocabulary: vocab)
+        let apiKey = settings.cloudASRApiKey
+        let backend = transcriptionModel.makeBackend(customVocabulary: vocab, apiKey: apiKey)
         do {
             try await prepareBackend(backend)
             needsModelDownload = false
@@ -258,6 +259,14 @@ final class TranscriptionEngine {
         ) {
             lastError = localeMismatchMessage
             assetStatus = "Ready"
+            return
+        }
+
+        if transcriptionModel.isCloud && settings.cloudASRApiKey.isEmpty {
+            lastError = "\(transcriptionModel.displayName) requires an API key. Enter it in Settings > Transcription."
+            assetStatus = "Ready"
+            isRunning = false
+            activeTranscriptionSession = nil
             return
         }
 
