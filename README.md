@@ -13,9 +13,7 @@ A meeting note-taker that talks back.
 OpenOats sits next to your call, transcribes both sides of the conversation in real time, and searches your own notes to surface things worth saying — right when you need them.
 
 <p align="center">
-
-https://github.com/yazinsai/OpenOats/raw/main/assets/demo.mp4
-
+  <img src="assets/demo.webp" width="720" alt="OpenOats during a call — suggestions drawn from your own notes appear at the top, live transcript below" />
 </p>
 
 ## Features
