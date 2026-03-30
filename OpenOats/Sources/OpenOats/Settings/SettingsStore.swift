@@ -37,6 +37,30 @@ final class SettingsStore {
         }
     }
 
+    @ObservationIgnored nonisolated(unsafe) private var _assemblyAIApiKey: String
+    var assemblyAIApiKey: String {
+        get { access(keyPath: \.assemblyAIApiKey); return _assemblyAIApiKey }
+        set {
+            withMutation(keyPath: \.assemblyAIApiKey) {
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                _assemblyAIApiKey = trimmed
+                secretStore.save(key: "assemblyAIApiKey", value: trimmed)
+            }
+        }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _elevenLabsApiKey: String
+    var elevenLabsApiKey: String {
+        get { access(keyPath: \.elevenLabsApiKey); return _elevenLabsApiKey }
+        set {
+            withMutation(keyPath: \.elevenLabsApiKey) {
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                _elevenLabsApiKey = trimmed
+                secretStore.save(key: "elevenLabsApiKey", value: trimmed)
+            }
+        }
+    }
+
     @ObservationIgnored nonisolated(unsafe) private var _ollamaBaseURL: String
     var ollamaBaseURL: String {
         get { access(keyPath: \.ollamaBaseURL); return _ollamaBaseURL }
@@ -633,6 +657,8 @@ final class SettingsStore {
         // AI Settings
         self._llmProvider = LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "") ?? .openRouter
         self._openRouterApiKey = storage.secretStore.load(key: "openRouterApiKey") ?? ""
+        self._assemblyAIApiKey = storage.secretStore.load(key: "assemblyAIApiKey") ?? ""
+        self._elevenLabsApiKey = storage.secretStore.load(key: "elevenLabsApiKey") ?? ""
         self._ollamaBaseURL = defaults.string(forKey: "ollamaBaseURL") ?? "http://localhost:11434"
         self._ollamaLLMModel = defaults.string(forKey: "ollamaLLMModel") ?? "qwen3:8b"
         self._ollamaEmbedModel = defaults.string(forKey: "ollamaEmbedModel") ?? "nomic-embed-text"
@@ -743,6 +769,15 @@ final class SettingsStore {
     }
 
     // MARK: - Computed Properties
+
+    /// Returns the cloud ASR API key for the current transcription model.
+    var cloudASRApiKey: String {
+        switch transcriptionModel {
+        case .assemblyAI: assemblyAIApiKey
+        case .elevenLabsScribe: elevenLabsApiKey
+        default: ""
+        }
+    }
 
     var kbFolderURL: URL? {
         guard !kbFolderPath.isEmpty else { return nil }
