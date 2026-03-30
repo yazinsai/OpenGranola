@@ -7,8 +7,10 @@ import os
 /// Response bodies are never included to avoid leaking sensitive data.
 enum CloudASRError: LocalizedError {
     case invalidAPIKey(backend: String)
+    case insufficientScope(backend: String, detail: String)
     case invalidUploadURL
     case httpError(statusCode: Int)
+    case rateLimited(backend: String, retryAfter: TimeInterval?)
     case transcriptionFailed(String)
     case timeout
 
@@ -16,16 +18,57 @@ enum CloudASRError: LocalizedError {
         switch self {
         case .invalidAPIKey(let backend):
             "Invalid \(backend) API key. Check Settings > Transcription."
+        case .insufficientScope(let backend, let detail):
+            "Your \(backend) plan doesn't include Speech-to-Text. \(detail)"
         case .invalidUploadURL:
             "Cloud ASR received an invalid upload URL."
         case .httpError(let code):
             "Cloud ASR request failed (HTTP \(code))."
+        case .rateLimited(let backend, _):
+            "\(backend) rate limited. Will retry automatically."
         case .transcriptionFailed(let msg):
             "Transcription failed: \(msg)"
         case .timeout:
             "Cloud ASR request timed out."
         }
     }
+}
+
+// MARK: - Retry helper for cloud backends
+
+private let retryLog = Logger(subsystem: "com.openoats.app", category: "CloudRetry")
+
+/// Retries `operation` on transient cloud errors (rate limiting, server errors)
+/// with exponential backoff. Fails immediately on auth/client errors.
+func withCloudRetry<T>(
+    maxAttempts: Int = 3,
+    initialDelay: Duration = .seconds(1),
+    operation: () async throws -> T
+) async throws -> T {
+    var delay = initialDelay
+    for attempt in 1...maxAttempts {
+        do {
+            return try await operation()
+        } catch let error as CloudASRError {
+            let isLast = attempt == maxAttempts
+            switch error {
+            case .rateLimited(_, let retryAfter):
+                if isLast { throw error }
+                let wait: Duration = if let retryAfter { .seconds(retryAfter) } else { delay }
+                retryLog.warning("Rate limited, retrying in \(wait) (attempt \(attempt)/\(maxAttempts))")
+                try await Task.sleep(for: wait)
+            case .httpError(let code) where code == 429 || code >= 500:
+                if isLast { throw error }
+                retryLog.warning("HTTP \(code), retrying in \(delay) (attempt \(attempt)/\(maxAttempts))")
+                try await Task.sleep(for: delay)
+            default:
+                throw error
+            }
+            delay = delay * 2
+        }
+    }
+    // Unreachable, but the compiler needs it.
+    throw CloudASRError.transcriptionFailed("Retry loop exited unexpectedly.")
 }
 
 // MARK: - AssemblyAI Backend
@@ -66,23 +109,38 @@ final class AssemblyAIBackend: TranscriptionBackend, @unchecked Sendable {
 
         onStatus("Validating AssemblyAI API key...")
 
-        var request = URLRequest(url: URL(string: "https://api.assemblyai.com/v2/transcript?limit=1")!)
-        request.httpMethod = "GET"
-        request.setValue(apiKey, forHTTPHeaderField: "Authorization")
+        // Upload a tiny silent WAV to prove write access without creating
+        // a billable transcript.
+        let silentWAV = WAVEncoder.encode(samples: [Float](repeating: 0, count: 1600))
 
-        let (_, response) = try await session.data(for: request)
+        var request = URLRequest(url: URL(string: "https://api.assemblyai.com/v2/upload")!)
+        request.httpMethod = "POST"
+        request.setValue(apiKey, forHTTPHeaderField: "Authorization")
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.httpBody = silentWAV
+
+        let (responseData, response) = try await session.data(for: request)
 
         if let http = response as? HTTPURLResponse {
             if http.statusCode == 401 || http.statusCode == 403 {
                 throw CloudASRError.invalidAPIKey(backend: "AssemblyAI")
+            }
+            if http.statusCode == 429 {
+                throw CloudASRError.rateLimited(backend: "AssemblyAI", retryAfter: nil)
             }
             if !(200 ..< 300).contains(http.statusCode) {
                 throw CloudASRError.httpError(statusCode: http.statusCode)
             }
         }
 
+        // Verify the response contains an upload_url to confirm write access.
+        let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
+        guard let urlString = json?["upload_url"] as? String, !urlString.isEmpty else {
+            throw CloudASRError.transcriptionFailed("AssemblyAI upload validation failed: no upload_url in response.")
+        }
+
         prepared = true
-        Self.log.info("AssemblyAI backend prepared successfully")
+        Self.log.info("AssemblyAI backend prepared successfully (upload validation)")
     }
 
     func transcribe(
@@ -92,49 +150,32 @@ final class AssemblyAIBackend: TranscriptionBackend, @unchecked Sendable {
     ) async throws -> String {
         guard prepared else { throw TranscriptionBackendError.notPrepared }
 
-        // 1. Encode audio as WAV
         let wavData = WAVEncoder.encode(samples: samples)
 
-        // Retry up to 3 attempts for transient HTTP errors (429, 5xx).
-        for attempt in 0..<3 {
-            do {
-                // 2. Upload audio
-                let uploadURL = try await upload(wavData)
+        return try await withCloudRetry {
+            // 1. Upload audio
+            let uploadURL = try await self.upload(wavData)
 
-                // 3. Validate upload URL
-                guard let components = URLComponents(url: uploadURL, resolvingAgainstBaseURL: false),
-                      components.scheme == "https",
-                      let host = components.host,
-                      host.hasSuffix(".assemblyai.com")
-                else {
-                    throw CloudASRError.invalidUploadURL
-                }
-
-                // 4. Create transcript
-                let transcriptID = try await createTranscript(
-                    audioURL: uploadURL,
-                    locale: locale
-                )
-
-                // 5. Poll for completion
-                let text = try await pollTranscript(id: transcriptID)
-
-                return text.trimmingCharacters(in: .whitespacesAndNewlines)
-            } catch let error as CloudASRError {
-                if case .httpError(let code) = error,
-                   (code == 429 || code >= 500),
-                   attempt < 2
-                {
-                    Self.log.warning("Transient HTTP \(code), retrying (attempt \(attempt + 1)/3)")
-                    try await Task.sleep(for: .seconds(1))
-                    continue
-                }
-                throw error
+            // 2. Validate upload URL
+            guard let components = URLComponents(url: uploadURL, resolvingAgainstBaseURL: false),
+                  components.scheme == "https",
+                  let host = components.host,
+                  host.hasSuffix(".assemblyai.com")
+            else {
+                throw CloudASRError.invalidUploadURL
             }
-        }
 
-        // Unreachable, but the compiler needs it.
-        throw CloudASRError.transcriptionFailed("Retry loop exited unexpectedly.")
+            // 3. Create transcript
+            let transcriptID = try await self.createTranscript(
+                audioURL: uploadURL,
+                locale: locale
+            )
+
+            // 4. Poll for completion
+            let text = try await self.pollTranscript(id: transcriptID)
+
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
     }
 
     // MARK: - Private: Upload
@@ -233,7 +274,14 @@ final class AssemblyAIBackend: TranscriptionBackend, @unchecked Sendable {
         guard let http = response as? HTTPURLResponse,
               !(200 ..< 300).contains(http.statusCode)
         else { return }
-        throw CloudASRError.httpError(statusCode: http.statusCode)
+        switch http.statusCode {
+        case 401, 403:
+            throw CloudASRError.invalidAPIKey(backend: "AssemblyAI")
+        case 429:
+            throw CloudASRError.rateLimited(backend: "AssemblyAI", retryAfter: nil)
+        default:
+            throw CloudASRError.httpError(statusCode: http.statusCode)
+        }
     }
 
     // MARK: - Private: Custom Spelling Parser

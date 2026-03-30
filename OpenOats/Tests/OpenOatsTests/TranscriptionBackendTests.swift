@@ -238,10 +238,10 @@ final class TranscriptionBackendTests: XCTestCase {
         XCTAssertEqual(backend.displayName, "ElevenLabs Scribe")
     }
 
-    func testCloudModelsNotInBatchSuitable() {
+    func testCloudModelsInBatchSuitable() {
         let batchModels = TranscriptionModel.batchSuitableModels
-        XCTAssertFalse(batchModels.contains(.assemblyAI))
-        XCTAssertFalse(batchModels.contains(.elevenLabsScribe))
+        XCTAssertTrue(batchModels.contains(.assemblyAI))
+        XCTAssertTrue(batchModels.contains(.elevenLabsScribe))
     }
 
     func testIsCloudProperty() {

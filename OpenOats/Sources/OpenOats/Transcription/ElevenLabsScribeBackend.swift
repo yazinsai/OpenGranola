@@ -39,25 +39,46 @@ final class ElevenLabsScribeBackend: TranscriptionBackend, @unchecked Sendable {
 
         onStatus("Validating ElevenLabs API key...")
 
-        // Validate using /v1/voices — universally accessible with any valid key,
-        // unlike /v1/user which requires elevated account permissions.
-        var request = URLRequest(url: URL(string: "https://api.elevenlabs.io/v1/voices")!)
-        request.httpMethod = "GET"
+        // POST a tiny silent WAV to the actual STT endpoint to prove the key
+        // has Scribe/STT scope. A 200, 400, or 422 all confirm access.
+        let silentWAV = WAVEncoder.encode(samples: [Float](repeating: 0, count: 1600))
+        let boundary = UUID().uuidString
+        var body = Data()
+        body.appendMultipart(boundary: boundary, name: "model_id", value: "scribe_v1")
+        body.appendMultipart(
+            boundary: boundary,
+            name: "file",
+            filename: "silence.wav",
+            contentType: "audio/wav",
+            data: silentWAV
+        )
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        var request = URLRequest(url: URL(string: "https://api.elevenlabs.io/v1/speech-to-text")!)
+        request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        request.timeoutInterval = 15
 
         let (_, response) = try await session.data(for: request)
 
         if let http = response as? HTTPURLResponse {
-            if http.statusCode == 401 || http.statusCode == 403 {
+            switch http.statusCode {
+            case 200, 400, 422:
+                // Key has STT access (silent audio may produce empty/error result).
+                break
+            case 401, 403:
                 throw CloudASRError.invalidAPIKey(backend: "ElevenLabs")
-            }
-            if !(200 ..< 300).contains(http.statusCode) {
+            case 429:
+                throw CloudASRError.rateLimited(backend: "ElevenLabs", retryAfter: nil)
+            default:
                 throw CloudASRError.httpError(statusCode: http.statusCode)
             }
         }
 
         prepared = true
-        Self.log.info("ElevenLabs Scribe backend prepared successfully")
+        Self.log.info("ElevenLabs Scribe backend prepared successfully (STT validation)")
     }
 
     func transcribe(
@@ -67,67 +88,60 @@ final class ElevenLabsScribeBackend: TranscriptionBackend, @unchecked Sendable {
     ) async throws -> String {
         guard prepared else { throw TranscriptionBackendError.notPrepared }
 
-        // 1. Encode audio as WAV
         let wavData = WAVEncoder.encode(samples: samples)
 
-        // 2. Build multipart/form-data body
-        let boundary = UUID().uuidString
-        var body = Data()
+        return try await withCloudRetry {
+            // 1. Build multipart/form-data body
+            let boundary = UUID().uuidString
+            var body = Data()
 
-        body.appendMultipart(boundary: boundary, name: "model_id", value: "scribe_v1")
+            body.appendMultipart(boundary: boundary, name: "model_id", value: "scribe_v1")
 
-        let languageCode = locale.language.languageCode?.identifier ?? ""
-        if !languageCode.isEmpty {
-            body.appendMultipart(boundary: boundary, name: "language_code", value: languageCode)
-        }
+            let languageCode = locale.language.languageCode?.identifier ?? ""
+            if !languageCode.isEmpty {
+                body.appendMultipart(boundary: boundary, name: "language_code", value: languageCode)
+            }
 
-        body.appendMultipart(
-            boundary: boundary,
-            name: "file",
-            filename: "audio.wav",
-            contentType: "audio/wav",
-            data: wavData
-        )
+            body.appendMultipart(
+                boundary: boundary,
+                name: "file",
+                filename: "audio.wav",
+                contentType: "audio/wav",
+                data: wavData
+            )
 
-        if !keyterms.isEmpty {
-            let jsonData = try JSONSerialization.data(withJSONObject: keyterms)
-            let jsonString = String(data: jsonData, encoding: .utf8) ?? "[]"
-            body.appendMultipart(boundary: boundary, name: "keyterms", value: jsonString)
-        }
+            if !self.keyterms.isEmpty {
+                let jsonData = try JSONSerialization.data(withJSONObject: self.keyterms)
+                let jsonString = String(data: jsonData, encoding: .utf8) ?? "[]"
+                body.appendMultipart(boundary: boundary, name: "keyterms", value: jsonString)
+            }
 
-        // Closing boundary
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+            body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
-        // 3. POST to speech-to-text endpoint with retry for transient errors (429, 5xx).
-        var request = URLRequest(url: URL(string: "https://api.elevenlabs.io/v1/speech-to-text")!)
-        request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body
-        request.timeoutInterval = 30
+            // 2. POST to speech-to-text endpoint
+            var request = URLRequest(url: URL(string: "https://api.elevenlabs.io/v1/speech-to-text")!)
+            request.httpMethod = "POST"
+            request.setValue(self.apiKey, forHTTPHeaderField: "xi-api-key")
+            request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+            request.timeoutInterval = 30
 
-        for attempt in 0..<3 {
-            let (responseData, response) = try await session.data(for: request)
+            let (responseData, response) = try await self.session.data(for: request)
 
             if let http = response as? HTTPURLResponse {
-                if http.statusCode == 401 || http.statusCode == 403 {
+                switch http.statusCode {
+                case 200..<300:
+                    break
+                case 401, 403:
                     throw CloudASRError.invalidAPIKey(backend: "ElevenLabs")
-                }
-                if http.statusCode == 429 || http.statusCode >= 500 {
-                    if attempt < 2 {
-                        Self.log.warning(
-                            "Transient HTTP \(http.statusCode), retrying (attempt \(attempt + 1)/3)"
-                        )
-                        try await Task.sleep(for: .seconds(1))
-                        continue
-                    }
-                }
-                if !(200 ..< 300).contains(http.statusCode) {
+                case 429:
+                    throw CloudASRError.rateLimited(backend: "ElevenLabs", retryAfter: nil)
+                default:
                     throw CloudASRError.httpError(statusCode: http.statusCode)
                 }
             }
 
-            // 4. Parse JSON response
+            // 3. Parse JSON response
             let json = try JSONSerialization.jsonObject(with: responseData) as? [String: Any]
             guard let text = json?["text"] as? String else {
                 throw CloudASRError.transcriptionFailed("Missing text field in response.")
@@ -136,9 +150,6 @@ final class ElevenLabsScribeBackend: TranscriptionBackend, @unchecked Sendable {
             Self.log.info("ElevenLabs Scribe transcription completed")
             return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-
-        // Unreachable, but the compiler needs it.
-        throw CloudASRError.transcriptionFailed("Retry loop exited unexpectedly.")
     }
 
     // MARK: - Private: Keyterms Parser
@@ -183,28 +194,3 @@ final class ElevenLabsScribeBackend: TranscriptionBackend, @unchecked Sendable {
     }
 }
 
-// MARK: - Multipart Form Data Helpers
-
-private extension Data {
-    mutating func appendMultipart(boundary: String, name: String, value: String) {
-        append("--\(boundary)\r\n".data(using: .utf8)!)
-        append("Content-Disposition: form-data; name=\"\(name)\"\r\n".data(using: .utf8)!)
-        append("\r\n".data(using: .utf8)!)
-        append("\(value)\r\n".data(using: .utf8)!)
-    }
-
-    mutating func appendMultipart(
-        boundary: String,
-        name: String,
-        filename: String,
-        contentType: String,
-        data: Data
-    ) {
-        append("--\(boundary)\r\n".data(using: .utf8)!)
-        append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-        append("Content-Type: \(contentType)\r\n".data(using: .utf8)!)
-        append("\r\n".data(using: .utf8)!)
-        append(data)
-        append("\r\n".data(using: .utf8)!)
-    }
-}
