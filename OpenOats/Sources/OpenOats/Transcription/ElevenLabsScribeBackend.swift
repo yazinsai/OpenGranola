@@ -41,8 +41,13 @@ final class ElevenLabsScribeBackend: TranscriptionBackend, @unchecked Sendable {
 
         let (_, response) = try await session.data(for: request)
 
-        if let http = response as? HTTPURLResponse, http.statusCode == 401 {
-            throw CloudASRError.invalidAPIKey(backend: "ElevenLabs")
+        if let http = response as? HTTPURLResponse {
+            if http.statusCode == 401 || http.statusCode == 403 {
+                throw CloudASRError.invalidAPIKey(backend: "ElevenLabs")
+            }
+            if !(200 ..< 300).contains(http.statusCode) {
+                throw CloudASRError.httpError(statusCode: http.statusCode)
+            }
         }
 
         prepared = true
