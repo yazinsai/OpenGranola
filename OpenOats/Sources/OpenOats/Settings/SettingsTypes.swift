@@ -363,13 +363,13 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         case .parakeetV2, .parakeetV3, .qwen3ASR06B:
             5 * 16_000
         case .assemblyAI, .elevenLabsScribe:
-            10 * 16_000  // 10s - fewer API calls, better accuracy per segment
+            30 * 16_000
         }
     }
 
-    /// Models suitable for offline batch re-transcription.
+    /// Models suitable for batch re-transcription.
     static var batchSuitableModels: [TranscriptionModel] {
-        [.parakeetV2, .parakeetV3, .whisperSmall, .whisperLargeV3Turbo, .qwen3ASR06B]
+        [.parakeetV2, .parakeetV3, .whisperSmall, .whisperLargeV3Turbo, .qwen3ASR06B, .assemblyAI, .elevenLabsScribe]
     }
 }
 

@@ -24,6 +24,7 @@ actor BatchAudioTranscriber {
         sessionID: String,
         model: TranscriptionModel,
         locale: Locale,
+        apiKey: String = "",
         sessionRepository: SessionRepository,
         notesDirectory: URL,
         enableDiarization: Bool = false,
@@ -39,6 +40,7 @@ actor BatchAudioTranscriber {
                     sessionID: sessionID,
                     model: model,
                     locale: locale,
+                    apiKey: apiKey,
                     sessionRepository: sessionRepository,
                     notesDirectory: notesDirectory,
                     enableDiarization: enableDiarization,
@@ -73,6 +75,7 @@ actor BatchAudioTranscriber {
         sessionID: String,
         model: TranscriptionModel,
         locale: Locale,
+        apiKey: String = "",
         sessionRepository: SessionRepository
     ) async {
         currentTask?.cancel()
@@ -86,6 +89,7 @@ actor BatchAudioTranscriber {
                     sessionID: sessionID,
                     model: model,
                     locale: locale,
+                    apiKey: apiKey,
                     sessionRepository: sessionRepository
                 )
             } catch is CancellationError {
@@ -107,13 +111,14 @@ actor BatchAudioTranscriber {
         sessionID: String,
         model: TranscriptionModel,
         locale: Locale,
+        apiKey: String = "",
         sessionRepository: SessionRepository
     ) async throws {
         Log.batchTranscription.info("Starting audio import for \(sessionID, privacy: .public) from \(url.lastPathComponent, privacy: .public)")
         status = .loading(model: model.displayName)
 
         // Prepare backend and VAD
-        let backend = model.makeBackend()
+        let backend = model.makeBackend(apiKey: apiKey)
         try await backend.prepare { statusMsg in
             Log.batchTranscription.debug("Backend: \(statusMsg, privacy: .public)")
         }
@@ -195,6 +200,7 @@ actor BatchAudioTranscriber {
         sessionID: String,
         model: TranscriptionModel,
         locale: Locale,
+        apiKey: String = "",
         sessionRepository: SessionRepository,
         notesDirectory: URL,
         enableDiarization: Bool,
@@ -215,7 +221,7 @@ actor BatchAudioTranscriber {
         let anchors = await loadBatchMeta(sessionID: sessionID, sessionRepository: sessionRepository)
 
         // Create and prepare backend
-        let backend = model.makeBackend()
+        let backend = model.makeBackend(apiKey: apiKey)
         try await backend.prepare { statusMsg in
             Log.batchTranscription.debug("Backend: \(statusMsg, privacy: .public)")
         }

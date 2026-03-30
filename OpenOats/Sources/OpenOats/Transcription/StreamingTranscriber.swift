@@ -9,6 +9,7 @@ final class StreamingTranscriber: @unchecked Sendable {
     private let locale: Locale
     private let vadManager: VadManager
     private let speaker: Speaker
+    private let isCloud: Bool
     private let onPartial: @Sendable (String) -> Void
     private let onFinal: @Sendable (String) -> Void
 
@@ -27,7 +28,7 @@ final class StreamingTranscriber: @unchecked Sendable {
     /// When true, skip inline partial hypotheses to avoid blocking the VAD loop.
     /// Cloud backends (AssemblyAI, ElevenLabs) are too slow for partial transcription
     /// because each call involves an HTTP upload + polling cycle that stalls audio processing.
-    private let skipPartials: Bool
+    private let isCloud: Bool
 
     init(
         backend: any TranscriptionBackend,
@@ -35,7 +36,7 @@ final class StreamingTranscriber: @unchecked Sendable {
         vadManager: VadManager,
         speaker: Speaker,
         flushInterval: Int,
-        skipPartials: Bool = false,
+        isCloud: Bool,
         onPartial: @escaping @Sendable (String) -> Void,
         onFinal: @escaping @Sendable (String) -> Void
     ) {
@@ -44,7 +45,7 @@ final class StreamingTranscriber: @unchecked Sendable {
         self.vadManager = vadManager
         self.speaker = speaker
         self.flushInterval = flushInterval
-        self.skipPartials = skipPartials
+        self.isCloud = isCloud
         self.onPartial = onPartial
         self.onFinal = onFinal
     }
@@ -149,10 +150,8 @@ final class StreamingTranscriber: @unchecked Sendable {
                         }
                     } else if isSpeaking {
 
-                        // Throttled partial hypothesis every ~400ms.
-                        // Skipped for cloud backends — each call blocks the VAD loop
-                        // for seconds while the HTTP round-trip completes.
-                        if !skipPartials,
+                        // Throttled partial hypothesis every ~400ms (local backends only)
+                        if !isCloud,
                            !isRunningPartial,
                            speechSamples.count > Self.minimumSpeechSamples,
                            Date.now.timeIntervalSince(lastPartialTime) >= 0.4 {

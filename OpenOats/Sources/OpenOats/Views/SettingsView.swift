@@ -325,6 +325,12 @@ private struct TranscriptionSettingsTab: View {
                         default:
                             EmptyView()
                         }
+
+                        if settings.cloudASRApiKey.isEmpty {
+                            Label("API key required to start transcription", systemImage: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.orange)
+                        }
                     }
 
                     TextField(
@@ -388,17 +394,50 @@ private struct TranscriptionSettingsTab: View {
                 Section("Transcript Quality") {
                     Toggle("Re-transcribe with higher accuracy after meeting", isOn: $settings.enableBatchRetranscription)
                         .font(.system(size: 12))
-                    Text("Re-transcribes audio with a higher-quality model after each meeting for better accuracy. Runs in the background.")
+                    Text("After each meeting, your recording is re-transcribed using this model instead of the live model (\(settings.transcriptionModel.displayName)). Runs in the background.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
 
                     if settings.enableBatchRetranscription {
                         Picker("Batch Model", selection: $settings.batchTranscriptionModel) {
-                            ForEach(TranscriptionModel.batchSuitableModels) { model in
-                                Text(model.displayName).tag(model)
+                            Section("Local") {
+                                ForEach(TranscriptionModel.batchSuitableModels.filter { !$0.isCloud }) { model in
+                                    Text(model.displayName).tag(model)
+                                }
+                            }
+                            Section("Cloud") {
+                                ForEach(TranscriptionModel.batchSuitableModels.filter { $0.isCloud }) { model in
+                                    Text(model.displayName).tag(model)
+                                }
                             }
                         }
                         .font(.system(size: 12))
+
+                        if settings.batchTranscriptionModel.isCloud {
+                            switch settings.batchTranscriptionModel {
+                            case .assemblyAI:
+                                if settings.assemblyAIApiKey.isEmpty {
+                                    SecureField("AssemblyAI API Key", text: $settings.assemblyAIApiKey)
+                                        .font(.system(size: 12, design: .monospaced))
+                                }
+                            case .elevenLabsScribe:
+                                if settings.elevenLabsApiKey.isEmpty {
+                                    SecureField("ElevenLabs API Key", text: $settings.elevenLabsApiKey)
+                                        .font(.system(size: 12, design: .monospaced))
+                                }
+                            default:
+                                EmptyView()
+                            }
+                            Text("Batch re-transcription will use the same API key configured in the Transcription section above.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if settings.transcriptionModel.isCloud && settings.batchTranscriptionModel.isCloud {
+                            Label("Both live and batch transcription use cloud APIs. Each meeting will be transcribed twice.", systemImage: "info.circle")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 

@@ -422,7 +422,12 @@ final class WizardViewModel {
 
         clearStaleSettings(for: recommendation.profile, in: settings)
 
-        settings.transcriptionModel = recommendation.transcriptionModel
+        // Preserve user's cloud ASR choice when the wizard would overwrite it with a local model
+        if settings.transcriptionModel.isCloud && !recommendation.transcriptionModel.isCloud {
+            // keep existing cloud transcription model
+        } else {
+            settings.transcriptionModel = recommendation.transcriptionModel
+        }
         settings.transcriptionLocale = recommendation.transcriptionLocale
 
         if let provider = recommendation.llmProvider {

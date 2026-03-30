@@ -85,7 +85,7 @@ struct LanguagePrivacyStepView: View {
                         )
 
                         if viewModel.privacy == .cloud {
-                            Text("Transcription always stays on your Mac. Only text summaries are sent to the cloud.")
+                            Text("By default, transcription runs entirely on your Mac. Cloud transcription options are available in Settings.")
                                 .font(.system(size: 10))
                                 .foregroundStyle(.tertiary)
                                 .padding(.horizontal, 14)

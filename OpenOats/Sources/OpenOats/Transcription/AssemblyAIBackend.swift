@@ -95,28 +95,46 @@ final class AssemblyAIBackend: TranscriptionBackend, @unchecked Sendable {
         // 1. Encode audio as WAV
         let wavData = WAVEncoder.encode(samples: samples)
 
-        // 2. Upload audio
-        let uploadURL = try await upload(wavData)
+        // Retry up to 3 attempts for transient HTTP errors (429, 5xx).
+        for attempt in 0..<3 {
+            do {
+                // 2. Upload audio
+                let uploadURL = try await upload(wavData)
 
-        // 3. Validate upload URL
-        guard let components = URLComponents(url: uploadURL, resolvingAgainstBaseURL: false),
-              components.scheme == "https",
-              let host = components.host,
-              host.hasSuffix(".assemblyai.com")
-        else {
-            throw CloudASRError.invalidUploadURL
+                // 3. Validate upload URL
+                guard let components = URLComponents(url: uploadURL, resolvingAgainstBaseURL: false),
+                      components.scheme == "https",
+                      let host = components.host,
+                      host.hasSuffix(".assemblyai.com")
+                else {
+                    throw CloudASRError.invalidUploadURL
+                }
+
+                // 4. Create transcript
+                let transcriptID = try await createTranscript(
+                    audioURL: uploadURL,
+                    locale: locale
+                )
+
+                // 5. Poll for completion
+                let text = try await pollTranscript(id: transcriptID)
+
+                return text.trimmingCharacters(in: .whitespacesAndNewlines)
+            } catch let error as CloudASRError {
+                if case .httpError(let code) = error,
+                   (code == 429 || code >= 500),
+                   attempt < 2
+                {
+                    Self.log.warning("Transient HTTP \(code), retrying (attempt \(attempt + 1)/3)")
+                    try await Task.sleep(for: .seconds(1))
+                    continue
+                }
+                throw error
+            }
         }
 
-        // 4. Create transcript
-        let transcriptID = try await createTranscript(
-            audioURL: uploadURL,
-            locale: locale
-        )
-
-        // 5. Poll for completion
-        let text = try await pollTranscript(id: transcriptID)
-
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Unreachable, but the compiler needs it.
+        throw CloudASRError.transcriptionFailed("Retry loop exited unexpectedly.")
     }
 
     // MARK: - Private: Upload
@@ -181,7 +199,7 @@ final class AssemblyAIBackend: TranscriptionBackend, @unchecked Sendable {
         request.httpMethod = "GET"
         request.setValue(apiKey, forHTTPHeaderField: "Authorization")
 
-        for _ in 0 ..< 120 {
+        for _ in 0 ..< 60 {
             try Task.checkCancellation()
             try await Task.sleep(for: .milliseconds(500))
 
@@ -205,7 +223,7 @@ final class AssemblyAIBackend: TranscriptionBackend, @unchecked Sendable {
             }
         }
 
-        Self.log.error("Transcript \(id) timed out after 60s")
+        Self.log.error("Transcript \(id) timed out after 30s")
         throw CloudASRError.timeout
     }
 

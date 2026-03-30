@@ -779,6 +779,15 @@ final class SettingsStore {
         }
     }
 
+    /// Returns the cloud ASR API key for the current batch transcription model.
+    var batchCloudASRApiKey: String {
+        switch batchTranscriptionModel {
+        case .assemblyAI: assemblyAIApiKey
+        case .elevenLabsScribe: elevenLabsApiKey
+        default: ""
+        }
+    }
+
     var kbFolderURL: URL? {
         guard !kbFolderPath.isEmpty else { return nil }
         return URL(fileURLWithPath: kbFolderPath)

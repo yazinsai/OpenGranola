@@ -98,7 +98,7 @@ final class ElevenLabsScribeBackend: TranscriptionBackend, @unchecked Sendable {
         // Closing boundary
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
-        // 3. POST to speech-to-text endpoint
+        // 3. POST to speech-to-text endpoint with retry for transient errors (429, 5xx).
         var request = URLRequest(url: URL(string: "https://api.elevenlabs.io/v1/speech-to-text")!)
         request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
@@ -106,25 +106,39 @@ final class ElevenLabsScribeBackend: TranscriptionBackend, @unchecked Sendable {
         request.httpBody = body
         request.timeoutInterval = 30
 
-        let (responseData, response) = try await session.data(for: request)
+        for attempt in 0..<3 {
+            let (responseData, response) = try await session.data(for: request)
 
-        if let http = response as? HTTPURLResponse {
-            if http.statusCode == 401 || http.statusCode == 403 {
-                throw CloudASRError.invalidAPIKey(backend: "ElevenLabs")
+            if let http = response as? HTTPURLResponse {
+                if http.statusCode == 401 || http.statusCode == 403 {
+                    throw CloudASRError.invalidAPIKey(backend: "ElevenLabs")
+                }
+                if http.statusCode == 429 || http.statusCode >= 500 {
+                    if attempt < 2 {
+                        Self.log.warning(
+                            "Transient HTTP \(http.statusCode), retrying (attempt \(attempt + 1)/3)"
+                        )
+                        try await Task.sleep(for: .seconds(1))
+                        continue
+                    }
+                }
+                if !(200 ..< 300).contains(http.statusCode) {
+                    throw CloudASRError.httpError(statusCode: http.statusCode)
+                }
             }
-            if !(200 ..< 300).contains(http.statusCode) {
-                throw CloudASRError.httpError(statusCode: http.statusCode)
+
+            // 4. Parse JSON response
+            let json = try JSONSerialization.jsonObject(with: responseData) as? [String: Any]
+            guard let text = json?["text"] as? String else {
+                throw CloudASRError.transcriptionFailed("Missing text field in response.")
             }
+
+            Self.log.info("ElevenLabs Scribe transcription completed")
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        // 4. Parse JSON response
-        let json = try JSONSerialization.jsonObject(with: responseData) as? [String: Any]
-        guard let text = json?["text"] as? String else {
-            throw CloudASRError.transcriptionFailed("Missing text field in response.")
-        }
-
-        Self.log.info("ElevenLabs Scribe transcription completed")
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Unreachable, but the compiler needs it.
+        throw CloudASRError.transcriptionFailed("Retry loop exited unexpectedly.")
     }
 
     // MARK: - Private: Keyterms Parser

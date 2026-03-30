@@ -438,6 +438,7 @@ final class LiveSessionController {
             let batchSessionID = sessionID
             let batchModel = settings.batchTranscriptionModel
             let batchLocale = settings.locale
+            let batchApiKey = settings.batchCloudASRApiKey
             let notesDir = URL(fileURLWithPath: settings.notesFolderPath)
             let repo = coordinator.sessionRepository
             let diarize = settings.enableDiarization
@@ -447,6 +448,7 @@ final class LiveSessionController {
                     sessionID: batchSessionID,
                     model: batchModel,
                     locale: batchLocale,
+                    apiKey: batchApiKey,
                     sessionRepository: repo,
                     notesDirectory: notesDir,
                     enableDiarization: diarize,

@@ -191,6 +191,7 @@ extension OpenOatsRootApp {
                 sessionID: sessionID,
                 model: model,
                 locale: locale,
+                apiKey: settings.cloudASRApiKey,
                 sessionRepository: repo
             )
 

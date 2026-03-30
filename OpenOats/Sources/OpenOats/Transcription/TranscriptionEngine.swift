@@ -291,6 +291,7 @@ final class TranscriptionEngine {
 
             // Parakeet needs a separate backend for system audio (mutable decoder state).
             // Qwen3 is actor-based and thread-safe, so reuse the same instance.
+            // Cloud backends are stateless after prepare() and safe to reuse across streams.
             if transcriptionModel == .qwen3ASR06B || transcriptionModel.isCloud {
                 self.systemBackend = mic
             } else {
@@ -879,7 +880,7 @@ final class TranscriptionEngine {
             vadManager: vadManager,
             speaker: speaker,
             flushInterval: model.flushIntervalSamples,
-            skipPartials: model.isCloud,
+            isCloud: model.isCloud,
             onPartial: onPartial,
             onFinal: onFinal
         )
