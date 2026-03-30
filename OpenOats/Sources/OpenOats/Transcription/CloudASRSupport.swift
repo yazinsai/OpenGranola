@@ -45,6 +45,7 @@ func withCloudRetry<T>(
     initialDelay: Duration = .seconds(1),
     operation: () async throws -> T
 ) async throws -> T {
+    precondition(maxAttempts >= 1, "maxAttempts must be at least 1")
     var delay = initialDelay
     for attempt in 1...maxAttempts {
         do {
