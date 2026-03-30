@@ -136,15 +136,15 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.mlxModel, "mlx-community/Llama-3.2-3B-Instruct-4bit")
     }
 
-    func testDefaultEnableTranscriptRefinement() {
+    func testDefaultEnableLiveTranscriptCleanup() {
         let store = makeStore()
-        XCTAssertFalse(store.enableTranscriptRefinement)
+        XCTAssertFalse(store.enableLiveTranscriptCleanup)
     }
 
-    func testEnableTranscriptRefinementRoundTrip() {
+    func testEnableLiveTranscriptCleanupRoundTrip() {
         let store = makeStore()
-        store.enableTranscriptRefinement = true
-        XCTAssertTrue(store.enableTranscriptRefinement)
+        store.enableLiveTranscriptCleanup = true
+        XCTAssertTrue(store.enableLiveTranscriptCleanup)
     }
 
     // MARK: - Capture Settings Group
@@ -181,10 +181,10 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(store.enableEchoCancellation)
     }
 
-    func testDefaultEnableBatchRefinement() {
+    func testDefaultEnableBatchRetranscription() {
         let store = makeStore()
         // Defaults to false when key never set
-        XCTAssertFalse(store.enableBatchRefinement)
+        XCTAssertFalse(store.enableBatchRetranscription)
     }
 
     func testDefaultBatchTranscriptionModel() {

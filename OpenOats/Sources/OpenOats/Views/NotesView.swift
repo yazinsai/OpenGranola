@@ -424,10 +424,10 @@ struct NotesView: View {
     private func cleanupState(from status: CleanupStatus, transcript: [SessionRecord]) -> CleanupState {
         if case .inProgress = status { return .inProgress }
         guard !transcript.isEmpty else { return .notCleaned }
-        let hasAnyRefined = transcript.contains(where: { $0.refinedText != nil })
-        if !hasAnyRefined { return .notCleaned }
-        let allRefined = !transcript.contains(where: { $0.refinedText == nil })
-        return allRefined ? .cleaned : .partiallyCleaned
+        let hasAnyCleaned = transcript.contains(where: { $0.cleanedText != nil })
+        if !hasAnyCleaned { return .notCleaned }
+        let allCleaned = !transcript.contains(where: { $0.cleanedText == nil })
+        return allCleaned ? .cleaned : .partiallyCleaned
     }
 
     @ViewBuilder
@@ -519,7 +519,7 @@ struct NotesView: View {
         case .inProgress:
             if case .inProgress(let completed, let total) = state.cleanupStatus {
                 HStack(spacing: 6) {
-                    Text("\(completed)/\(total) cleaning...")
+                    Text("\(completed)/\(total) Cleaning up...")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                     Button("Cancel") {
@@ -715,7 +715,7 @@ struct NotesView: View {
         }
     }
 
-    private func notesContentView(_ notes: EnhancedNotes, sessionDirectory: URL?) -> some View {
+    private func notesContentView(_ notes: GeneratedNotes, sessionDirectory: URL?) -> some View {
         ScrollView {
             markdownContent(notes.markdown, sessionDirectory: sessionDirectory)
                 .padding(16)
@@ -807,11 +807,11 @@ struct NotesView: View {
                 .foregroundStyle(record.speaker.color)
                 .frame(minWidth: 36, alignment: .trailing)
 
-            let displayText = showingOriginal ? record.text : (record.refinedText ?? record.text)
+            let displayText = showingOriginal ? record.text : (record.cleanedText ?? record.text)
             Text(displayText)
                 .font(.system(size: 13))
                 .foregroundStyle(
-                    isCleaning && record.refinedText == nil ? .secondary : .primary
+                    isCleaning && record.cleanedText == nil ? .secondary : .primary
                 )
                 .textSelection(.enabled)
         }
@@ -969,7 +969,7 @@ struct NotesView: View {
         case .transcript:
             text = state.loadedTranscript.map { record in
                 let label = record.speaker.displayLabel
-                let content = state.showingOriginal ? record.text : (record.refinedText ?? record.text)
+                let content = state.showingOriginal ? record.text : (record.cleanedText ?? record.text)
                 return "[\(Self.transcriptTimeFormatter.string(from: record.timestamp))] \(label): \(content)"
             }.joined(separator: "\n")
         case .notes:
