@@ -280,7 +280,10 @@ struct ContentView: View {
     private var contentWithOverlay: some View {
         sizedRootContent.overlay {
             if showOnboarding {
-                OnboardingView(isPresented: $showOnboarding)
+                SetupWizardView(
+                    isPresented: $showOnboarding,
+                    settings: settings
+                )
                     .transition(.opacity)
             }
             if showConsentSheet {

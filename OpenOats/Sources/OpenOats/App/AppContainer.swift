@@ -76,7 +76,7 @@ final class AppContainer {
             let suiteName = "com.openoats.uitests.\(runID)"
             let defaults = UserDefaults(suiteName: suiteName) ?? .standard
             defaults.removePersistentDomain(forName: suiteName)
-            defaults.set(true, forKey: "hasCompletedOnboarding")
+            defaults.set(scenario != .wizardSmoke, forKey: "hasCompletedOnboarding")
             defaults.set(true, forKey: "hasAcknowledgedRecordingConsent")
             defaults.set(false, forKey: "meetingAutoDetectEnabled")
             defaults.set(false, forKey: "hasShownAutoDetectExplanation")

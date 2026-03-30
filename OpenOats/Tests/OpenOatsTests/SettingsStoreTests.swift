@@ -33,6 +33,12 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.llmProvider, .openRouter)
     }
 
+    func testOpenRouterApiKeyAutoTrimsWhitespace() {
+        let store = makeStore()
+        store.openRouterApiKey = "  sk-or-v1-abc123  \n"
+        XCTAssertEqual(store.openRouterApiKey, "sk-or-v1-abc123")
+    }
+
     func testLLMProviderRoundTrip() {
         let store = makeStore()
         store.llmProvider = .ollama
@@ -53,6 +59,12 @@ final class SettingsStoreTests: XCTestCase {
     func testDefaultEmbeddingProvider() {
         let store = makeStore()
         XCTAssertEqual(store.embeddingProvider, .voyageAI)
+    }
+
+    func testVoyageApiKeyAutoTrimsWhitespace() {
+        let store = makeStore()
+        store.voyageApiKey = "  pa-abc123  \t"
+        XCTAssertEqual(store.voyageApiKey, "pa-abc123")
     }
 
     func testDefaultSuggestionVerbosity() {

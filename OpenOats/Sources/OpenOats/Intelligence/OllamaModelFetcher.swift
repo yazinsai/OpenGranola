@@ -10,12 +10,18 @@ enum OllamaModelFetcher {
         let models: [ModelInfo]
     }
 
-    /// Returns model names sorted alphabetically, or an empty array on failure.
-    static func fetchModels(baseURL: String) async -> [String] {
+    enum FetchError: Error, Equatable, Sendable {
+        case invalidURL
+        case networkError(String)
+        case decodingError
+    }
+
+    /// Returns model names sorted alphabetically, or an error explaining the failure.
+    static func fetchModels(baseURL: String) async -> Result<[String], FetchError> {
         let trimmed = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
         guard !trimmed.isEmpty,
               let url = URL(string: trimmed + "/api/tags") else {
-            return []
+            return .failure(.invalidURL)
         }
 
         var request = URLRequest(url: url)
@@ -24,13 +30,24 @@ enum OllamaModelFetcher {
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse,
               (200...299).contains(http.statusCode) else {
-            return []
+            return .failure(.networkError("Ollama not reachable at \(trimmed)"))
         }
 
         guard let decoded = try? JSONDecoder().decode(TagsResponse.self, from: data) else {
-            return []
+            return .failure(.decodingError)
         }
 
-        return decoded.models.map(\.name).sorted()
+        return .success(decoded.models.map(\.name).sorted())
+    }
+
+    /// Legacy shim: returns model names or empty array on failure.
+    /// Existing callers can migrate incrementally.
+    static func fetchModelsLegacy(baseURL: String) async -> [String] {
+        switch await fetchModels(baseURL: baseURL) {
+        case .success(let models):
+            return models
+        case .failure:
+            return []
+        }
     }
 }

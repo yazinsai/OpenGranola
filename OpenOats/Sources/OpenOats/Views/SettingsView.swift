@@ -61,6 +61,7 @@ private struct GeneralSettingsTab: View {
     @State private var automaticallyChecksForUpdates = false
     @State private var showAutoDetectExplanation = false
     @State private var launchAtLoginEnabled = false
+    @State private var showWizard = false
 
     var body: some View {
         ScrollView {
@@ -213,6 +214,17 @@ private struct GeneralSettingsTab: View {
                             }
                         }
                 }
+
+                Section("Setup") {
+                    Button("Re-run Setup Wizard") {
+                        showWizard = true
+                    }
+                    .font(.system(size: 12))
+
+                    Text("Re-runs the initial setup wizard. Your current settings will be shown as starting values.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
         }
@@ -220,6 +232,14 @@ private struct GeneralSettingsTab: View {
             Task { @MainActor in
                 automaticallyChecksForUpdates = updater.automaticallyChecksForUpdates
             }
+        }
+        .sheet(isPresented: $showWizard) {
+            SetupWizardView(
+                isPresented: $showWizard,
+                settings: settings,
+                isReconfiguration: true
+            )
+            .frame(width: 500, height: 550)
         }
     }
 

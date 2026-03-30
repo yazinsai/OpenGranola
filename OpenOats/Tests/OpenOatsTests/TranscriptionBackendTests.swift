@@ -140,6 +140,36 @@ final class TranscriptionBackendTests: XCTestCase {
             BackendStatus.needsDownload(prompt: "a")
         )
     }
+
+    func testBackendStatusDownloadingEquality() {
+        XCTAssertEqual(
+            BackendStatus.downloading(progress: 0.5),
+            BackendStatus.downloading(progress: 0.5)
+        )
+        XCTAssertNotEqual(
+            BackendStatus.downloading(progress: 0.5),
+            BackendStatus.downloading(progress: 0.7)
+        )
+        XCTAssertNotEqual(
+            BackendStatus.downloading(progress: 0.5),
+            BackendStatus.ready
+        )
+    }
+
+    func testBackendStatusErrorEquality() {
+        XCTAssertEqual(
+            BackendStatus.error(reason: "timeout"),
+            BackendStatus.error(reason: "timeout")
+        )
+        XCTAssertNotEqual(
+            BackendStatus.error(reason: "timeout"),
+            BackendStatus.error(reason: "network")
+        )
+        XCTAssertNotEqual(
+            BackendStatus.error(reason: "timeout"),
+            BackendStatus.ready
+        )
+    }
 }
 
 // MARK: - Test Helpers

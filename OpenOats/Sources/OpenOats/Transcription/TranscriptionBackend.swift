@@ -4,6 +4,8 @@ import Foundation
 enum BackendStatus: Equatable, Sendable {
     case ready
     case needsDownload(prompt: String)
+    case downloading(progress: Double)
+    case error(reason: String)
 }
 
 /// Unified interface for all transcription backends (local and cloud).

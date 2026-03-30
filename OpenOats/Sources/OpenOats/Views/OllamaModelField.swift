@@ -54,7 +54,7 @@ struct OllamaModelField: View {
             return
         }
         isLoading = true
-        availableModels = await OllamaModelFetcher.fetchModels(baseURL: baseURL)
+        availableModels = await OllamaModelFetcher.fetchModelsLegacy(baseURL: baseURL)
         isLoading = false
     }
 }
