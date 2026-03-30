@@ -243,8 +243,17 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
     case whisperBase
     case whisperSmall
     case whisperLargeV3Turbo
+    case assemblyAI
+    case elevenLabsScribe
 
     var id: String { rawValue }
+
+    var isCloud: Bool {
+        switch self {
+        case .assemblyAI, .elevenLabsScribe: true
+        default: false
+        }
+    }
 
     var displayName: String {
         switch self {
@@ -254,6 +263,8 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         case .whisperBase: "Whisper Base"
         case .whisperSmall: "Whisper Small"
         case .whisperLargeV3Turbo: "Whisper Large v3 Turbo"
+        case .assemblyAI: "AssemblyAI"
+        case .elevenLabsScribe: "ElevenLabs Scribe"
         }
     }
 
@@ -269,6 +280,8 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
             "Whisper Small requires a one-time model download (~244 MB)."
         case .whisperLargeV3Turbo:
             "Whisper Large v3 Turbo requires a one-time model download (~800 MB)."
+        case .assemblyAI, .elevenLabsScribe:
+            "Requires an API key. Enter it in Settings > Transcription."
         }
     }
 
@@ -280,6 +293,7 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         case .whisperSmall: 244_000_000
         case .whisperLargeV3Turbo: 800_000_000
         case .parakeetV2, .parakeetV3, .qwen3ASR06B: nil
+        case .assemblyAI, .elevenLabsScribe: nil
         }
     }
 
@@ -293,6 +307,8 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
             "Language Hint"
         case .parakeetV2, .parakeetV3, .whisperBase, .whisperSmall, .whisperLargeV3Turbo:
             "Locale"
+        case .assemblyAI, .elevenLabsScribe:
+            "Language Hint"
         }
     }
 
@@ -308,6 +324,10 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
             "Whisper auto-detects speech language. This setting is still saved with the session and markdown export."
         case .whisperLargeV3Turbo:
             "Whisper Large v3 Turbo auto-detects speech language. This setting is saved with session metadata and markdown export."
+        case .assemblyAI:
+            "Optional language hint for AssemblyAI. Leave as en-US for English or set to your expected meeting language."
+        case .elevenLabsScribe:
+            "Optional language hint for ElevenLabs Scribe. Leave as en-US for English or set to your meeting language."
         }
     }
 
@@ -321,7 +341,7 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         }
     }
 
-    func makeBackend(customVocabulary: String = "") -> any TranscriptionBackend {
+    func makeBackend(customVocabulary: String = "", apiKey: String = "") -> any TranscriptionBackend {
         switch self {
         case .parakeetV2: return ParakeetBackend(version: .v2, customVocabulary: customVocabulary)
         case .parakeetV3: return ParakeetBackend(version: .v3, customVocabulary: customVocabulary)
@@ -329,6 +349,8 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         case .whisperBase: return WhisperKitBackend(variant: .base)
         case .whisperSmall: return WhisperKitBackend(variant: .small)
         case .whisperLargeV3Turbo: return WhisperKitBackend(variant: .largeV3Turbo)
+        case .assemblyAI: return AssemblyAIBackend(apiKey: apiKey, customVocabulary: customVocabulary)
+        case .elevenLabsScribe: return ElevenLabsScribeBackend(apiKey: apiKey, customVocabulary: customVocabulary)
         }
     }
 
@@ -340,6 +362,8 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
             10 * 16_000
         case .parakeetV2, .parakeetV3, .qwen3ASR06B:
             5 * 16_000
+        case .assemblyAI, .elevenLabsScribe:
+            10 * 16_000  // 10s - fewer API calls, better accuracy per segment
         }
     }
 
