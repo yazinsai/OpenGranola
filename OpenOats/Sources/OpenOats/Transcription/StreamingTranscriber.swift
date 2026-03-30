@@ -12,6 +12,11 @@ final class StreamingTranscriber: @unchecked Sendable {
     private let isCloud: Bool
     private let onPartial: @Sendable (String) -> Void
     private let onFinal: @Sendable (String) -> Void
+    private let onError: @Sendable (Error) -> Void
+
+    // Circuit breaker: stop transcription after repeated consecutive failures.
+    private var consecutiveErrors = 0
+    private static let circuitBreakerThreshold = 5
 
     /// Resampler from source format to 16kHz mono Float32.
     private var converter: AVAudioConverter?
@@ -38,7 +43,8 @@ final class StreamingTranscriber: @unchecked Sendable {
         flushInterval: Int,
         isCloud: Bool,
         onPartial: @escaping @Sendable (String) -> Void,
-        onFinal: @escaping @Sendable (String) -> Void
+        onFinal: @escaping @Sendable (String) -> Void,
+        onError: @escaping @Sendable (Error) -> Void = { _ in }
     ) {
         self.backend = backend
         self.locale = locale
@@ -48,6 +54,7 @@ final class StreamingTranscriber: @unchecked Sendable {
         self.isCloud = isCloud
         self.onPartial = onPartial
         self.onFinal = onFinal
+        self.onError = onError
     }
 
     /// Silero VAD expects chunks of 4096 samples (256ms at 16kHz).
@@ -164,7 +171,7 @@ final class StreamingTranscriber: @unchecked Sendable {
                                     onPartial(text)
                                 }
                             } catch {
-                                // Best-effort — ignore
+                                // Local partials are best-effort; errors are intentionally ignored.
                             }
                             isRunningPartial = false
                         }
@@ -193,16 +200,37 @@ final class StreamingTranscriber: @unchecked Sendable {
     private var previousContext: String?
 
     private func transcribeSegment(_ samples: [Float]) async {
+        // Circuit breaker tripped - stop attempting transcription (cloud only).
+        if isCloud {
+            guard consecutiveErrors < Self.circuitBreakerThreshold else { return }
+        }
+
         do {
             let text = try await backend.transcribe(samples, locale: locale, previousContext: previousContext)
             guard !text.isEmpty else { return }
+            consecutiveErrors = 0
             Log.streaming.debug("[\(self.speaker.storageKey, privacy: .public)] transcribed: \(text.prefix(80), privacy: .private)")
             // Store trailing words for cross-segment context
             let words = text.split(separator: " ")
             previousContext = words.suffix(Self.contextWordCount).joined(separator: " ")
             onFinal(text)
         } catch {
-            Log.streaming.error("ASR error: \(error, privacy: .public)")
+            Log.streaming.error("ASR error (\(self.consecutiveErrors + 1)/\(Self.circuitBreakerThreshold)): \(error, privacy: .public)")
+
+            if isCloud {
+                consecutiveErrors += 1
+                if consecutiveErrors >= Self.circuitBreakerThreshold {
+                    let terminalError = CloudASRError.transcriptionFailed(
+                        "Cloud transcription stopped after \(Self.circuitBreakerThreshold) consecutive failures. Check your API key and plan."
+                    )
+                    Log.streaming.error("Circuit breaker tripped for \(self.speaker.storageKey, privacy: .public)")
+                    onError(terminalError)
+                } else {
+                    onError(error)
+                }
+            } else {
+                onError(error)
+            }
         }
     }
 

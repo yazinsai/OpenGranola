@@ -115,6 +115,10 @@ final class TranscriptionEngine {
     @ObservationIgnored private var downloadStartTime: Date?
     @ObservationIgnored private var downloadTotalBytes: Int64?
 
+    /// Deduplication for streaming transcription errors surfaced via onError.
+    @ObservationIgnored private var lastErrorMessage: String?
+    @ObservationIgnored private var lastErrorTimestamp: Date = .distantPast
+
     private let systemCapture = SystemAudioCapture()
     private let micCapture = MicCapture()
     private let transcriptStore: TranscriptStore
@@ -882,7 +886,21 @@ final class TranscriptionEngine {
             flushInterval: model.flushIntervalSamples,
             isCloud: model.isCloud,
             onPartial: onPartial,
-            onFinal: onFinal
+            onFinal: onFinal,
+            onError: { [weak self] error in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let message = error.localizedDescription
+                    // Deduplicate: skip identical errors within 30s
+                    if message == self.lastErrorMessage,
+                       Date.now.timeIntervalSince(self.lastErrorTimestamp) < 30 {
+                        return
+                    }
+                    self.lastErrorMessage = message
+                    self.lastErrorTimestamp = .now
+                    self.lastError = message
+                }
+            }
         )
     }
 
