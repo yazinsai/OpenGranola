@@ -342,6 +342,17 @@ final class SettingsStore {
         }
     }
 
+    @ObservationIgnored nonisolated(unsafe) private var _outputDeviceID: AudioDeviceID
+    var outputDeviceID: AudioDeviceID {
+        get { access(keyPath: \.outputDeviceID); return _outputDeviceID }
+        set {
+            withMutation(keyPath: \.outputDeviceID) {
+                _outputDeviceID = newValue
+                defaults.set(Int(newValue), forKey: "outputDeviceID")
+            }
+        }
+    }
+
     @ObservationIgnored nonisolated(unsafe) private var _transcriptionModel: TranscriptionModel
     var transcriptionModel: TranscriptionModel {
         get { access(keyPath: \.transcriptionModel); return _transcriptionModel }
@@ -694,6 +705,7 @@ final class SettingsStore {
 
         // Capture Settings
         self._inputDeviceID = AudioDeviceID(defaults.integer(forKey: "inputDeviceID"))
+        self._outputDeviceID = AudioDeviceID(defaults.integer(forKey: "outputDeviceID"))
         self._transcriptionModel = TranscriptionModel(
             rawValue: defaults.string(forKey: "transcriptionModel") ?? ""
         ) ?? .parakeetV2

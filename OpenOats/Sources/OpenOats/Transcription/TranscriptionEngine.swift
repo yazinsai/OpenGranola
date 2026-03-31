@@ -760,7 +760,8 @@ final class TranscriptionEngine {
 
         let sysStreams: SystemAudioCapture.CaptureStreams
         do {
-            sysStreams = try await systemCapture.bufferStream()
+            let outputID: AudioDeviceID? = settings.outputDeviceID != 0 ? settings.outputDeviceID : nil
+            sysStreams = try await systemCapture.bufferStream(outputDeviceID: outputID)
             Log.transcription.info("System audio capture started")
             clearSystemAudioErrorIfPresent()
         } catch {
