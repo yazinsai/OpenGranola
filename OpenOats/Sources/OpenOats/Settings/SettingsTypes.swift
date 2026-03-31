@@ -327,7 +327,7 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
         case .assemblyAI:
             "Optional language hint for AssemblyAI. Leave as en-US for English or set to your expected meeting language."
         case .elevenLabsScribe:
-            "Optional language hint for ElevenLabs Scribe. Leave as en-US for English or set to your meeting language."
+            "Optional language hint for ElevenLabs Scribe. Leave empty for auto-detection (recommended for multilingual meetings), or set to a language code like en, fr, de."
         }
     }
 

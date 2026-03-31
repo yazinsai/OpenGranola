@@ -3,7 +3,7 @@ import os
 
 // MARK: - ElevenLabs Scribe Backend
 
-/// Cloud transcription backend using the ElevenLabs Scribe v1 REST API.
+/// Cloud transcription backend using the ElevenLabs Scribe v2 REST API.
 /// @unchecked Sendable: session and prepared are written once in prepare() before any transcribe() calls.
 final class ElevenLabsScribeBackend: TranscriptionBackend, @unchecked Sendable {
     let displayName = "ElevenLabs Scribe"
@@ -74,7 +74,7 @@ final class ElevenLabsScribeBackend: TranscriptionBackend, @unchecked Sendable {
         let boundary = UUID().uuidString
         var body = Data()
 
-        body.appendMultipart(boundary: boundary, name: "model_id", value: "scribe_v1")
+        body.appendMultipart(boundary: boundary, name: "model_id", value: "scribe_v2")
 
         let languageCode = locale.language.languageCode?.identifier ?? ""
         if !languageCode.isEmpty {
