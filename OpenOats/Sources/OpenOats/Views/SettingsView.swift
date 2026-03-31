@@ -261,6 +261,7 @@ private struct GeneralSettingsTab: View {
 private struct TranscriptionSettingsTab: View {
     @Bindable var settings: AppSettings
     @State private var inputDevices: [(id: AudioDeviceID, name: String)] = []
+    @State private var outputDevices: [(id: AudioDeviceID, name: String)] = []
 
     var body: some View {
         ScrollView {
@@ -274,6 +275,18 @@ private struct TranscriptionSettingsTab: View {
                     }
                     .font(.system(size: 12))
                     .accessibilityIdentifier("settings.microphonePicker")
+
+                    Picker("Speaker / Output", selection: $settings.outputDeviceID) {
+                        Text("System Default").tag(AudioDeviceID(0))
+                        ForEach(outputDevices, id: \.id) { device in
+                            Text(device.name).tag(device.id)
+                        }
+                    }
+                    .font(.system(size: 12))
+                    .accessibilityIdentifier("settings.outputDevicePicker")
+                    Text("Select the output device carrying your meeting audio. If using AirPods or Bluetooth headphones, select them explicitly.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Recording") {
@@ -423,6 +436,7 @@ private struct TranscriptionSettingsTab: View {
         }
         .onAppear {
             inputDevices = MicCapture.availableInputDevices()
+            outputDevices = SystemAudioCapture.availableOutputDevices()
         }
     }
 }
