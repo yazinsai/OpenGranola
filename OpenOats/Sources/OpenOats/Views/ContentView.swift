@@ -240,6 +240,17 @@ struct ContentView: View {
                 .padding(.vertical, 8)
             }
 
+            // Collapsible scratchpad during live session
+            if controllerState.isRunning {
+                Divider()
+                ScratchpadSection(
+                    text: Binding(
+                        get: { controllerState.scratchpadText },
+                        set: { liveSessionController?.updateScratchpad($0) }
+                    )
+                )
+            }
+
             Divider()
 
             // Bottom bar: live indicator + model
@@ -478,5 +489,37 @@ struct ContentView: View {
         case .confirmDownload:
             liveSessionController?.downloadModelOnly(settings: settings)
         }
+    }
+}
+
+// MARK: - Scratchpad Section
+
+private struct ScratchpadSection: View {
+    @Binding var text: String
+    @AppStorage("isScratchpadExpanded") private var isExpanded = true
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            TextEditor(text: $text)
+                .font(.system(size: 12))
+                .scrollContentBackground(.hidden)
+                .frame(height: 100)
+                .padding(4)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        } label: {
+            HStack(spacing: 6) {
+                Text("My Notes")
+                    .font(.system(size: 12, weight: .medium))
+                if !text.isEmpty {
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 5, height: 5)
+                }
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 }

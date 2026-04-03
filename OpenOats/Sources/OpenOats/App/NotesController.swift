@@ -199,10 +199,12 @@ final class NotesController {
         state.streamingMarkdown = ""
 
         Task {
+            let scratchpad = await coordinator.sessionRepository.loadScratchpad(sessionID: sessionID)
             await coordinator.notesEngine.generate(
                 transcript: state.loadedTranscript,
                 template: template,
-                settings: settings
+                settings: settings,
+                scratchpad: scratchpad.isEmpty ? nil : scratchpad
             )
 
             if !coordinator.notesEngine.generatedMarkdown.isEmpty {

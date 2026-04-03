@@ -27,6 +27,8 @@ struct LiveSessionState {
     var modelDisplayName: String = ""
     var showLiveTranscript: Bool = true
     var isMicMuted: Bool = false
+    /// The user's live scratchpad text for the active session.
+    var scratchpadText: String = ""
 }
 
 /// Owns all live session side effects: polling, utterance ingestion,
@@ -41,6 +43,7 @@ final class LiveSessionController {
     private let container: AppContainer
 
     private var downloadTask: Task<Void, Never>?
+    private var scratchpadSaveTask: Task<Void, Never>?
 
     // Tracked-change sentinels
     private var observedUtteranceCount = 0
@@ -140,6 +143,17 @@ final class LiveSessionController {
     func toggleMicMute() {
         guard let engine = coordinator.transcriptionEngine, engine.isRunning else { return }
         engine.isMicMuted.toggle()
+    }
+
+    /// Update the scratchpad text and schedule a debounced save.
+    func updateScratchpad(_ text: String) {
+        state.scratchpadText = text
+        scratchpadSaveTask?.cancel()
+        scratchpadSaveTask = Task {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled, let sessionID = _currentSessionID else { return }
+            await coordinator.sessionRepository.saveScratchpad(sessionID: sessionID, text: text)
+        }
     }
 
     // MARK: - KB Indexing
@@ -272,6 +286,7 @@ final class LiveSessionController {
             )
         )
         _currentSessionID = handle.sessionID
+        state.scratchpadText = ""
 
         if let settings {
             if settings.saveAudioRecording || settings.enableBatchRetranscription {
@@ -290,6 +305,12 @@ final class LiveSessionController {
     }
 
     func finalizeCurrentSession(settings: AppSettings?) async {
+        // 0. Flush scratchpad
+        scratchpadSaveTask?.cancel()
+        if let sessionID = _currentSessionID, !state.scratchpadText.isEmpty {
+            await coordinator.sessionRepository.saveScratchpad(sessionID: sessionID, text: state.scratchpadText)
+        }
+
         // 1. Drain audio buffers
         await coordinator.transcriptionEngine?.finalize()
 

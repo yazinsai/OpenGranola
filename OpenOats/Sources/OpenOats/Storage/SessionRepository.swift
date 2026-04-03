@@ -487,6 +487,22 @@ actor SessionRepository {
         )
     }
 
+    // MARK: - Scratchpad
+
+    /// Save the user's live scratchpad notes for a session.
+    func saveScratchpad(sessionID: String, text: String) {
+        let dir = sessionDirectory(for: sessionID)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("scratchpad.md")
+        try? text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    /// Load the user's scratchpad for a session (returns empty string if none).
+    func loadScratchpad(sessionID: String) -> String {
+        let url = sessionDirectory(for: sessionID).appendingPathComponent("scratchpad.md")
+        return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+    }
+
     // MARK: - Images
 
     func saveImage(sessionID: String, imageData: Data) -> String {

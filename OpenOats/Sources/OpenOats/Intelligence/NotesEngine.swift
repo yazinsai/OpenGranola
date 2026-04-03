@@ -40,7 +40,8 @@ final class NotesEngine {
     func generate(
         transcript: [SessionRecord],
         template: MeetingTemplate,
-        settings: AppSettings
+        settings: AppSettings,
+        scratchpad: String? = nil
     ) async {
         currentTask?.cancel()
         isGenerating = true
@@ -92,9 +93,14 @@ final class NotesEngine {
         }
 
         let transcriptText = formatTranscript(transcript)
+        var userContent = "Here is the meeting transcript:\n\n\(transcriptText)"
+        if let scratchpad, !scratchpad.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            userContent += "\n\nThe user also took the following notes during the meeting. Treat these as high-signal context — they may contain decisions, action items, or emphasis that the transcript alone may miss:\n\n\(scratchpad)"
+        }
+        userContent += "\n\nGenerate the meeting notes in markdown:"
         let messages: [OpenRouterClient.Message] = [
             .init(role: "system", content: template.systemPrompt),
-            .init(role: "user", content: "Here is the meeting transcript:\n\n\(transcriptText)\n\nGenerate the meeting notes in markdown:")
+            .init(role: "user", content: userContent)
         ]
 
         let task = Task { [weak self] in
