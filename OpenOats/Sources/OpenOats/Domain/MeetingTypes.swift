@@ -68,14 +68,17 @@ struct MeetingMetadata: Sendable, Equatable, Codable {
     let startedAt: Date
     var endedAt: Date?
 
-    static func manual() -> MeetingMetadata {
+    static func manual(calendarEvent: CalendarEvent? = nil) -> MeetingMetadata {
         let now = Date()
         return MeetingMetadata(
             detectionContext: DetectionContext(
-                signal: .manual, detectedAt: now,
-                meetingApp: nil, calendarEvent: nil
+                signal: calendarEvent.map { .calendarEvent($0) } ?? .manual,
+                detectedAt: now,
+                meetingApp: nil,
+                calendarEvent: calendarEvent
             ),
-            calendarEvent: nil, title: nil,
+            calendarEvent: calendarEvent,
+            title: calendarEvent?.title,
             startedAt: now, endedAt: nil
         )
     }

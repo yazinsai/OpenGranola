@@ -174,6 +174,15 @@ private struct GeneralSettingsTab: View {
                     .font(.system(size: 12))
                 }
 
+                Section("Calendar") {
+                    Toggle("Auto-title sessions from calendar", isOn: $settings.calendarIntegrationEnabled)
+                        .font(.system(size: 12))
+
+                    Text("When enabled, OpenOats looks up your calendar for a matching event and uses its title for the session. Calendar access is requested only when you enable this.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
                 if !settings.ignoredAppBundleIDs.isEmpty {
                     Section("Ignored Apps") {
                         Text("These apps won't trigger meeting detection notifications.")

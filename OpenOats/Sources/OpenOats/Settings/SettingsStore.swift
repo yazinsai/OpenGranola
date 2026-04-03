@@ -562,6 +562,17 @@ final class SettingsStore {
         }
     }
 
+    @ObservationIgnored nonisolated(unsafe) private var _calendarIntegrationEnabled: Bool
+    var calendarIntegrationEnabled: Bool {
+        get { access(keyPath: \.calendarIntegrationEnabled); return _calendarIntegrationEnabled }
+        set {
+            withMutation(keyPath: \.calendarIntegrationEnabled) {
+                _calendarIntegrationEnabled = newValue
+                defaults.set(newValue, forKey: "calendarIntegrationEnabled")
+            }
+        }
+    }
+
     // MARK: - Privacy Settings
 
     @ObservationIgnored nonisolated(unsafe) private var _hasAcknowledgedRecordingConsent: Bool
@@ -797,6 +808,7 @@ final class SettingsStore {
             ? defaults.integer(forKey: "silenceTimeoutMinutes") : 15
         self._detectionLogEnabled = defaults.bool(forKey: "detectionLogEnabled")
         self._hasShownAutoDetectExplanation = defaults.bool(forKey: "hasShownAutoDetectExplanation")
+        self._calendarIntegrationEnabled = defaults.bool(forKey: "calendarIntegrationEnabled")
 
         // Privacy Settings
         self._hasAcknowledgedRecordingConsent = defaults.bool(forKey: "hasAcknowledgedRecordingConsent")

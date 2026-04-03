@@ -79,6 +79,10 @@ final class MeetingDetectionController {
     /// Used to suppress detection prompts during active recording.
     var isSessionActive: () -> Bool = { false }
 
+    /// Calendar manager for looking up current events during auto-detected sessions.
+    /// Set by the container when calendar integration is enabled.
+    var calendarManager: CalendarManager?
+
     // MARK: - Init
 
     init() {
@@ -200,6 +204,7 @@ final class MeetingDetectionController {
         }
 
         dismissedEvents.removeAll()
+        calendarManager = nil
         activeSettings = nil
         isEnabled = false
         detectedApp = nil
@@ -356,16 +361,18 @@ final class MeetingDetectionController {
     private func handleDetectionAccepted() {
         Task {
             let app = await meetingDetector?.detectedApp
+            let calEvent = calendarManager?.currentEvent()
             let context = DetectionContext(
                 signal: app.map { .appLaunched($0) } ?? .audioActivity,
                 detectedAt: Date(),
                 meetingApp: app,
-                calendarEvent: nil
+                calendarEvent: calEvent
             )
+            let title = calEvent?.title ?? app?.name
             let metadata = MeetingMetadata(
                 detectionContext: context,
-                calendarEvent: nil,
-                title: app?.name,
+                calendarEvent: calEvent,
+                title: title,
                 startedAt: Date(),
                 endedAt: nil
             )
