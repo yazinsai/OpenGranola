@@ -19,6 +19,10 @@ final class AppContainer {
     /// even when detection is not enabled.
     private(set) var notificationService: NotificationService?
 
+    /// Calendar manager for looking up current events.
+    /// Created when the calendar integration setting is enabled.
+    private(set) var calendarManager: CalendarManager?
+
     private var didSeedInitialData = false
     private var didInitializeServices = false
 
@@ -80,6 +84,7 @@ final class AppContainer {
             defaults.set(true, forKey: "hasAcknowledgedRecordingConsent")
             defaults.set(false, forKey: "meetingAutoDetectEnabled")
             defaults.set(false, forKey: "hasShownAutoDetectExplanation")
+            defaults.set(false, forKey: "calendarIntegrationEnabled")
             defaults.set(false, forKey: "hideFromScreenShare")
             defaults.set(true, forKey: "showLiveTranscript")
             defaults.set(false, forKey: "saveAudioRecording")
@@ -190,6 +195,8 @@ final class AppContainer {
         controller.setup(settings: settings)
         // Expose the notification service for batch completion notifications
         notificationService = controller.notificationService
+        // Share the calendar manager with the detection controller for auto-detected sessions
+        controller.calendarManager = calendarManager
         coordinator.activeSettings = settings
         coordinator.startDetectionEventLoop(controller)
     }
@@ -201,6 +208,23 @@ final class AppContainer {
         detectionController?.teardown()
         detectionController = nil
         // NotificationService remains accessible if already set (for batch notifications)
+    }
+
+    /// Enable or disable calendar event lookup based on the user setting.
+    /// When enabled for the first time, creates the CalendarManager and requests access.
+    func updateCalendarIntegration(enabled: Bool) {
+        if enabled {
+            if calendarManager == nil {
+                calendarManager = CalendarManager()
+            }
+            if calendarManager?.accessState == .notDetermined {
+                Task {
+                    _ = await calendarManager?.requestAccess()
+                }
+            }
+        } else {
+            calendarManager = nil
+        }
     }
 
     func seedIfNeeded(coordinator: AppCoordinator) async {

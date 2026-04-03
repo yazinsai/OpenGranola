@@ -432,7 +432,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if coordinator.isRecording {
             coordinator.handle(.userStopped, settings: settings)
         } else {
-            coordinator.handle(.userStarted(.manual()), settings: settings)
+            let calEvent = settings.calendarIntegrationEnabled
+                ? container?.calendarManager?.currentEvent()
+                : nil
+            coordinator.handle(.userStarted(.manual(calendarEvent: calEvent)), settings: settings)
         }
     }
 

@@ -118,7 +118,11 @@ final class LiveSessionController {
     func startSession(settings: AppSettings) {
         coordinator.suggestionEngine?.clear()
         coordinator.sidecastEngine?.clear()
-        coordinator.handle(.userStarted(.manual()), settings: settings)
+        let calEvent = settings.calendarIntegrationEnabled
+            ? container.calendarManager?.currentEvent()
+            : nil
+        let metadata = MeetingMetadata.manual(calendarEvent: calEvent)
+        coordinator.handle(.userStarted(metadata), settings: settings)
     }
 
     func stopSession(settings: AppSettings) {

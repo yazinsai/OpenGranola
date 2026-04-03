@@ -372,6 +372,9 @@ struct ContentView: View {
 
             await controller.performInitialSetup()
 
+            // Setup calendar integration if enabled
+            container.updateCalendarIntegration(enabled: settings.calendarIntegrationEnabled)
+
             // Setup meeting detection if enabled
             if settings.meetingAutoDetectEnabled {
                 container.enableDetection(settings: settings, coordinator: coordinator)
@@ -390,6 +393,9 @@ struct ContentView: View {
             } else {
                 container.disableDetection(coordinator: coordinator)
             }
+        }
+        .onChange(of: settings.calendarIntegrationEnabled) {
+            container.updateCalendarIntegration(enabled: settings.calendarIntegrationEnabled)
         }
         .onChange(of: settings.sidebarMode) {
             if settings.sidebarMode == .classicSuggestions {
