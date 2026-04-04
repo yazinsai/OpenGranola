@@ -39,7 +39,7 @@ jobs:
           echo "Resolved version: $VERSION"
 
       - name: Select Xcode 26
-        run: bash scripts/select_xcode_26.sh
+        run: bash "${{ github.workspace }}/scripts/select_xcode_26.sh"
 
       - name: Set version from tag
         run: |

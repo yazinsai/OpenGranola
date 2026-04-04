@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Select Xcode 26
-        run: bash scripts/select_xcode_26.sh
+        run: bash "${{ github.workspace }}/scripts/select_xcode_26.sh"
 
       - name: Build and assemble app bundle (no sign, no install)
         run: SKIP_SIGN=1 SKIP_INSTALL=1 ./scripts/build_swift_app.sh
