@@ -13,14 +13,29 @@ struct RealtimeGate: Sendable {
         recentSuggestionTexts: [String]
     ) -> GateResult {
         let topScore = contextPacks.first?.score ?? 0
+        let triggerKind = detectTriggerKind(text)
+
+        if contextPacks.isEmpty {
+            // Transcript-only mode: surface only on strong conversational triggers
+            guard triggerKind == .question || triggerKind == .claim else {
+                return GateResult(shouldSurface: false, triggerKind: triggerKind, score: 0, reason: "No KB and weak trigger")
+            }
+
+            // Duplicate suppression against recent suggestions
+            for recent in recentSuggestionTexts.suffix(3) {
+                if TextSimilarity.jaccard(text, recent) > 0.7 {
+                    return GateResult(shouldSurface: false, triggerKind: triggerKind, score: 0, reason: "Duplicate of recent suggestion")
+                }
+            }
+
+            let transcriptScore = (questionDensity * 0.6) + (triggerKind == .question ? 0.4 : 0.2)
+            return GateResult(shouldSurface: true, triggerKind: triggerKind, score: transcriptScore, reason: "Transcript-only trigger")
+        }
 
         // KB similarity threshold
         guard topScore >= kbSimilarityThreshold else {
             return GateResult(shouldSurface: false, triggerKind: .general, score: topScore, reason: "KB score below threshold")
         }
-
-        // Detect trigger kind
-        let triggerKind = detectTriggerKind(text)
 
         // Duplicate suppression: Jaccard similarity against recent suggestions
         let candidateText = contextPacks.first?.matchedText ?? ""

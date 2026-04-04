@@ -264,8 +264,6 @@ final class SuggestionEngine {
         triggerFingerprint: String?,
         cachedPacks: [KBContextPack]
     ) {
-        guard !cachedPacks.isEmpty else { return }
-
         let gateResult = gate.evaluate(
             text: text,
             speaker: speaker ?? .them,
@@ -580,6 +578,10 @@ final class SuggestionEngine {
     ) -> [OpenRouterClient.Message] {
         let state = transcriptStore.conversationState
 
+        if contextPacks.isEmpty {
+            return buildTranscriptOnlyPrompt(triggerKind: triggerKind, triggerExcerpt: triggerExcerpt, state: state)
+        }
+
         var evidenceText = ""
         for pack in contextPacks.prefix(3) {
             evidenceText += "[\(pack.displayBreadcrumb)]:\n\(pack.matchedText)\n"
@@ -622,6 +624,54 @@ final class SuggestionEngine {
 
         Evidence:
         \(evidenceText)
+        """
+
+        return [
+            .init(role: "system", content: system),
+            .init(role: "user", content: user)
+        ]
+    }
+
+    private func buildTranscriptOnlyPrompt(
+        triggerKind: RealtimeTriggerKind,
+        triggerExcerpt: String,
+        state: ConversationState
+    ) -> [OpenRouterClient.Message] {
+        let formatInstruction: String
+        switch triggerKind {
+        case .question:
+            formatInstruction = "Suggest a concrete way to answer this question or a follow-up question that would clarify the discussion."
+        case .claim:
+            formatInstruction = "Identify the key assumption behind this claim and suggest a question or angle to probe it."
+        case .topic, .general:
+            formatInstruction = "Surface a relevant insight or suggest a useful follow-up based on what has been discussed."
+        }
+
+        var contextLines: [String] = []
+        if !state.currentTopic.isEmpty { contextLines.append("Topic: \(state.currentTopic)") }
+        if !state.shortSummary.isEmpty { contextLines.append("Summary: \(state.shortSummary)") }
+        if !state.openQuestions.isEmpty { contextLines.append("Open questions: \(state.openQuestions.joined(separator: "; "))") }
+        if !state.activeTensions.isEmpty { contextLines.append("Tensions: \(state.activeTensions.joined(separator: "; "))") }
+        if !state.recentDecisions.isEmpty { contextLines.append("Decisions: \(state.recentDecisions.joined(separator: "; "))") }
+
+        let system = """
+        You are a real-time meeting copilot whispering useful insights to the listener.
+
+        Format rules:
+        - Lead with a **bold** one-line insight or suggested question
+        - Follow with 1-2 short bullet points with specific, actionable detail
+        - Each bullet should be one line — scannable at a glance
+        - No filler, no hedging, no preamble
+        - Be concise — the listener is in a live conversation
+
+        \(formatInstruction)
+        """
+
+        let user = """
+        Trigger: \(triggerExcerpt)
+
+        Conversation context:
+        \(contextLines.isEmpty ? "N/A" : contextLines.joined(separator: "\n"))
         """
 
         return [
