@@ -26,10 +26,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Select Xcode 26
-        run: |
-          sudo xcode-select -s /Applications/Xcode_26.app || sudo xcode-select -s /Applications/Xcode.app
-          xcodebuild -version
-          swift --version
+        run: bash scripts/select_xcode_26.sh
 
       - name: Resolve package dependencies
         run: swift package resolve

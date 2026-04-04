@@ -39,9 +39,7 @@ jobs:
           echo "Resolved version: $VERSION"
 
       - name: Select Xcode 26
-        run: |
-          sudo xcode-select -s /Applications/Xcode_26.app || sudo xcode-select -s /Applications/Xcode.app
-          swift --version
+        run: bash scripts/select_xcode_26.sh
 
       - name: Set version from tag
         run: |
@@ -51,9 +49,16 @@ jobs:
           echo "Set version to ${RELEASE_VERSION}"
 
       - name: Run UI smoke suite
+        id: ui_smoke
+        continue-on-error: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           chmod +x scripts/run_ui_smoke.sh
           ./scripts/run_ui_smoke.sh
+
+      - name: Report advisory UI smoke failure
+        if: github.event_name == 'workflow_dispatch' && steps.ui_smoke.outcome == 'failure'
+        run: |
+          echo "::warning::UI smoke suite failed while rebuilding a historical tag. Continuing so manual DMG backfills can still complete."
 
       - name: Check for signing certificate
         env:

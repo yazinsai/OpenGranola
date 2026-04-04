@@ -33,7 +33,7 @@ final class ParakeetBackend: TranscriptionBackend, @unchecked Sendable {
         }
         onStatus("Initializing \(displayName)...")
         let asr = AsrManager(config: .default)
-        try await asr.initialize(models: models)
+        try await asr.loadModels(models)
         self.asrManager = asr
     }
 
