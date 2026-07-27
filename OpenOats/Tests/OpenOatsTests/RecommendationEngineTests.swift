@@ -130,7 +130,7 @@ final class RecommendationEngineTests: XCTestCase {
         XCTAssertEqual(recommendation.profile, .localENLight)
         XCTAssertEqual(recommendation.transcriptionModel, .parakeetV2)
         XCTAssertEqual(recommendation.llmProvider, .ollama)
-        XCTAssertEqual(recommendation.ollamaLLMModel, "phi3.5:3.8b-mini-q4_K_M")
+        XCTAssertEqual(recommendation.ollamaLLMModel, "phi3.5:3.8b-mini-instruct-q4_K_M")
         XCTAssertEqual(recommendation.ollamaBaseURL, "http://localhost:11434")
         XCTAssertEqual(recommendation.sidecastIntensity, .quiet)
     }
@@ -158,7 +158,7 @@ final class RecommendationEngineTests: XCTestCase {
 
         XCTAssertEqual(recommendation.profile, .localMultiLight)
         XCTAssertEqual(recommendation.transcriptionModel, .whisperSmall)
-        XCTAssertEqual(recommendation.ollamaLLMModel, "phi3.5:3.8b-mini-q4_K_M")
+        XCTAssertEqual(recommendation.ollamaLLMModel, "phi3.5:3.8b-mini-instruct-q4_K_M")
     }
 
     func testLocalMultiHighRAM() {
