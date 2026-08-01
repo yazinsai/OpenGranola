@@ -178,23 +178,10 @@ final class AssemblyAIBackend: TranscriptionBackend, @unchecked Sendable {
         }
     }
 
-    // MARK: - Private: Create Transcript
+    // MARK: - Create Transcript
 
     private func createTranscript(audioURL: URL, locale: Locale) async throws -> String {
-        var body: [String: Any] = [
-            "audio_url": audioURL.absoluteString,
-            "speech_models": ["universal-3-pro", "universal-2"],
-        ]
-
-        // Language code from locale (e.g. "en", "pl", "de")
-        let languageCode = locale.language.languageCode?.identifier
-        if let languageCode, !languageCode.isEmpty {
-            body["language_code"] = languageCode
-        }
-
-        if !customSpelling.isEmpty {
-            body["custom_spelling"] = customSpelling
-        }
+        let body = makeTranscriptRequestBody(audioURL: audioURL, locale: locale)
 
         var request = URLRequest(url: URL(string: "https://api.assemblyai.com/v2/transcript")!)
         request.httpMethod = "POST"
@@ -220,6 +207,28 @@ final class AssemblyAIBackend: TranscriptionBackend, @unchecked Sendable {
 
             return id
         }
+    }
+
+    // MARK: - Internal for tests
+
+    func makeTranscriptRequestBody(audioURL: URL, locale: Locale) -> [String: Any] {
+        // Let AssemblyAI route to its latest default model. Pinning speech_models
+        // would require an app update whenever a named model is deprecated.
+        var body: [String: Any] = [
+            "audio_url": audioURL.absoluteString,
+        ]
+
+        // Language code from locale (e.g. "en", "pl", "de")
+        let languageCode = locale.language.languageCode?.identifier
+        if let languageCode, !languageCode.isEmpty {
+            body["language_code"] = languageCode
+        }
+
+        if !customSpelling.isEmpty {
+            body["custom_spelling"] = customSpelling
+        }
+
+        return body
     }
 
     // MARK: - Private: Poll
