@@ -149,7 +149,7 @@ enum RecommendationEngine {
                 selectedModel: nil,
                 realtimeModel: nil,
                 ollamaBaseURL: "http://localhost:11434",
-                ollamaLLMModel: "phi3.5:3.8b-mini-q4_K_M"
+                ollamaLLMModel: "phi3.5:3.8b-mini-instruct-q4_K_M"
             )
 
         case .localENFull, .localMultiFull:
@@ -216,7 +216,7 @@ enum RecommendationEngine {
 
         switch profile {
         case .localENLight, .localMultiLight:
-            models.append("phi3.5:3.8b-mini-q4_K_M")
+            models.append("phi3.5:3.8b-mini-instruct-q4_K_M")
         case .localENFull, .localMultiFull:
             models.append("qwen3:8b")
         default:
