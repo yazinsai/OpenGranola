@@ -199,6 +199,20 @@ final class TranscriptionBackendTests: XCTestCase {
         }
     }
 
+    func testAssemblyAITranscriptRequestUsesLatestDefaultModel() throws {
+        let backend = AssemblyAIBackend(apiKey: "test-key")
+        let audioURL = try XCTUnwrap(URL(string: "https://cdn.assemblyai.com/test.wav"))
+
+        let body = backend.makeTranscriptRequestBody(
+            audioURL: audioURL,
+            locale: Locale(identifier: "en-US")
+        )
+
+        XCTAssertEqual(body["audio_url"] as? String, audioURL.absoluteString)
+        XCTAssertEqual(body["language_code"] as? String, "en")
+        XCTAssertNil(body["speech_models"])
+    }
+
     // MARK: - ElevenLabsScribeBackend
 
     func testElevenLabsDisplayName() {
