@@ -45,6 +45,8 @@ struct NotesState {
     var hasOriginalTranscriptBackup: Bool = false
     /// Per-session custom guidance text for notes generation.
     var customNotesGuidance: String = ""
+    /// Scratchpad notes the user typed during the live recording ("My Notes").
+    var myNotesText: String = ""
     /// Sessions whose notes were freshly generated while the user was on a different session.
     /// Cleared when the user opens that session. Used to show the blue "unread" indicator.
     var freshlyGeneratedSessionIDs: Set<String> = []
@@ -310,6 +312,7 @@ final class NotesController {
             state.canRetranscribeSelectedSession = false
             state.hasOriginalTranscriptBackup = false
             state.customNotesGuidance = ""
+            state.myNotesText = ""
             return
         }
 
@@ -325,6 +328,7 @@ final class NotesController {
         state.canRetranscribeSelectedSession = false
         state.hasOriginalTranscriptBackup = false
         state.customNotesGuidance = ""
+        state.myNotesText = ""
         state.selectedSessionDirectory = coordinator.sessionRepository.sessionsDirectoryURL
             .appendingPathComponent(sessionID, isDirectory: true)
         state.showingOriginal = false
@@ -343,6 +347,7 @@ final class NotesController {
             async let canRetranscribe = coordinator.sessionRepository.hasRetainedBatchAudio(sessionID: sessionID)
             async let hasBackup = coordinator.sessionRepository.hasPreBatchTranscriptBackup(sessionID: sessionID)
             async let customGuidance = coordinator.sessionRepository.loadCustomNotesGuidance(sessionID: sessionID)
+            async let scratchpad = coordinator.sessionRepository.loadScratchpad(sessionID: sessionID)
             let data = await sessionData
             let unsavedDraft = unsavedManualNotesDraftsBySessionID[sessionID]
 
@@ -358,6 +363,7 @@ final class NotesController {
             state.canRetranscribeSelectedSession = await canRetranscribe
             state.hasOriginalTranscriptBackup = await hasBackup
             state.customNotesGuidance = await customGuidance ?? ""
+            state.myNotesText = await scratchpad
 
             let session = state.sessionHistory.first { $0.id == sessionID }
             let familySelection = session.map { Self.meetingFamilySelection(for: $0, calendarEvent: data.calendarEvent) }
@@ -408,6 +414,7 @@ final class NotesController {
         state.audioFileURL = nil
         state.showingOriginal = false
         state.customNotesGuidance = ""
+        state.myNotesText = ""
         state.selectedTemplate = selectedTemplate(
             sessionTemplateSnapshot: nil,
             meetingFamilySelection: selection
@@ -1103,6 +1110,15 @@ final class NotesController {
                 sessionID: sessionID,
                 guidance: text.isEmpty ? nil : text
             )
+        }
+    }
+
+    /// Update the "My Notes" scratchpad text for the selected (already-recorded) session.
+    func updateMyNotes(_ text: String) {
+        state.myNotesText = text
+        guard let sessionID = state.selectedSessionID else { return }
+        Task {
+            await coordinator.sessionRepository.saveScratchpad(sessionID: sessionID, text: text)
         }
     }
 

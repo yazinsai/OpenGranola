@@ -3131,6 +3131,49 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
+                            Text("My Notes")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+
+                            ZStack(alignment: .topLeading) {
+                                if state.myNotesText.isEmpty {
+                                    Text("Notes you jotted down during the recording will appear here.")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.quaternary)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 6)
+                                }
+                                TextEditor(text: Binding(
+                                    get: { state.myNotesText },
+                                    set: { controller.updateMyNotes($0) }
+                                ))
+                                .font(.system(size: 12))
+                                .scrollContentBackground(.hidden)
+                                .frame(minHeight: 40, maxHeight: 100)
+                                .accessibilityIdentifier("meetingDetail.myNotesEditor")
+                            }
+                            .padding(4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color(nsColor: .textBackgroundColor))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(.quaternary, lineWidth: 1)
+                            )
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(.quaternary, lineWidth: 1)
+                        )
+
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("Custom Guidance")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(.secondary)
