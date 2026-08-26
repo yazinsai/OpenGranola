@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct TranscriptView: View {
@@ -96,27 +97,36 @@ struct TranscriptView: View {
                     .frame(maxWidth: .infinity, minHeight: 110)
                     .padding(16)
                 } else {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(0..<visible.count, id: \.self) { index in
-                            let utterance = visible[index]
-                            UtteranceBubble(
-                                utterance: utterance,
-                                showTimestamp: shouldShowTimestamp(at: index, in: visible)
-                            )
-                            .id(utterance.id)
+                    let speakerColumnWidth = TranscriptFlow.speakerColumnWidth(
+                        forLabels: visible.map(\.speaker.displayLabel)
+                    )
+                    VStack(alignment: .leading, spacing: 8) {
+                        if !visible.isEmpty {
+                            SelectableTextFlow(attributedText: transcriptFlowText(for: visible))
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
                         if !isSearching {
                             if !volatileYouText.isEmpty {
-                                VolatileIndicator(text: volatileYouText, speaker: .you)
-                                    .id("volatile-you")
+                                VolatileIndicator(
+                                    text: volatileYouText,
+                                    speaker: .you,
+                                    speakerColumnWidth: speakerColumnWidth
+                                )
                             }
 
                             if !volatileThemText.isEmpty {
-                                VolatileIndicator(text: volatileThemText, speaker: .them)
-                                    .id("volatile-them")
+                                VolatileIndicator(
+                                    text: volatileThemText,
+                                    speaker: .them,
+                                    speakerColumnWidth: speakerColumnWidth
+                                )
                             }
                         }
+
+                        Color.clear
+                            .frame(height: 1)
+                            .id("transcript-bottom")
                     }
                     .padding(16)
                 }
@@ -124,32 +134,28 @@ struct TranscriptView: View {
             .onChange(of: utterances.count) {
                 guard !isSearching, autoScrollEnabled else { return }
                 withAnimation(.easeOut(duration: 0.2)) {
-                    if let last = utterances.last {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
+                    proxy.scrollTo("transcript-bottom", anchor: .bottom)
                 }
             }
             .onChange(of: volatileYouText) {
                 guard !isSearching, autoScrollEnabled else { return }
-                proxy.scrollTo("volatile-you", anchor: .bottom)
+                proxy.scrollTo("transcript-bottom", anchor: .bottom)
             }
             .onChange(of: volatileThemText) {
                 guard !isSearching, autoScrollEnabled else { return }
-                proxy.scrollTo("volatile-them", anchor: .bottom)
+                proxy.scrollTo("transcript-bottom", anchor: .bottom)
             }
             .onChange(of: searchText) {
-                if searchText.isEmpty, autoScrollEnabled, let last = utterances.last {
-                    proxy.scrollTo(last.id, anchor: .bottom)
+                if searchText.isEmpty, autoScrollEnabled {
+                    proxy.scrollTo("transcript-bottom", anchor: .bottom)
                 }
             }
             .overlay(alignment: .bottomTrailing) {
                 if !autoScrollEnabled {
                     Button {
                         autoScrollEnabled = true
-                        if let last = utterances.last {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo(last.id, anchor: .bottom)
-                            }
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo("transcript-bottom", anchor: .bottom)
                         }
                     } label: {
                         Image(systemName: "arrow.down.circle.fill")
@@ -172,6 +178,21 @@ struct TranscriptView: View {
         let previous = Calendar.current.dateComponents([.hour, .minute], from: visible[index - 1].timestamp)
         return current.hour != previous.hour || current.minute != previous.minute
     }
+
+    private func transcriptFlowText(for visible: [Utterance]) -> NSAttributedString {
+        let lines = visible.enumerated().map { index, utterance in
+            TranscriptFlow.Line(
+                timestamp: shouldShowTimestamp(at: index, in: visible)
+                    ? timestampFormatter.string(from: utterance.timestamp)
+                    : nil,
+                speakerLabel: utterance.speaker.displayLabel,
+                speakerColor: NSColor(utterance.speaker.color),
+                renameKey: nil,
+                text: utterance.displayText
+            )
+        }
+        return TranscriptFlow.attributed(lines: lines, showsTimestampColumn: true)
+    }
 }
 
 // MARK: - Timestamp Formatter
@@ -182,38 +203,10 @@ private let timestampFormatter: DateFormatter = {
     return f
 }()
 
-private struct UtteranceBubble: View {
-    let utterance: Utterance
-    var showTimestamp: Bool = true
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            if showTimestamp {
-                Text(timestampFormatter.string(from: utterance.timestamp))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 34, alignment: .trailing)
-            } else {
-                Spacer()
-                    .frame(width: 34)
-            }
-
-            Text(utterance.speaker.displayLabel)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(utterance.speaker.color)
-                .frame(minWidth: 36, alignment: .trailing)
-
-            Text(utterance.displayText)
-                .font(.system(size: 13))
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-        }
-    }
-}
-
 private struct VolatileIndicator: View {
     let text: String
     let speaker: Speaker
+    var speakerColumnWidth: CGFloat = 36
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -223,7 +216,7 @@ private struct VolatileIndicator: View {
             Text(speaker.displayLabel)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(speaker.color)
-                .frame(minWidth: 36, alignment: .trailing)
+                .frame(width: max(36, speakerColumnWidth), alignment: .trailing)
 
             HStack(spacing: 4) {
                 Text(text)

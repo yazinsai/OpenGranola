@@ -60,6 +60,7 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
     @FocusState private var renameFieldFocused: Bool
     @State private var renamingSpeakerKey: String? = nil
     @State private var speakerRenameText: String = ""
+    @State private var speakerRenameAnchorRect: CGRect = .zero
     @State private var editingTagsSessionID: String?
     @State private var editingTags: [String] = []
     @State private var newTagText: String = ""
@@ -3314,21 +3315,17 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 4)
                 }
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    let isCleaning: Bool = {
-                        if case .inProgress = state.cleanupStatus { return true }
-                        return false
-                    }()
-                    ForEach(Array(state.loadedTranscript.enumerated()), id: \.offset) { _, record in
-                        transcriptRow(
-                            record: record,
-                            isCleaning: isCleaning,
-                            showingOriginal: state.showingOriginal,
-                            sessionID: selectedSession?.id,
-                            speakerNames: selectedSession?.speakerNames
-                        )
-                    }
-                }
+                let isCleaning: Bool = {
+                    if case .inProgress = state.cleanupStatus { return true }
+                    return false
+                }()
+                transcriptFlow(
+                    controller: controller,
+                    state: state,
+                    isCleaning: isCleaning,
+                    sessionID: selectedSession?.id,
+                    speakerNames: selectedSession?.speakerNames
+                )
                 .padding(16)
             }
         }
@@ -3387,54 +3384,74 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
     }
 
     @ViewBuilder
-    private func transcriptRow(record: SessionRecord, isCleaning: Bool, showingOriginal: Bool, sessionID: String? = nil, speakerNames: [String: String]? = nil) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            let speakerKey = record.speaker.storageKey
-            let isRenameable = sessionID != nil && record.speaker.isRemote
-            let label = record.speaker.displayName(speakerNames: speakerNames)
-
-            Group {
-                if isRenameable {
-                    Button(label) {
-                        speakerRenameText = label
-                        renamingSpeakerKey = speakerKey
-                    }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: Binding(
-                        get: { renamingSpeakerKey == speakerKey },
-                        set: { if !$0 { renamingSpeakerKey = nil } }
-                    )) {
-                        SpeakerRenamePopover(
-                            text: $speakerRenameText,
-                            placeholder: record.speaker.displayLabel
-                        ) {
-                            guard let sid = sessionID else { return }
-                            var names = speakerNames ?? [:]
-                            let trimmed = speakerRenameText.trimmingCharacters(in: .whitespaces)
-                            if trimmed.isEmpty || trimmed == record.speaker.displayLabel {
-                                names.removeValue(forKey: speakerKey)
-                            } else {
-                                names[speakerKey] = trimmed
-                            }
-                            controller.updateSessionSpeakerNames(sessionID: sid, speakerNames: names)
-                            renamingSpeakerKey = nil
-                        }
-                    }
-                } else {
-                    Text(label)
-                }
+    /// The whole transcript as one selectable text flow (drag across lines,
+    /// Cmd+A, Cmd+C). Speaker labels for renameable speakers are links that
+    /// open the rename popover anchored at the clicked label.
+    private func transcriptFlow(
+        controller: NotesController,
+        state: NotesState,
+        isCleaning: Bool,
+        sessionID: String?,
+        speakerNames: [String: String]?
+    ) -> some View {
+        let lines = state.loadedTranscript.map { record in
+            TranscriptFlow.Line(
+                timestamp: nil,
+                speakerLabel: record.speaker.displayName(speakerNames: speakerNames),
+                speakerColor: NSColor(record.speaker.color),
+                renameKey: (sessionID != nil && record.speaker.isRemote) ? record.speaker.storageKey : nil,
+                text: state.showingOriginal ? record.text : (record.cleanedText ?? record.text),
+                textIsSecondary: isCleaning && record.cleanedText == nil
+            )
+        }
+        return SelectableTextFlow(
+            attributedText: TranscriptFlow.attributed(lines: lines, showsTimestampColumn: false),
+            onLinkClick: { url, rect in
+                guard let key = TranscriptFlow.renameKey(from: url) else { return false }
+                speakerRenameText = speakerNames?[key] ?? defaultSpeakerLabel(forKey: key)
+                speakerRenameAnchorRect = rect
+                renamingSpeakerKey = key
+                return true
             }
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(record.speaker.color)
-            .frame(minWidth: 36, alignment: .trailing)
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .popover(
+            isPresented: Binding(
+                get: { renamingSpeakerKey != nil },
+                set: { if !$0 { renamingSpeakerKey = nil } }
+            ),
+            attachmentAnchor: .rect(.rect(speakerRenameAnchorRect))
+        ) {
+            SpeakerRenamePopover(
+                text: $speakerRenameText,
+                placeholder: defaultSpeakerLabel(forKey: renamingSpeakerKey ?? "")
+            ) {
+                guard let sid = sessionID, let key = renamingSpeakerKey else {
+                    renamingSpeakerKey = nil
+                    return
+                }
+                var names = speakerNames ?? [:]
+                let trimmed = speakerRenameText.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty || trimmed == defaultSpeakerLabel(forKey: key) {
+                    names.removeValue(forKey: key)
+                } else {
+                    names[key] = trimmed
+                }
+                controller.updateSessionSpeakerNames(sessionID: sid, speakerNames: names)
+                renamingSpeakerKey = nil
+            }
+        }
+    }
 
-            let displayText = showingOriginal ? record.text : (record.cleanedText ?? record.text)
-            Text(displayText)
-                .font(.system(size: 13))
-                .foregroundStyle(
-                    isCleaning && record.cleanedText == nil ? .secondary : .primary
-                )
-                .textSelection(.enabled)
+    private func defaultSpeakerLabel(forKey key: String) -> String {
+        switch key {
+        case "you": return "You"
+        case "them": return "Them"
+        default:
+            if key.hasPrefix("remote_"), let n = Int(key.dropFirst("remote_".count)) {
+                return "Speaker \(n)"
+            }
+            return "Speaker"
         }
     }
 
@@ -3454,46 +3471,79 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
 
     // MARK: - Markdown Rendering
 
+    private enum NotesFlowItem {
+        case flow(NSAttributedString)
+        case image(altText: String, relativePath: String)
+        case fileLink(label: String, relativePath: String)
+    }
+
     private func markdownContent(_ markdown: String, sessionDirectory: URL? = nil) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            let sections = parseMarkdownSections(markdown)
-            ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
-                if let heading = section.heading {
-                    Text(heading)
-                        .font(.system(size: section.level == 1 ? 18 : 15, weight: .bold))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, section.level == 1 ? 4 : 2)
-                }
-                if !section.body.isEmpty {
-                    sectionBodyView(section.body, sessionDirectory: sessionDirectory)
+            let items = notesFlowItems(markdown)
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                switch item {
+                case .flow(let attributed):
+                    SelectableTextFlow(
+                        attributedText: attributed,
+                        onLinkClick: { url, _ in openNotesLink(url, sessionDirectory: sessionDirectory) }
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                case .image(let altText, let relativePath):
+                    localImagePreview(relativePath: relativePath, altText: altText, sessionDirectory: sessionDirectory)
+                case .fileLink(let label, let relativePath):
+                    localAttachmentPreview(label: label, relativePath: relativePath, sessionDirectory: sessionDirectory)
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private func sectionBodyView(_ body: String, sessionDirectory: URL?) -> some View {
-        let blocks = NoteAssetMarkdownParser.parseBody(body)
-        ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-            switch block {
-            case .text(let text):
-                if let attributed = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-                    Text(attributed)
-                        .font(.system(size: 13))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    Text(text)
-                        .font(.system(size: 13))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+    /// Merges headings and text blocks into contiguous selectable flows so
+    /// selection spans the whole notes document; image and attachment previews
+    /// stay as interactive views between flows.
+    private func notesFlowItems(_ markdown: String) -> [NotesFlowItem] {
+        var items: [NotesFlowItem] = []
+        var flow = NSMutableAttributedString()
+
+        func appendBlock(_ block: NSAttributedString) {
+            if flow.length > 0 {
+                flow.append(MarkdownTextFlow.blockSeparator())
+            }
+            flow.append(block)
+        }
+        func flushFlow() {
+            guard flow.length > 0 else { return }
+            items.append(.flow(flow))
+            flow = NSMutableAttributedString()
+        }
+
+        for section in parseMarkdownSections(markdown) {
+            if let heading = section.heading {
+                appendBlock(MarkdownTextFlow.heading(heading, level: section.level))
+            }
+            guard !section.body.isEmpty else { continue }
+            for block in NoteAssetMarkdownParser.parseBody(section.body) {
+                switch block {
+                case .text(let text):
+                    appendBlock(MarkdownTextFlow.inlineMarkdown(text))
+                case .image(let altText, let relativePath):
+                    flushFlow()
+                    items.append(.image(altText: altText, relativePath: relativePath))
+                case .fileLink(let label, let relativePath):
+                    flushFlow()
+                    items.append(.fileLink(label: label, relativePath: relativePath))
                 }
-            case .image(let altText, let relativePath):
-                localImagePreview(relativePath: relativePath, altText: altText, sessionDirectory: sessionDirectory)
-            case .fileLink(let label, let relativePath):
-                localAttachmentPreview(label: label, relativePath: relativePath, sessionDirectory: sessionDirectory)
             }
         }
+        flushFlow()
+        return items
+    }
+
+    private func openNotesLink(_ url: URL, sessionDirectory: URL?) -> Bool {
+        if url.scheme == nil, let sessionDirectory {
+            let resolvedURL = sessionDirectory.appendingPathComponent(url.relativeString)
+            return NSWorkspace.shared.open(resolvedURL)
+        }
+        return NSWorkspace.shared.open(url)
     }
 
     @ViewBuilder
