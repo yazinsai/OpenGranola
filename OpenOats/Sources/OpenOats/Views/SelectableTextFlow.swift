@@ -137,12 +137,16 @@ enum TranscriptFlow {
         }
     }
 
-    static func attributed(lines: [Line], showsTimestampColumn: Bool) -> NSAttributedString {
+    static func attributed(
+        lines: [Line],
+        showsTimestampColumn: Bool,
+        timestampColumnWidth: CGFloat = 34
+    ) -> NSAttributedString {
         let timestampFont = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
         let bodyFont = NSFont.systemFont(ofSize: 13)
         let speakerFont = speakerFont()
 
-        let timestampWidth: CGFloat = 34
+        let timestampWidth = timestampColumnWidth
         let speakerWidth = speakerColumnWidth(forLabels: lines.map(\.speakerLabel))
         let speakerRightEdge = showsTimestampColumn ? timestampWidth + 6 + speakerWidth : speakerWidth
         let textStart = speakerRightEdge + (showsTimestampColumn ? 6 : 8)
