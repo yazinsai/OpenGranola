@@ -1510,12 +1510,18 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
     private func detailToolbar(controller: NotesController, state: NotesState) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
+                Text("View")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+
                 Picker("View", selection: $detailViewMode) {
                     ForEach(MeetingDetailViewMode.allCases, id: \.self) { mode in
                         Text(mode.rawValue).tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .frame(minWidth: 120, maxWidth: 220)
                 .layoutPriority(1)
 
