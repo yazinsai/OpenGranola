@@ -55,7 +55,8 @@ final class CalendarManager {
 
     // MARK: - Event Lookup
 
-    /// Find the calendar event that best overlaps the given date (typically now).
+    /// Find the calendar event the given date (typically now) most likely belongs to.
+    /// Real meetings are preferred over personal blocks — see `CalendarEventMatcher`.
     /// Returns nil if no event is found or access is not authorized.
     func currentEvent(
         at date: Date = Date(),
@@ -74,20 +75,11 @@ final class CalendarManager {
             end: windowEnd,
             calendars: calendars
         )
-        let events = store.events(matching: predicate)
-
-        // Prefer the event whose start is closest to now, breaking ties by duration
-        let best = events
+        let candidates = store.events(matching: predicate)
             .filter { !$0.isAllDay }
-            .min { a, b in
-                let distA = abs(a.startDate.timeIntervalSince(date))
-                let distB = abs(b.startDate.timeIntervalSince(date))
-                if distA != distB { return distA < distB }
-                return a.startDate < b.startDate
-            }
+            .map { CalendarEvent(from: $0) }
 
-        guard let best else { return nil }
-        return CalendarEvent(from: best)
+        return CalendarEventMatcher.bestMatch(among: candidates, at: date)
     }
 
     /// Upcoming calendar events starting within the given time window, ordered by start date.
@@ -227,6 +219,46 @@ extension Participant {
             name: attendee.name,
             email: attendee.url.absoluteString
                 .replacingOccurrences(of: "mailto:", with: "")
+        )
+    }
+}
+
+// MARK: - Candidate Ranking
+
+/// Picks which of several overlapping calendar events a recording belongs to.
+///
+/// Start-time proximity alone is not enough. Personal blocks — family events,
+/// focus time, reminders — routinely start on the same clock boundary as a real
+/// meeting, and when the distances tie the winner is whatever order EventKit
+/// happened to return. Events that carry invitees or a conference link are
+/// ranked ahead of those that carry neither, so a genuine meeting always beats a
+/// solo block that merely overlaps it.
+enum CalendarEventMatcher {
+    /// True when the event looks like something worth recording: it has invitees,
+    /// or a join link / online-meeting hint.
+    static func isLikelyMeeting(_ event: CalendarEvent) -> Bool {
+        event.isOnlineMeeting || !event.participants.isEmpty
+    }
+
+    /// Returns the best match for `date`, or nil when there are no candidates.
+    static func bestMatch(among events: [CalendarEvent], at date: Date) -> CalendarEvent? {
+        events.min { lhs, rhs in
+            sortKey(for: lhs, at: date) < sortKey(for: rhs, at: date)
+        }
+    }
+
+    /// Lexicographic ranking key, lowest wins: real meetings first, then the
+    /// closest start, then the shorter event. `startDate` keeps ties deterministic
+    /// rather than dependent on EventKit's ordering.
+    private static func sortKey(
+        for event: CalendarEvent,
+        at date: Date
+    ) -> (Int, TimeInterval, TimeInterval, Date) {
+        (
+            isLikelyMeeting(event) ? 0 : 1,
+            abs(event.startDate.timeIntervalSince(date)),
+            event.endDate.timeIntervalSince(event.startDate),
+            event.startDate
         )
     }
 }
