@@ -59,16 +59,23 @@ actor DiarizationManager {
 
         guard bestOverlap > 0 else { return .them }
 
-        // If only one speaker was detected in the entire session, fall back to .them
-        // for backward compatibility (no point labeling "Speaker 1" when there's only one).
-        let activeSpeakers = speakers.values.filter { $0.hasSegments }
-        if activeSpeakers.count <= 1 {
-            return .them
-        }
+        return Self.speaker(forDiarizerIndex: bestSpeaker)
+    }
 
-        // Map diarizer speaker index to Speaker enum
-        // Index 0 → .remote(1), index 1 → .remote(2), etc.
-        return .remote(bestSpeaker + 1)
+    /// Maps a diarizer cluster index to a stable `Speaker` label.
+    ///
+    /// The first cluster stays `.them`, so a session with one remote voice still
+    /// reads "Them" rather than "Speaker 1". Later clusters continue that numbering
+    /// — "Them" is speaker 1, so cluster 1 is "Speaker 2".
+    ///
+    /// The mapping deliberately depends only on the index, never on how many
+    /// clusters exist *so far*. `dominantSpeaker` runs live, once per utterance,
+    /// while the diarizer is still discovering speakers, so a "only one speaker
+    /// known yet, call it .them" rule labels one voice `.them` early and
+    /// `.remote(1)` from the moment a second voice appears. Nothing revisits the
+    /// earlier utterances, so a single participant ends up split across two labels.
+    nonisolated static func speaker(forDiarizerIndex index: Int) -> Speaker {
+        index <= 0 ? .them : .remote(index + 1)
     }
 
     /// Returns diarized speaker runs overlapping the given range.
@@ -82,14 +89,15 @@ actor DiarizationManager {
 
         let queryStart = Float(startTime)
         let queryEnd = Float(endTime)
-        let activeSpeakers = speakers.values.filter { $0.hasSegments }
+        let activeSpeakers = speakers.filter { $0.value.hasSegments }
 
+        // One voice owns the whole range; label it the same way dominantSpeaker would.
         if activeSpeakers.count <= 1 {
             return [
                 BatchTranscriptionSegmentLayout.SpeakerRun(
                     startTime: startTime,
                     endTime: endTime,
-                    speaker: .them
+                    speaker: Self.speaker(forDiarizerIndex: activeSpeakers.first?.key ?? 0)
                 )
             ]
         }
@@ -97,7 +105,7 @@ actor DiarizationManager {
         var runs: [BatchTranscriptionSegmentLayout.SpeakerRun] = []
 
         for (index, speaker) in speakers {
-            let mappedSpeaker = Speaker.remote(index + 1)
+            let mappedSpeaker = Self.speaker(forDiarizerIndex: index)
             let allSegments = speaker.finalizedSegments + speaker.tentativeSegments
             for segment in allSegments {
                 let overlapStart = max(segment.startTime, queryStart)
