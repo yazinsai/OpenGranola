@@ -441,6 +441,18 @@ actor SessionRepository {
             ?? existingMetadata?.startedAt
             ?? Date()
 
+        // Names the user set by hand always win; otherwise take them from the
+        // calendar event, which only happens when the mapping is unambiguous.
+        let speakerNames = existingMetadata?.speakerNames ?? {
+            guard let event = metadata.calendarEvent else { return nil }
+            let seeded = SpeakerNameSeeder.seededNames(
+                remoteSpeakerKeys: SpeakerNameSeeder.remoteSpeakerKeys(in: metadata.utterances),
+                participantNames: event.invitedParticipantDisplayNames,
+                recorderName: NSFullUserName()
+            )
+            return seeded.isEmpty ? nil : seeded
+        }()
+
         // Write session.json with final metadata
         let sessionMeta = SessionMetadata(
             id: sessionID,
@@ -455,7 +467,8 @@ actor SessionRepository {
             engine: metadata.engine,
             calendarEvent: metadata.calendarEvent,
             transcriptIssue: metadata.transcriptIssue,
-            transcriptRecovery: nil
+            transcriptRecovery: nil,
+            speakerNames: speakerNames
         )
         writeSessionMetadata(sessionMeta, sessionID: sessionID)
 
