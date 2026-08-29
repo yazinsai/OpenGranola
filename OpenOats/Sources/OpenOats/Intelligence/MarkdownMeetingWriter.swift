@@ -25,6 +25,8 @@ enum MarkdownMeetingWriter {
         let language: String?
         let meetingApp: String?
         let engine: String?
+        /// Per-session speaker display names, keyed by `Speaker.storageKey`.
+        let speakerNames: [String: String]?
 
         init(from index: SessionIndex) {
             self.sessionID = index.id
@@ -34,6 +36,7 @@ enum MarkdownMeetingWriter {
             self.language = index.language
             self.meetingApp = index.meetingApp
             self.engine = index.engine
+            self.speakerNames = index.speakerNames
         }
     }
 
@@ -100,7 +103,13 @@ enum MarkdownMeetingWriter {
     static func buildMarkdown(metadata: Metadata, records: [SessionRecord], notesMarkdown: String? = nil) -> String {
         let resolvedTitle = metadata.title?.isEmpty == false ? metadata.title! : "Meeting"
         let frontmatter = buildFrontmatter(metadata: metadata, records: records, title: resolvedTitle)
-        let body = buildBody(title: resolvedTitle, records: records, startedAt: metadata.startedAt, notesMarkdown: notesMarkdown)
+        let body = buildBody(
+            title: resolvedTitle,
+            records: records,
+            startedAt: metadata.startedAt,
+            notesMarkdown: notesMarkdown,
+            speakerNames: metadata.speakerNames
+        )
         return frontmatter + "\n" + body
     }
 
@@ -122,7 +131,7 @@ enum MarkdownMeetingWriter {
         let speakerLabels: [String] = {
             var seen: [String] = []
             for r in records {
-                let label = r.speaker.displayLabel
+                let label = speakerLabel(r.speaker, speakerNames: metadata.speakerNames)
                 if !seen.contains(label) { seen.append(label) }
             }
             return seen.isEmpty ? ["You", "Them"] : seen
@@ -162,7 +171,13 @@ enum MarkdownMeetingWriter {
 
     // MARK: - Body
 
-    static func buildBody(title: String, records: [SessionRecord], startedAt: Date, notesMarkdown: String? = nil) -> String {
+    static func buildBody(
+        title: String,
+        records: [SessionRecord],
+        startedAt: Date,
+        notesMarkdown: String? = nil,
+        speakerNames: [String: String]? = nil
+    ) -> String {
         var parts: [String] = []
 
         // H1 title
@@ -181,7 +196,11 @@ enum MarkdownMeetingWriter {
         parts.append("## Transcript")
         parts.append("")
 
-        let transcriptLines = formatTranscriptLines(records: records, startedAt: startedAt)
+        let transcriptLines = formatTranscriptLines(
+            records: records,
+            startedAt: startedAt,
+            speakerNames: speakerNames
+        )
         parts.append(transcriptLines)
 
         return parts.joined(separator: "\n")
@@ -189,7 +208,11 @@ enum MarkdownMeetingWriter {
 
     // MARK: - Transcript Formatting
 
-    static func formatTranscriptLines(records: [SessionRecord], startedAt: Date) -> String {
+    static func formatTranscriptLines(
+        records: [SessionRecord],
+        startedAt: Date,
+        speakerNames: [String: String]? = nil
+    ) -> String {
         var lines: [String] = []
 
         for record in records {
@@ -197,7 +220,7 @@ enum MarkdownMeetingWriter {
                 record.timestamp,
                 relativeTo: startedAt
             )
-            let speaker = speakerLabel(record.speaker)
+            let speaker = speakerLabel(record.speaker, speakerNames: speakerNames)
             let text = record.cleanedText ?? record.text
             lines.append("[\(relativeTimestamp)] **\(speaker):** \(text)")
             lines.append("")
@@ -245,8 +268,8 @@ enum MarkdownMeetingWriter {
 
     // MARK: - Speaker Label
 
-    static func speakerLabel(_ speaker: Speaker) -> String {
-        speaker.displayLabel
+    static func speakerLabel(_ speaker: Speaker, speakerNames: [String: String]? = nil) -> String {
+        speaker.displayName(speakerNames: speakerNames)
     }
 
     // MARK: - YAML Quoting

@@ -1362,7 +1362,8 @@ actor SessionRepository {
 
         for record in records {
             let displayText = record.cleanedText ?? record.text
-            result += "[\(timeFmt.string(from: record.timestamp))] \(record.speaker.displayLabel): \(displayText)\n"
+            let speaker = record.speaker.displayName(speakerNames: meta?.speakerNames)
+            result += "[\(timeFmt.string(from: record.timestamp))] \(speaker): \(displayText)\n"
         }
 
         return result
@@ -1964,7 +1965,8 @@ actor SessionRepository {
             source: meta?.source,
             meetingFamilyKey: meta?.calendarEvent.flatMap { MeetingHistoryResolver.seriesHistoryKey(for: $0) },
             transcriptIssue: meta?.transcriptIssue,
-            transcriptRecovery: meta?.transcriptRecovery
+            transcriptRecovery: meta?.transcriptRecovery,
+            speakerNames: meta?.speakerNames
         )
 
         let outputTarget = MarkdownMeetingWriter.write(
