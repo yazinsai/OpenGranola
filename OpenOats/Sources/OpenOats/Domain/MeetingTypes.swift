@@ -290,11 +290,18 @@ enum MeetingHistoryResolver {
 struct MeetingMetadata: Sendable, Equatable, Codable {
     let detectionContext: DetectionContext?
     let calendarEvent: CalendarEvent?
+    /// True when the user explicitly picked `calendarEvent` for this session.
+    /// Finalization re-resolves automatic bindings against the session's real
+    /// interval, but never second-guesses an explicit choice.
+    var calendarEventIsUserChosen: Bool = false
     let title: String?
     let startedAt: Date
     var endedAt: Date?
 
-    static func manual(calendarEvent: CalendarEvent? = nil) -> MeetingMetadata {
+    static func manual(
+        calendarEvent: CalendarEvent? = nil,
+        calendarEventIsUserChosen: Bool = false
+    ) -> MeetingMetadata {
         let now = Date()
         return MeetingMetadata(
             detectionContext: DetectionContext(
@@ -304,6 +311,7 @@ struct MeetingMetadata: Sendable, Equatable, Codable {
                 calendarEvent: calendarEvent
             ),
             calendarEvent: calendarEvent,
+            calendarEventIsUserChosen: calendarEventIsUserChosen,
             title: calendarEvent?.title,
             startedAt: now, endedAt: nil
         )

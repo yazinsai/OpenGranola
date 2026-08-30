@@ -82,6 +82,32 @@ final class CalendarManager {
         return CalendarEventMatcher.bestMatch(among: candidates, at: date)
     }
 
+    /// Find the calendar event a finished recording most likely belongs to,
+    /// given the recording's real interval. Unlike `currentEvent(at:)`, which
+    /// ranks by proximity to a single instant, this prefers the event that
+    /// covers the most of the interval — see
+    /// `CalendarEventMatcher.bestMatch(among:overlapping:)`.
+    /// Returns nil if no event is found or access is not authorized.
+    func bestEvent(
+        overlapping interval: DateInterval,
+        excludingCalendarIDs: [String] = []
+    ) -> CalendarEvent? {
+        guard accessState == .authorized else { return nil }
+        let calendars = eventCalendars(excludingCalendarIDs: Set(excludingCalendarIDs))
+        guard !calendars.isEmpty else { return nil }
+
+        let predicate = store.predicateForEvents(
+            withStart: interval.start,
+            end: interval.end,
+            calendars: calendars
+        )
+        let candidates = store.events(matching: predicate)
+            .filter { !$0.isAllDay }
+            .map { CalendarEvent(from: $0) }
+
+        return CalendarEventMatcher.bestMatch(among: candidates, overlapping: interval)
+    }
+
     /// Upcoming calendar events starting within the given time window, ordered by start date.
     /// Returns an empty array if access is not authorized.
     func upcomingEvents(
@@ -247,6 +273,20 @@ enum CalendarEventMatcher {
         }
     }
 
+    /// Returns the best match for a finished recording spanning `interval`, or
+    /// nil when there are no candidates. Unlike `bestMatch(among:at:)`, which
+    /// ranks by proximity to a single instant, this ranks by how much of the
+    /// interval each event covers — a meeting overlapping the whole recording
+    /// outranks one that merely shares its start.
+    static func bestMatch(
+        among events: [CalendarEvent],
+        overlapping interval: DateInterval
+    ) -> CalendarEvent? {
+        events.min { lhs, rhs in
+            sortKey(for: lhs, overlapping: interval) < sortKey(for: rhs, overlapping: interval)
+        }
+    }
+
     /// Lexicographic ranking key, lowest wins: real meetings first, then the
     /// closest start, then the shorter event. `startDate` keeps ties deterministic
     /// rather than dependent on EventKit's ordering.
@@ -260,6 +300,32 @@ enum CalendarEventMatcher {
             event.endDate.timeIntervalSince(event.startDate),
             event.startDate
         )
+    }
+
+    /// Lexicographic ranking key for interval matching, lowest wins: real
+    /// meetings first, then the largest overlap with the recording, then the
+    /// closest start, then the shorter event. `startDate` keeps ties
+    /// deterministic rather than dependent on EventKit's ordering.
+    private static func sortKey(
+        for event: CalendarEvent,
+        overlapping interval: DateInterval
+    ) -> (Int, TimeInterval, TimeInterval, TimeInterval, Date) {
+        (
+            isLikelyMeeting(event) ? 0 : 1,
+            -overlapDuration(of: event, with: interval),
+            abs(event.startDate.timeIntervalSince(interval.start)),
+            event.endDate.timeIntervalSince(event.startDate),
+            event.startDate
+        )
+    }
+
+    private static func overlapDuration(
+        of event: CalendarEvent,
+        with interval: DateInterval
+    ) -> TimeInterval {
+        guard event.endDate > event.startDate else { return 0 }
+        let eventInterval = DateInterval(start: event.startDate, end: event.endDate)
+        return interval.intersection(with: eventInterval)?.duration ?? 0
     }
 }
 
