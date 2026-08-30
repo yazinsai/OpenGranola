@@ -1510,12 +1510,18 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
     private func detailToolbar(controller: NotesController, state: NotesState) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
+                Text("View")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+
                 Picker("View", selection: $detailViewMode) {
                     ForEach(MeetingDetailViewMode.allCases, id: \.self) { mode in
                         Text(mode.rawValue).tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .frame(minWidth: 120, maxWidth: 220)
                 .layoutPriority(1)
 
@@ -1556,6 +1562,39 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
         }
 
         copyCurrentContentButton(state: state)
+        exportCurrentContentMenu(state: state)
+    }
+
+    private func exportCurrentContentMenu(state: NotesState) -> some View {
+        Menu {
+            ForEach(ExportFormat.allCases, id: \.self) { format in
+                Button(format.menuTitle) {
+                    ContentExporter.export(
+                        plainText: currentContentPlainText(state: state),
+                        attributedText: currentContentAttributedText(state: state),
+                        format: format,
+                        suggestedFileName: exportSuggestedFileName(state: state)
+                    )
+                }
+            }
+        } label: {
+            Label("Export", systemImage: "square.and.arrow.up")
+                .font(.system(size: 12))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .disabled(copyContentIsEmpty(state: state))
+        .help("Export as file")
+    }
+
+    private func exportSuggestedFileName(state: NotesState) -> String {
+        let session = selectedSession(in: state)
+        let title = session?.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var name = (title?.isEmpty == false ? title! : "Meeting")
+        if let startedAt = session?.startedAt {
+            name += " " + startedAt.formatted(.iso8601.year().month().day())
+        }
+        return "\(name) - \(detailViewMode.rawValue)"
     }
 
     @ViewBuilder
@@ -3724,22 +3763,93 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
     // MARK: - Actions
 
     private func copyCurrentContent(state: NotesState) {
-        let text: String
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(currentContentPlainText(state: state), forType: .string)
+    }
+
+    private func currentContentPlainText(state: NotesState) -> String {
         switch detailViewMode {
         case .transcript:
-            text = state.loadedTranscript.map { record in
+            return state.loadedTranscript.map { record in
                 let label = record.speaker.displayLabel
                 let content = state.showingOriginal ? record.text : (record.cleanedText ?? record.text)
                 return "[\(MeetingDetailPaneFormatters.transcriptTimeFormatter.string(from: record.timestamp))] \(label): \(content)"
             }.joined(separator: "\n")
         case .notes:
-            text = state.loadedTranscript.isEmpty ? state.manualNotesDraft : (state.loadedNotes?.markdown ?? "")
+            return state.loadedTranscript.isEmpty ? state.manualNotesDraft : (state.loadedNotes?.markdown ?? "")
         case .ask:
-            text = formattedAskConversation()
+            return formattedAskConversation()
+        }
+    }
+
+    private func currentContentAttributedText(state: NotesState) -> NSAttributedString {
+        switch detailViewMode {
+        case .transcript:
+            let speakerNames = selectedSession(in: state)?.speakerNames
+            let lines = state.loadedTranscript.map { record in
+                TranscriptFlow.Line(
+                    timestamp: MeetingDetailPaneFormatters.transcriptTimeFormatter.string(from: record.timestamp),
+                    speakerLabel: record.speaker.displayName(speakerNames: speakerNames),
+                    speakerColor: NSColor(record.speaker.color),
+                    renameKey: nil,
+                    text: state.showingOriginal ? record.text : (record.cleanedText ?? record.text)
+                )
+            }
+            // "HH:mm:ss" needs a wider column than the on-screen "HH:mm" default.
+            return TranscriptFlow.attributed(lines: lines, showsTimestampColumn: true, timestampColumnWidth: 50)
+        case .notes:
+            let markdown = state.loadedTranscript.isEmpty
+                ? state.manualNotesDraft
+                : (state.loadedNotes?.markdown ?? "")
+            return notesExportAttributedText(markdown)
+        case .ask:
+            return askExportAttributedText()
+        }
+    }
+
+    /// Image and attachment blocks become placeholder lines since the export
+    /// is a text document.
+    private func notesExportAttributedText(_ markdown: String) -> NSAttributedString {
+        let flow = NSMutableAttributedString()
+        func appendBlock(_ block: NSAttributedString) {
+            if flow.length > 0 {
+                flow.append(MarkdownTextFlow.blockSeparator())
+            }
+            flow.append(block)
         }
 
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        for section in parseMarkdownSections(markdown) {
+            if let heading = section.heading {
+                appendBlock(MarkdownTextFlow.heading(heading, level: section.level))
+            }
+            guard !section.body.isEmpty else { continue }
+            for block in NoteAssetMarkdownParser.parseBody(section.body) {
+                switch block {
+                case .text(let text):
+                    appendBlock(MarkdownTextFlow.inlineMarkdown(text))
+                case .image(let altText, let relativePath):
+                    let name = altText.isEmpty ? (relativePath as NSString).lastPathComponent : altText
+                    appendBlock(MarkdownTextFlow.inlineMarkdown("*[Image: \(name)]*"))
+                case .fileLink(let label, let relativePath):
+                    let name = label.isEmpty ? (relativePath as NSString).lastPathComponent : label
+                    appendBlock(MarkdownTextFlow.inlineMarkdown("*[Attachment: \(name)]*"))
+                }
+            }
+        }
+        return flow
+    }
+
+    private func askExportAttributedText() -> NSAttributedString {
+        let flow = NSMutableAttributedString()
+        for message in askMessages {
+            if flow.length > 0 {
+                flow.append(MarkdownTextFlow.blockSeparator())
+            }
+            flow.append(MarkdownTextFlow.heading(message.role == .user ? "You" : "OpenOats", level: 3))
+            flow.append(MarkdownTextFlow.blockSeparator(gap: 4))
+            flow.append(MarkdownTextFlow.inlineMarkdown(message.text))
+        }
+        return flow
     }
 
     private func submitAskQuestion(state: NotesState) {
