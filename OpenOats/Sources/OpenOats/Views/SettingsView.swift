@@ -147,7 +147,9 @@ private struct GeneralSettingsTab: View {
                             }
                         }
 
-                    Text("When enabled, OpenOats monitors camera and microphone activation to detect when a meeting starts. No audio or video is captured until you accept the notification.")
+                    Text(settings.autoRecordDetectedMeetings
+                        ? "When enabled, OpenOats monitors camera and microphone activation to detect when a meeting starts. Automatic recording is on, so recording starts as soon as a meeting is detected."
+                        : "When enabled, OpenOats monitors camera and microphone activation to detect when a meeting starts. No audio or video is captured until you accept the notification.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
 
@@ -155,7 +157,7 @@ private struct GeneralSettingsTab: View {
                         .font(.system(size: 12))
                         .disabled(!settings.meetingAutoDetectEnabled)
 
-                    Text("Skips the confirmation prompt and starts transcribing as soon as a meeting is detected. A notification still lets you know that recording has started.")
+                    Text("Starts recording without asking. A notification is posted when recording begins. Applies to custom-added meeting apps too — if you add a browser there, any website using the microphone can start a real recording.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
 
@@ -181,7 +183,7 @@ private struct GeneralSettingsTab: View {
 
                         VStack(alignment: .leading, spacing: 10) {
                             Label("OpenOats watches for camera and microphone activation by meeting apps (Zoom, Teams, FaceTime, etc.)", systemImage: "video")
-                            Label("Only activation status is checked. No audio is captured or recorded until you accept.", systemImage: "lock.shield")
+                            Label("Only activation status is checked. No audio is captured or recorded until you accept — or, if automatic recording is enabled, until a meeting is detected (a notification is posted).", systemImage: "lock.shield")
                             Label("When a meeting is detected, you get a macOS notification to start transcribing.", systemImage: "bell")
                             Label("You can always dismiss the notification or mark it as \"not a meeting\".", systemImage: "hand.raised")
                         }

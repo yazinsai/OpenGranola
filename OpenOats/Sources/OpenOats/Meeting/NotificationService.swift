@@ -3,14 +3,16 @@ import UserNotifications
 
 /// Manages macOS notification delivery for meeting detection prompts.
 @MainActor
-final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
+// Not `final`: tests subclass this to stub delivery without touching
+// UserNotifications.
+class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     /// UNUserNotificationCenter requires the process to be a registered app
     /// bundle and raises (SIGABRT) on every API call when it isn't. That covers
     /// unbundled runs (`swift run`, which has no bundle identifier) and hosts
     /// that carry an identifier without being an app, such as the `xctest`
-    /// runner. When false, all notification methods become no-ops.
-    private let isAvailable: Bool = Bundle.main.bundleIdentifier != nil
-        && Bundle.main.bundleURL.pathExtension == "app"
+    /// runner. Injectable so tests can construct the service directly.
+    /// When false, all notification methods become no-ops.
+    private let isAvailable: Bool
     private var hasRequestedPermission = false
     private var pendingTimeoutTask: Task<Void, Never>?
 
@@ -58,7 +60,11 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         return "\(detail) Open the meeting and choose Generate Notes to try again."
     }
 
-    override init() {
+    init(
+        isAvailable: Bool = Bundle.main.bundleIdentifier != nil
+            && Bundle.main.bundleURL.pathExtension == "app"
+    ) {
+        self.isAvailable = isAvailable
         super.init()
         registerCategory()
     }
@@ -189,9 +195,12 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     /// Post an informational notification that a detected meeting is now being
     /// recorded automatically. Unlike `postMeetingDetected` this carries no
     /// actions, no accept round-trip, and no 60-second timeout/auto-removal —
-    /// it only tells the user that recording has started.
-    func postAutoRecordingStarted(appName: String?) async {
-        guard await ensurePermission() else { return }
+    /// it only tells the user that recording has started. Returns false when
+    /// the notification could not be delivered (permission denied, or
+    /// notifications unavailable) so the caller can fall back to the
+    /// tap-to-confirm prompt instead of recording silently.
+    func postAutoRecordingStarted(appName: String?) async -> Bool {
+        guard await ensurePermission() else { return false }
 
         let content = UNMutableNotificationContent()
         content.title = "Recording Started"
@@ -207,7 +216,20 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             content: content,
             trigger: nil
         )
-        try? await UNUserNotificationCenter.current().add(request)
+        do {
+            try await UNUserNotificationCenter.current().add(request)
+        } catch {
+            return false
+        }
+        return true
+    }
+
+    /// Remove the informational auto-record notification, if delivered.
+    func clearAutoRecordingStarted() {
+        guard isAvailable else { return }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(
+            withIdentifiers: [Self.autoRecordNotificationIdentifier]
+        )
     }
 
     /// Post a notification when batch transcription completes.

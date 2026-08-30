@@ -317,6 +317,13 @@ final class AppCoordinator {
                 guard let self, !Task.isCancelled else { break }
                 switch event {
                 case .accepted(let metadata):
+                    // Let the state machine decide first. Arming the auto-stop
+                    // monitors before a vetoed transition (.ending + .userStarted
+                    // is a no-op) leaves orphan monitors that survive into .idle
+                    // and kill a later manual session with a stale silence timer.
+                    let stateBefore = self.state
+                    self.handle(.userStarted(metadata), settings: self.activeSettings)
+                    guard self.state != stateBefore else { break }
                     let signal = metadata.detectionContext?.signal
                     if case .appLaunched(let app) = signal {
                         controller.startSilenceMonitoring()
@@ -327,7 +334,6 @@ final class AppCoordinator {
                             controller.startAppExitMonitoring(bundleID: app.bundleID)
                         }
                     }
-                    self.handle(.userStarted(metadata), settings: self.activeSettings)
                 case .meetingAppExited:
                     if case .recording(let meta) = self.state {
                         let signal = meta.detectionContext?.signal
