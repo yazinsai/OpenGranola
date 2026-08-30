@@ -89,7 +89,9 @@ final class OpenRouterClientTests: XCTestCase {
                 return XCTFail("Expected reasoningOnlyResponse, got \(error)")
             }
             let description = (error as? LocalizedError)?.errorDescription ?? ""
-            XCTAssertTrue(description.contains("reasoning-only"), "Unhelpful description: \(description)")
+            XCTAssertTrue(description.contains("only reasoning output"), "Unhelpful description: \(description)")
+            XCTAssertTrue(description.contains("Thinking mode"), "Unhelpful description: \(description)")
+            XCTAssertTrue(description.contains("token budget"), "Unhelpful description: \(description)")
         }
     }
 
@@ -105,9 +107,81 @@ final class OpenRouterClientTests: XCTestCase {
         }
     }
 
-    func testCompletionTextReturnsEmptyStringForNullContentWithoutReasoning() throws {
+    func testCompletionTextThrowsForWhitespaceOnlyContentWithReasoning() {
+        // Untrimmed emptiness checks let a "\n" content field pass as an answer.
+        let data = completionData(
+            message: #"{"role": "assistant", "content": "\n", "reasoning": "Okay, the user wants..."}"#
+        )
+
+        XCTAssertThrowsError(try OpenRouterClient.completionText(from: data)) { error in
+            guard case OpenRouterClient.OpenRouterError.reasoningOnlyResponse = error else {
+                return XCTFail("Expected reasoningOnlyResponse, got \(error)")
+            }
+        }
+    }
+
+    func testCompletionTextReturnsContentUntrimmedWhenItIsNotBlank() throws {
+        let data = completionData(message: #"{"role": "assistant", "content": "  Meeting notes\n"}"#)
+
+        XCTAssertEqual(try OpenRouterClient.completionText(from: data), "  Meeting notes\n")
+    }
+
+    func testCompletionTextThrowsEmptyResponseForNullContentWithoutReasoning() {
         let data = completionData(message: #"{"role": "assistant", "content": null}"#)
 
-        XCTAssertEqual(try OpenRouterClient.completionText(from: data), "")
+        XCTAssertThrowsError(try OpenRouterClient.completionText(from: data)) { error in
+            guard case OpenRouterClient.OpenRouterError.emptyResponse = error else {
+                return XCTFail("Expected emptyResponse, got \(error)")
+            }
+            let description = (error as? LocalizedError)?.errorDescription ?? ""
+            XCTAssertTrue(description.contains("Empty response"), "Unhelpful description: \(description)")
+        }
+    }
+
+    func testCompletionTextThrowsEmptyResponseWhenThereAreNoChoices() {
+        let data = Data(#"{"choices": []}"#.utf8)
+
+        XCTAssertThrowsError(try OpenRouterClient.completionText(from: data)) { error in
+            guard case OpenRouterClient.OpenRouterError.emptyResponse = error else {
+                return XCTFail("Expected emptyResponse, got \(error)")
+            }
+        }
+    }
+
+    // MARK: - Streaming completion outcome
+
+    func testStreamOutcomeFlagsReasoningOnlyStream() {
+        var outcome = OpenRouterClient.StreamOutcome()
+        outcome.record(content: nil, reasoning: "Okay, the user wants")
+        outcome.record(content: "", reasoning: " a summary...")
+
+        XCTAssertTrue(outcome.isReasoningOnly)
+    }
+
+    func testStreamOutcomeIsNotReasoningOnlyWhenContentArrives() {
+        var outcome = OpenRouterClient.StreamOutcome()
+        outcome.record(content: nil, reasoning: "Okay, the user wants")
+        outcome.record(content: "## Summary", reasoning: nil)
+
+        XCTAssertFalse(outcome.isReasoningOnly)
+    }
+
+    func testStreamOutcomeIsNotReasoningOnlyForAnOrdinaryStream() {
+        var outcome = OpenRouterClient.StreamOutcome()
+        outcome.record(content: "## Summary", reasoning: nil)
+        outcome.record(content: "\n- point", reasoning: nil)
+
+        XCTAssertFalse(outcome.isReasoningOnly)
+        XCTAssertTrue(outcome.sawContent)
+        XCTAssertFalse(outcome.sawReasoning)
+    }
+
+    func testStreamOutcomeIgnoresEmptyDeltas() {
+        var outcome = OpenRouterClient.StreamOutcome()
+        outcome.record(content: "", reasoning: "")
+
+        XCTAssertFalse(outcome.isReasoningOnly)
+        XCTAssertFalse(outcome.sawContent)
+        XCTAssertFalse(outcome.sawReasoning)
     }
 }
