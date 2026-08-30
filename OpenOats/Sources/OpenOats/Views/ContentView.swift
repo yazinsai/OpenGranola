@@ -70,6 +70,11 @@ struct ContentView: View {
 
             Divider()
 
+            // Storage write-error banner (live transcript writes failed)
+            if let storageError = coordinator.lastStorageError {
+                storageErrorBanner(message: storageError)
+            }
+
             // Post-session banner
             if let lastSession = controllerState.lastEndedSession {
                 PostSessionBanner(
@@ -408,6 +413,33 @@ struct ContentView: View {
 
     private func stopSession() {
         liveSessionController?.stopSession(settings: settings)
+    }
+
+    private func storageErrorBanner(message: String) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange)
+
+                Text("Storage error: \(message)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("app.storageErrorBanner")
+                Spacer()
+                Button("Dismiss") {
+                    coordinator.lastStorageError = nil
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier("app.storageErrorDismissButton")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial)
+
+            Divider()
+        }
     }
 
     private func openSettingsWindow() {
