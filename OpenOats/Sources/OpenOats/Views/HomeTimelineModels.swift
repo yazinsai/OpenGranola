@@ -121,3 +121,28 @@ enum HomeTimelineGrouping {
         }
     }
 }
+
+/// Which calendar notice, if any, the home timeline should show.
+enum HomeTimelineCalendarNotice: Equatable {
+    case integrationOff
+    case accessDenied
+    case waitingForAccess
+
+    /// A `nil` access state means the `CalendarManager` has not been built yet.
+    /// That is an internal condition, not a pending permission decision, so it
+    /// must never surface the "waiting for access" notice.
+    static func resolve(
+        integrationEnabled: Bool,
+        accessState: CalendarManager.AccessState?
+    ) -> HomeTimelineCalendarNotice? {
+        guard integrationEnabled else { return .integrationOff }
+        switch accessState {
+        case .denied:
+            return .accessDenied
+        case .notDetermined:
+            return .waitingForAccess
+        case .authorized, nil:
+            return nil
+        }
+    }
+}

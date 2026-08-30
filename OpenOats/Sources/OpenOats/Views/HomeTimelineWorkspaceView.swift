@@ -79,7 +79,7 @@ struct HomeTimelineWorkspaceView: View {
     }
 
     @ViewBuilder
-    private func workspace(controller: NotesController, accessState: CalendarManager.AccessState) -> some View {
+    private func workspace(controller: NotesController, accessState: CalendarManager.AccessState?) -> some View {
         let groups = HomeTimelineGrouping.groups(
             calendarEvents: calendarEvents,
             savedSessions: controller.state.sessionHistory
@@ -119,7 +119,7 @@ struct HomeTimelineWorkspaceView: View {
     private func timelinePane(
         controller: NotesController,
         groups: [HomeTimelineDayGroup],
-        accessState: CalendarManager.AccessState,
+        accessState: CalendarManager.AccessState?,
         isDetailVisible: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -227,10 +227,14 @@ struct HomeTimelineWorkspaceView: View {
 
     @ViewBuilder
     private func calendarAccessNotice(
-        accessState: CalendarManager.AccessState,
+        accessState: CalendarManager.AccessState?,
         hasCalendarEntries: Bool
     ) -> some View {
-        if !settings.calendarIntegrationEnabled {
+        switch HomeTimelineCalendarNotice.resolve(
+            integrationEnabled: settings.calendarIntegrationEnabled,
+            accessState: accessState
+        ) {
+        case .integrationOff:
             HomeTimelineNotice(
                 icon: "calendar.badge.exclamationmark",
                 title: "Calendar integration is off",
@@ -238,7 +242,7 @@ struct HomeTimelineWorkspaceView: View {
                 actionTitle: "Open Settings",
                 action: nil
             )
-        } else if accessState == .denied {
+        case .accessDenied:
             HomeTimelineNotice(
                 icon: "exclamationmark.triangle.fill",
                 title: "Calendar access denied",
@@ -246,7 +250,7 @@ struct HomeTimelineWorkspaceView: View {
                 actionTitle: "Open Privacy Settings",
                 action: openCalendarPrivacySettings
             )
-        } else if accessState == .notDetermined {
+        case .waitingForAccess:
             HomeTimelineNotice(
                 icon: "calendar",
                 title: "Waiting for calendar access",
@@ -254,10 +258,12 @@ struct HomeTimelineWorkspaceView: View {
                 actionTitle: nil,
                 action: nil
             )
+        case nil:
+            EmptyView()
         }
     }
 
-    private func emptyTimeline(accessState: CalendarManager.AccessState) -> some View {
+    private func emptyTimeline(accessState: CalendarManager.AccessState?) -> some View {
         let copy = emptyTimelineCopy(accessState: accessState)
 
         return ContentUnavailableView {
@@ -269,7 +275,7 @@ struct HomeTimelineWorkspaceView: View {
         .padding(.vertical, 30)
     }
 
-    private func emptyTimelineCopy(accessState: CalendarManager.AccessState) -> (title: String, description: String) {
+    private func emptyTimelineCopy(accessState: CalendarManager.AccessState?) -> (title: String, description: String) {
         if !settings.calendarIntegrationEnabled {
             return (
                 "No saved meetings yet",
@@ -362,7 +368,19 @@ struct HomeTimelineWorkspaceView: View {
 
     @MainActor
     private func refreshCalendarEvents() async {
-        guard settings.calendarIntegrationEnabled, let manager = container.calendarManager else {
+        guard settings.calendarIntegrationEnabled else {
+            calendarEvents = []
+            return
+        }
+
+        if container.calendarManager == nil {
+            // Reopening the hidden main window (makeKeyAndOrderFront) fires no
+            // onAppear, so the manager may not exist yet. Mirror the Settings-tab
+            // repair (CalendarSettingsView.refresh) and build it from the refresh loop.
+            container.updateCalendarIntegration(enabled: true)
+        }
+
+        guard let manager = container.calendarManager else {
             calendarEvents = []
             return
         }
@@ -401,16 +419,19 @@ struct HomeTimelineWorkspaceView: View {
         calendarEvents = combined
     }
 
-    private var currentAccessState: CalendarManager.AccessState {
-        guard settings.calendarIntegrationEnabled else { return .notDetermined }
-        return container.calendarManager?.accessState ?? .notDetermined
+    /// The current calendar access state, or nil when the `CalendarManager` has
+    /// not been built yet. A missing manager is an internal condition, not a
+    /// pending permission decision, so it must not read as `.notDetermined`.
+    private var currentAccessState: CalendarManager.AccessState? {
+        guard settings.calendarIntegrationEnabled else { return nil }
+        return container.calendarManager?.accessState
     }
 
-    private func refreshTaskID(for accessState: CalendarManager.AccessState) -> String {
+    private func refreshTaskID(for accessState: CalendarManager.AccessState?) -> String {
         "\(settings.calendarIntegrationEnabled)-\(accessStateTag(for: accessState))-\(refreshTick)"
     }
 
-    private func accessStateTag(for accessState: CalendarManager.AccessState) -> String {
+    private func accessStateTag(for accessState: CalendarManager.AccessState?) -> String {
         switch accessState {
         case .authorized:
             return "authorized"
@@ -418,16 +439,20 @@ struct HomeTimelineWorkspaceView: View {
             return "denied"
         case .notDetermined:
             return "not-determined"
+        case nil:
+            return "unavailable"
         }
     }
 
-    private func refreshInterval(for accessState: CalendarManager.AccessState) -> Duration {
+    private func refreshInterval(for accessState: CalendarManager.AccessState?) -> Duration {
         switch accessState {
         case .authorized:
             return .seconds(60)
         case .denied:
             return .seconds(300)
-        case .notDetermined:
+        case .notDetermined, nil:
+            // Poll quickly: refreshCalendarEvents() builds a missing manager, so a
+            // reopened window self-heals on the next tick.
             return .seconds(1)
         }
     }
