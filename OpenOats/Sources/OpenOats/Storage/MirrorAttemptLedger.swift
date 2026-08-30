@@ -22,6 +22,11 @@ import Foundation
 /// the attempt that produced it. A report from a superseded attempt is ignored
 /// — otherwise a slow success could clear the pending flag of a newer attempt
 /// that actually failed, silently dropping the durable retry.
+///
+/// An attempt that was running when the notes folder changed is superseded in
+/// the same way, because it wrote to the folder the user has since replaced:
+/// its success says nothing about the new destination and its failure must not
+/// back the new destination off.
 struct MirrorAttemptLedger: Sendable {
     /// Minimum interval between retries of a session whose last attempt failed.
     let retryBackoff: TimeInterval
@@ -35,6 +40,23 @@ struct MirrorAttemptLedger: Sendable {
     private var lastFailureDates: [String: Date] = [:]
     /// Sessions that asked for a mirror while one was already running.
     private var rescheduleRequests: Set<String> = []
+    /// Attempts that were running when the notes folder changed, and so wrote
+    /// to a destination the user has since replaced.
+    private var staleDestinationAttemptIDs: Set<Int> = []
+
+    /// What the caller must do with a reported attempt.
+    enum AttemptOutcome: Equatable {
+        /// The report belongs to an attempt this ledger no longer tracks, such
+        /// as one for a session that was deleted. Touch no persisted state.
+        case ignored
+        /// The report describes the current destination. Persist the pending
+        /// flag it implies.
+        case recorded
+        /// The attempt wrote to a destination that has since been replaced, so
+        /// the current one still has no export. The session stays pending and
+        /// must be re-driven against the new destination.
+        case staleDestination
+    }
 
     init(retryBackoff: TimeInterval) {
         self.retryBackoff = retryBackoff
@@ -49,17 +71,22 @@ struct MirrorAttemptLedger: Sendable {
         return nextAttemptID
     }
 
-    /// Record the outcome of an attempt.
-    /// - Returns: `false` when the report comes from a superseded attempt, in
-    ///   which case the caller must not touch any persisted state.
+    /// Record the outcome of an attempt, and free the session's attempt slot.
+    /// - Returns: how the caller must treat the report.
     mutating func finishAttempt(
         sessionID: String,
         attempt: Int,
         succeeded: Bool,
         now: Date = Date()
-    ) -> Bool {
-        guard inFlightAttemptIDs[sessionID] == attempt else { return false }
+    ) -> AttemptOutcome {
+        guard inFlightAttemptIDs[sessionID] == attempt else { return .ignored }
         inFlightAttemptIDs[sessionID] = nil
+        guard staleDestinationAttemptIDs.remove(attempt) == nil else {
+            // Neither outcome describes the current notes folder, so record no
+            // success and no backoff. The session keeps its durable retry.
+            pendingSessionIDs.insert(sessionID)
+            return .staleDestination
+        }
         if succeeded {
             pendingSessionIDs.remove(sessionID)
             lastFailureDates[sessionID] = nil
@@ -67,7 +94,7 @@ struct MirrorAttemptLedger: Sendable {
             pendingSessionIDs.insert(sessionID)
             lastFailureDates[sessionID] = now
         }
-        return true
+        return .recorded
     }
 
     /// Pending sessions the retry pass may drive right now: no attempt running,
@@ -104,14 +131,23 @@ struct MirrorAttemptLedger: Sendable {
     mutating func forget(sessionID: String) {
         pendingSessionIDs.remove(sessionID)
         lastFailureDates[sessionID] = nil
+        if let attempt = inFlightAttemptIDs[sessionID] {
+            staleDestinationAttemptIDs.remove(attempt)
+        }
         inFlightAttemptIDs[sessionID] = nil
         rescheduleRequests.remove(sessionID)
     }
 
-    /// Drop the failure backoff for every session. Called when the notes folder
-    /// changes destination: past failures say nothing about the new folder.
-    mutating func clearFailureBackoff() {
+    /// Note that the notes folder now points somewhere else.
+    ///
+    /// Past failures say nothing about the new folder, so the backoff is
+    /// dropped. Every running attempt is writing to the old folder, so it is
+    /// marked stale: its report leaves the session pending, and the caller
+    /// re-drives it against the new destination. No attempt starts here, so a
+    /// session still has at most one in flight.
+    mutating func destinationChanged() {
         lastFailureDates.removeAll()
+        staleDestinationAttemptIDs.formUnion(inFlightAttemptIDs.values)
     }
 
     private func isBackingOff(_ sessionID: String, now: Date) -> Bool {

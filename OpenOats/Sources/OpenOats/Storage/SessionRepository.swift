@@ -262,13 +262,14 @@ actor SessionRepository {
         // start. Only a genuinely new destination is evidence that a previously
         // failed mirror can now succeed, so the failure backoff is kept
         // otherwise — that is what stops a dead mount from being re-driven once
-        // per recording.
+        // per recording. A new destination also invalidates whatever attempts
+        // are running against the old one.
         let destinationChanged = url != notesFolderPath
         notesFolderPath = url
         notesFolderIsSecurityScoped = securityScoped
         meetingTranscriptDateFolderFormat = dateSubfolderFormat
         if destinationChanged {
-            mirrorAttempts.clearFailureBackoff()
+            mirrorAttempts.destinationChanged()
         }
         retryPendingMirrors()
     }
@@ -2047,19 +2048,32 @@ actor SessionRepository {
     /// forgotten) mid-attempt can start a fresh attempt afterwards, and a slow
     /// success from the old one must not clear the newer attempt's pending flag.
     private func mirrorDidFinish(sessionID: String, attempt: Int, succeeded: Bool) {
-        guard mirrorAttempts.finishAttempt(
+        switch mirrorAttempts.finishAttempt(
             sessionID: sessionID,
             attempt: attempt,
             succeeded: succeeded
-        ) else { return }
+        ) {
+        case .ignored:
+            return
 
-        persistMirrorPending(!succeeded, sessionID: sessionID)
-
-        let hasQueuedRequest = mirrorAttempts.takeRescheduleRequest(sessionID: sessionID)
-        // On failure the session is already pending and the backoff governs the
-        // next attempt, so only a success re-drives a coalesced request.
-        if succeeded, hasQueuedRequest {
+        case .staleDestination:
+            // The attempt wrote to the folder the user has since replaced, so
+            // the current one still has no export: keep the durable flag and
+            // re-drive now that the session's attempt slot is free. A request
+            // coalesced during the attempt is satisfied by that same re-run.
+            persistMirrorPending(true, sessionID: sessionID)
+            _ = mirrorAttempts.takeRescheduleRequest(sessionID: sessionID)
             startMirrorAttempt(sessionID: sessionID)
+
+        case .recorded:
+            persistMirrorPending(!succeeded, sessionID: sessionID)
+
+            let hasQueuedRequest = mirrorAttempts.takeRescheduleRequest(sessionID: sessionID)
+            // On failure the session is already pending and the backoff governs
+            // the next attempt, so only a success re-drives a coalesced request.
+            if succeeded, hasQueuedRequest {
+                startMirrorAttempt(sessionID: sessionID)
+            }
         }
     }
 

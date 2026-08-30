@@ -28,7 +28,7 @@ final class MirrorAttemptLedgerTests: XCTestCase {
         var ledger = makeLedger()
 
         let attempt = try XCTUnwrap(ledger.beginAttempt(sessionID: "session_a"))
-        XCTAssertTrue(ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: true, now: t0))
+        XCTAssertEqual(ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: true, now: t0), .recorded)
         XCTAssertNotNil(ledger.beginAttempt(sessionID: "session_a"))
     }
 
@@ -36,7 +36,7 @@ final class MirrorAttemptLedgerTests: XCTestCase {
         var ledger = makeLedger()
 
         let attempt = try XCTUnwrap(ledger.beginAttempt(sessionID: "session_a"))
-        XCTAssertTrue(ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0))
+        XCTAssertEqual(ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0), .recorded)
         XCTAssertEqual(
             ledger.retryableSessionIDs(now: t0.addingTimeInterval(backoff + 1)),
             ["session_a"]
@@ -54,7 +54,7 @@ final class MirrorAttemptLedgerTests: XCTestCase {
         var ledger = makeLedger()
 
         let attempt = try XCTUnwrap(ledger.beginAttempt(sessionID: "session_a"))
-        XCTAssertTrue(ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0))
+        XCTAssertEqual(ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0), .recorded)
 
         XCTAssertTrue(ledger.retryableSessionIDs(now: t0).isEmpty)
         XCTAssertTrue(ledger.retryableSessionIDs(now: t0.addingTimeInterval(backoff - 1)).isEmpty)
@@ -65,18 +65,95 @@ final class MirrorAttemptLedgerTests: XCTestCase {
         var ledger = makeLedger()
 
         let attempt = try XCTUnwrap(ledger.beginAttempt(sessionID: "session_a"))
-        XCTAssertTrue(ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0))
+        XCTAssertEqual(ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0), .recorded)
         XCTAssertTrue(ledger.retryableSessionIDs(now: t0).isEmpty)
 
-        ledger.clearFailureBackoff()
+        ledger.destinationChanged()
         XCTAssertEqual(ledger.retryableSessionIDs(now: t0), ["session_a"])
+    }
+
+    // MARK: - Destination changes under a running attempt
+
+    func testSuccessAgainstTheOldFolderKeepsTheSessionPending() throws {
+        var ledger = makeLedger()
+
+        // An attempt is running against the old folder when the user picks a
+        // new one. The retry pass cannot drive the session while that attempt
+        // holds the slot, so the report itself has to hand it over.
+        let attempt = try XCTUnwrap(ledger.beginAttempt(sessionID: "session_a"))
+        ledger.destinationChanged()
+        XCTAssertTrue(ledger.retryableSessionIDs(now: t0).isEmpty)
+
+        XCTAssertEqual(
+            ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: true, now: t0),
+            .staleDestination,
+            "A success against the replaced folder says nothing about the new one"
+        )
+        XCTAssertEqual(
+            ledger.pendingSessionIDs,
+            ["session_a"],
+            "The new destination has no export, so the session stays pending"
+        )
+        XCTAssertEqual(ledger.retryableSessionIDs(now: t0), ["session_a"])
+    }
+
+    func testFailureAgainstTheOldFolderDoesNotBackOffTheNewOne() throws {
+        var ledger = makeLedger()
+
+        let attempt = try XCTUnwrap(ledger.beginAttempt(sessionID: "session_a"))
+        ledger.destinationChanged()
+
+        XCTAssertEqual(
+            ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0),
+            .staleDestination
+        )
+        XCTAssertEqual(
+            ledger.retryableSessionIDs(now: t0),
+            ["session_a"],
+            "A dead old mount must not hold the new folder off for a backoff interval"
+        )
+    }
+
+    func testOnlyOneAttemptRunsWhileTheDestinationChanges() throws {
+        var ledger = makeLedger()
+
+        let attempt = try XCTUnwrap(ledger.beginAttempt(sessionID: "session_a"))
+        ledger.destinationChanged()
+        ledger.destinationChanged()
+
+        // Repeated changes cannot stack attempts onto a blocked mount: the slot
+        // stays taken until the running attempt reports.
+        XCTAssertNil(ledger.beginAttempt(sessionID: "session_a"))
+        XCTAssertTrue(ledger.retryableSessionIDs(now: t0).isEmpty)
+
+        XCTAssertEqual(
+            ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0),
+            .staleDestination
+        )
+        XCTAssertNotNil(ledger.beginAttempt(sessionID: "session_a"))
+    }
+
+    func testAttemptStartedAfterTheChangeIsRecordedNormally() throws {
+        var ledger = makeLedger()
+
+        ledger.destinationChanged()
+        let attempt = try XCTUnwrap(ledger.beginAttempt(sessionID: "session_a"))
+        XCTAssertEqual(
+            ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0),
+            .recorded,
+            "An attempt started against the new folder reports on the new folder"
+        )
+        XCTAssertTrue(
+            ledger.retryableSessionIDs(now: t0.addingTimeInterval(backoff - 1)).isEmpty,
+            "Its failure backs the session off as usual"
+        )
     }
 
     func testExcludedSessionIsNotRetried() throws {
         var ledger = makeLedger()
 
         let attempt = try XCTUnwrap(ledger.beginAttempt(sessionID: "session_a"))
-        XCTAssertTrue(ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0))
+        XCTAssertEqual(ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0), .recorded)
 
         let later = t0.addingTimeInterval(backoff + 1)
         XCTAssertTrue(ledger.retryableSessionIDs(excluding: "session_a", now: later).isEmpty)
@@ -98,13 +175,14 @@ final class MirrorAttemptLedgerTests: XCTestCase {
         XCTAssertNotEqual(first, second)
 
         // Attempt 2 finishes first, and fails.
-        XCTAssertTrue(ledger.finishAttempt(sessionID: "session_a", attempt: second, succeeded: false, now: t0))
+        XCTAssertEqual(ledger.finishAttempt(sessionID: "session_a", attempt: second, succeeded: false, now: t0), .recorded)
         XCTAssertEqual(ledger.pendingSessionIDs, ["session_a"])
 
         // Attempt 1 reports success afterwards. It is superseded, so it must
         // neither be accepted nor clear the pending flag attempt 2 set.
-        XCTAssertFalse(
+        XCTAssertEqual(
             ledger.finishAttempt(sessionID: "session_a", attempt: first, succeeded: true, now: t0),
+            .ignored,
             "A report from a superseded attempt must be rejected"
         )
         XCTAssertEqual(
@@ -118,7 +196,7 @@ final class MirrorAttemptLedgerTests: XCTestCase {
         var ledger = makeLedger()
 
         let attempt = try XCTUnwrap(ledger.beginAttempt(sessionID: "session_a"))
-        XCTAssertTrue(ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0))
+        XCTAssertEqual(ledger.finishAttempt(sessionID: "session_a", attempt: attempt, succeeded: false, now: t0), .recorded)
         XCTAssertEqual(ledger.pendingSessionIDs, ["session_a"])
 
         ledger.forget(sessionID: "session_a")
