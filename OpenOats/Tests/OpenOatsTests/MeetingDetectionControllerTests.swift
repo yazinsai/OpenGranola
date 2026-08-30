@@ -234,4 +234,55 @@ final class MeetingDetectionControllerTests: XCTestCase {
 
         consumeTask.cancel()
     }
+
+    // MARK: - Teardown Stops The Detector
+
+    /// Editing the custom meeting-app list rebuilds detection: `teardown` runs
+    /// and a fresh controller is built. If `teardown` fails to stop the detector
+    /// it started, that abandoned detector keeps its mic and camera monitors
+    /// running for the life of the process, and every edit adds another one.
+    func testTeardownStopsTheDetectorItStarted() async throws {
+        let camera = MockCameraSignalSource()
+        let detector = MeetingDetector(
+            audioSource: MockAudioSignalSource(),
+            cameraSource: camera
+        )
+        let controller = MeetingDetectionController()
+        controller.setup(settings: makeSettings(), detector: detector)
+
+        // Drive the detector into an active detection, which `stop()` clears.
+        camera.emit(true)
+        let becameActive = await poll { await detector.isActive }
+        XCTAssertTrue(becameActive, "Detector never became active, so the test cannot observe stop()")
+
+        controller.teardown()
+
+        let stopped = await poll { await detector.isActive == false }
+        XCTAssertTrue(stopped, "teardown() left the detector it started still monitoring")
+    }
+
+    // MARK: - Helpers
+
+    private func makeSettings() -> AppSettings {
+        let suiteName = "com.openoats.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let storage = AppSettingsStorage(
+            defaults: defaults,
+            secretStore: .ephemeral,
+            defaultNotesDirectory: URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("MeetingDetectionControllerTests"),
+            runMigrations: false
+        )
+        return AppSettings(storage: storage)
+    }
+
+    /// Wait up to a second for an asynchronous condition to hold.
+    private func poll(_ condition: () async -> Bool) async -> Bool {
+        for _ in 0..<100 {
+            if await condition() { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return await condition()
+    }
 }
