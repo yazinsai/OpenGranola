@@ -897,6 +897,26 @@ final class NotesController {
         }
     }
 
+    func deleteRetainedBatchAudio() {
+        guard let sessionID = state.selectedSessionID,
+              state.canRetranscribeSelectedSession else { return }
+
+        Task {
+            await coordinator.sessionRepository.cleanupBatchAudio(sessionID: sessionID)
+            guard state.selectedSessionID == sessionID else { return }
+
+            // The deleted stems may back the playback sources currently shown.
+            let sources = await coordinator.sessionRepository.audioSources(for: sessionID)
+            if let playingURL = state.audioFileURL, !sources.contains(where: { $0.url == playingURL }) {
+                stopAudio()
+            }
+            state.availableAudioSources = sources
+            state.audioFileURL = sources.first?.url
+            state.canRetranscribeSelectedSession =
+                await coordinator.sessionRepository.hasRetainedBatchAudio(sessionID: sessionID)
+        }
+    }
+
     // MARK: - Session Management
 
     func renameSession(sessionID: String, newTitle: String) {

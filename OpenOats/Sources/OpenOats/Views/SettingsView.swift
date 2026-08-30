@@ -651,6 +651,16 @@ private struct TranscriptionSettingsTab: View {
                             }
                         }
                         .font(.system(size: 12))
+
+                        Picker("Keep Audio For", selection: $settings.retainedBatchAudioRetention) {
+                            ForEach(RetainedBatchAudioRetention.allCases) { option in
+                                Text(option.displayName).tag(option)
+                            }
+                        }
+                        .font(.system(size: 12))
+                        Text("Audio kept for re-transcription uses about 23 MB per meeting minute (roughly 1 GB for a 75-minute meeting). Older audio is deleted automatically; transcripts and notes are never affected.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
                     }
                 }
 

@@ -71,7 +71,13 @@ final class AppContainer {
                     .appendingPathComponent("Documents/OpenOats", isDirectory: true)
             )
             let settings = AppSettings()
-            let coordinator = AppCoordinator()
+            let coordinator = AppCoordinator(
+                sessionRepository: SessionRepository(
+                    batchAudioRetention: {
+                        RetainedBatchAudioRetention.stored(in: .standard).timeInterval
+                    }
+                )
+            )
             let updaterController = AppUpdaterController()
             return AppLaunchContext(
                 isFirstLaunch: false,

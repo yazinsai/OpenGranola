@@ -179,8 +179,19 @@ struct SessionMetadata: Codable, Sendable {
 /// sessions/<id>/audio/
 /// ```
 actor SessionRepository {
-    /// Retain batch stems/metadata long enough to support true reruns and debugging.
-    private static let retainedBatchAudioLifetime: TimeInterval = 7 * 24 * 3600
+    /// Default retention for batch stems/metadata: long enough to support true reruns and debugging.
+    static let retainedBatchAudioLifetime: TimeInterval = 7 * 24 * 3600
+
+    /// How often the running app re-checks retained batch audio for expiry.
+    /// The init-time sweep alone is not enough for a menu-bar app that stays up for weeks.
+    static let retainedBatchAudioSweepInterval: TimeInterval = 6 * 3600
+
+    /// Returns the current retention window in seconds (`nil` = keep forever).
+    /// Re-read on every sweep so setting changes apply without a relaunch.
+    private let batchAudioRetention: @Sendable () -> TimeInterval?
+
+    /// Repeating background sweep started in `init`, cancelled in `deinit`.
+    private var retainedAudioSweepTask: Task<Void, Never>?
 
     private let sessionsDirectory: URL
     private let encoder: JSONEncoder
@@ -216,9 +227,18 @@ actor SessionRepository {
     /// Default minimum interval between retries of a failed mirror.
     static let defaultMirrorRetryBackoff: TimeInterval = 5 * 60
 
-    /// - Parameter mirrorRetryBackoff: Minimum interval between retries of a
-    ///   session whose notes-folder mirror failed. Lowered by tests.
-    init(rootDirectory: URL? = nil, mirrorRetryBackoff: TimeInterval = SessionRepository.defaultMirrorRetryBackoff) {
+    /// - Parameters:
+    ///   - mirrorRetryBackoff: Minimum interval between retries of a session
+    ///     whose notes-folder mirror failed. Lowered by tests.
+    ///   - batchAudioRetention: How long retained batch audio lives. `nil`
+    ///     keeps it forever.
+    init(
+        rootDirectory: URL? = nil,
+        mirrorRetryBackoff: TimeInterval = SessionRepository.defaultMirrorRetryBackoff,
+        batchAudioRetention: @escaping @Sendable () -> TimeInterval? = { SessionRepository.retainedBatchAudioLifetime }
+    ) {
+        self.batchAudioRetention = batchAudioRetention
+
         let baseDirectory: URL
         if let rootDirectory {
             baseDirectory = rootDirectory
@@ -242,9 +262,25 @@ actor SessionRepository {
         try? FileManager.default.createDirectory(at: sessionsDirectory, withIntermediateDirectories: true)
         Self.dropMetadataNeverIndex(in: sessionsDirectory)
 
-        Self.cleanupExpiredRetainedBatchAudio(in: sessionsDirectory)
+        Self.cleanupExpiredRetainedBatchAudio(in: sessionsDirectory, olderThan: batchAudioRetention())
 
         Task { await self.restorePendingMirrors() }
+        Task { [weak self] in await self?.startPeriodicRetainedBatchAudioSweeps() }
+    }
+
+    deinit {
+        retainedAudioSweepTask?.cancel()
+    }
+
+    private func startPeriodicRetainedBatchAudioSweeps() {
+        guard retainedAudioSweepTask == nil else { return }
+        retainedAudioSweepTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.retainedBatchAudioSweepInterval))
+                guard !Task.isCancelled, let self else { break }
+                await self.sweepExpiredRetainedBatchAudio()
+            }
+        }
     }
 
     // MARK: - Configuration
@@ -1559,19 +1595,7 @@ actor SessionRepository {
     }
 
     func cleanupBatchAudio(sessionID: String) {
-        let fm = FileManager.default
-
-        // Clean canonical audio/
-        let audioDir = sessionDirectory(for: sessionID).appendingPathComponent("audio", isDirectory: true)
-        try? fm.removeItem(at: audioDir.appendingPathComponent("mic.caf"))
-        try? fm.removeItem(at: audioDir.appendingPathComponent("sys.caf"))
-        try? fm.removeItem(at: audioDir.appendingPathComponent("batch-meta.json"))
-
-        // Clean legacy layout
-        let dir = sessionDirectory(for: sessionID)
-        try? fm.removeItem(at: dir.appendingPathComponent("mic.caf"))
-        try? fm.removeItem(at: dir.appendingPathComponent("sys.caf"))
-        try? fm.removeItem(at: dir.appendingPathComponent("batch-meta.json"))
+        Self.removeRetainedBatchAudio(inSessionDirectory: sessionDirectory(for: sessionID))
     }
 
     func loadBatchMeta(sessionID: String) -> BatchMeta? {
@@ -2329,46 +2353,94 @@ actor SessionRepository {
 
     // MARK: - Orphan Cleanup
 
-    private static func cleanupExpiredRetainedBatchAudio(in sessionsDirectory: URL) {
+    /// Re-evaluates retained batch audio against the current retention setting.
+    func sweepExpiredRetainedBatchAudio() {
+        Self.cleanupExpiredRetainedBatchAudio(in: sessionsDirectory, olderThan: batchAudioRetention())
+    }
+
+    /// Deletes retained batch audio whose newest artifact is older than `retention`.
+    /// A `nil` retention means keep forever.
+    static func cleanupExpiredRetainedBatchAudio(
+        in sessionsDirectory: URL,
+        olderThan retention: TimeInterval?,
+        now: Date = Date()
+    ) {
+        guard let retention else { return }
+
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(
             at: sessionsDirectory,
-            includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey]
+            includingPropertiesForKeys: [.isDirectoryKey]
         ) else { return }
 
-        let cutoff = Date().addingTimeInterval(-retainedBatchAudioLifetime)
+        let cutoff = now.addingTimeInterval(-retention)
 
         for item in contents {
-            guard let values = try? item.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey]),
+            guard let values = try? item.resourceValues(forKeys: [.isDirectoryKey]),
                   values.isDirectory == true else { continue }
 
             let name = item.lastPathComponent
             guard name.hasPrefix("session_") else { continue }
 
-            // Check both canonical audio/ and legacy layout
-            let audioDir = item.appendingPathComponent("audio", isDirectory: true)
-            let micCanonical = audioDir.appendingPathComponent("mic.caf")
-            let sysCanonical = audioDir.appendingPathComponent("sys.caf")
-            let micLegacy = item.appendingPathComponent("mic.caf")
-            let sysLegacy = item.appendingPathComponent("sys.caf")
+            guard let newest = newestRetainedBatchAudioModificationDate(inSessionDirectory: item),
+                  newest < cutoff else { continue }
 
-            let hasAudio = fm.fileExists(atPath: micCanonical.path) ||
-                           fm.fileExists(atPath: sysCanonical.path) ||
-                           fm.fileExists(atPath: micLegacy.path) ||
-                           fm.fileExists(atPath: sysLegacy.path)
-
-            guard hasAudio else { continue }
-
-            if let modDate = values.contentModificationDate, modDate < cutoff {
-                try? fm.removeItem(at: micCanonical)
-                try? fm.removeItem(at: sysCanonical)
-                try? fm.removeItem(at: audioDir.appendingPathComponent("batch-meta.json"))
-                try? fm.removeItem(at: micLegacy)
-                try? fm.removeItem(at: sysLegacy)
-                try? fm.removeItem(at: item.appendingPathComponent("batch-meta.json"))
-                Log.sessionRepository.info("Cleaned up expired retained batch audio in \(name, privacy: .public)")
-            }
+            removeRetainedBatchAudio(inSessionDirectory: item)
+            Log.sessionRepository.info("Cleaned up expired retained batch audio in \(name, privacy: .public)")
         }
+    }
+
+    /// The date that decides retained-audio expiry: the newest modification date
+    /// among mic.caf / sys.caf / batch-meta.json in the canonical and legacy
+    /// layouts. The session directory's own date is deliberately ignored —
+    /// unrelated metadata writes (notes edits, speaker renames) bump it and
+    /// would reset the TTL indefinitely. Returns `nil` when the session has no
+    /// retained audio stems.
+    static func newestRetainedBatchAudioModificationDate(inSessionDirectory sessionDirectory: URL) -> Date? {
+        let audioDir = sessionDirectory.appendingPathComponent("audio", isDirectory: true)
+        let audioStems = [
+            audioDir.appendingPathComponent("mic.caf"),
+            audioDir.appendingPathComponent("sys.caf"),
+            sessionDirectory.appendingPathComponent("mic.caf"),
+            sessionDirectory.appendingPathComponent("sys.caf"),
+        ]
+        let metadata = [
+            audioDir.appendingPathComponent("batch-meta.json"),
+            sessionDirectory.appendingPathComponent("batch-meta.json"),
+        ]
+
+        var newest: Date?
+        for url in audioStems {
+            guard let date = modificationDate(of: url) else { continue }
+            newest = max(newest ?? date, date)
+        }
+        // Metadata alone does not make a session sweepable.
+        guard newest != nil else { return nil }
+        for url in metadata {
+            guard let date = modificationDate(of: url) else { continue }
+            newest = max(newest ?? date, date)
+        }
+        return newest
+    }
+
+    private static func modificationDate(of url: URL) -> Date? {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }
+
+    /// Removes retained batch audio artifacts in both canonical and legacy layouts.
+    static func removeRetainedBatchAudio(inSessionDirectory sessionDirectory: URL) {
+        let fm = FileManager.default
+
+        // Canonical audio/ layout
+        let audioDir = sessionDirectory.appendingPathComponent("audio", isDirectory: true)
+        try? fm.removeItem(at: audioDir.appendingPathComponent("mic.caf"))
+        try? fm.removeItem(at: audioDir.appendingPathComponent("sys.caf"))
+        try? fm.removeItem(at: audioDir.appendingPathComponent("batch-meta.json"))
+
+        // Legacy layout (files directly in the session directory)
+        try? fm.removeItem(at: sessionDirectory.appendingPathComponent("mic.caf"))
+        try? fm.removeItem(at: sessionDirectory.appendingPathComponent("sys.caf"))
+        try? fm.removeItem(at: sessionDirectory.appendingPathComponent("batch-meta.json"))
     }
 }
 

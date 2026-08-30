@@ -803,6 +803,20 @@ final class SettingsStore {
         }
     }
 
+    @ObservationIgnored nonisolated(unsafe) private var _retainedBatchAudioRetention: String
+    var retainedBatchAudioRetention: RetainedBatchAudioRetention {
+        get {
+            access(keyPath: \.retainedBatchAudioRetention)
+            return RetainedBatchAudioRetention(rawValue: _retainedBatchAudioRetention) ?? .default
+        }
+        set {
+            withMutation(keyPath: \.retainedBatchAudioRetention) {
+                _retainedBatchAudioRetention = newValue.rawValue
+                defaults.set(newValue.rawValue, forKey: RetainedBatchAudioRetention.defaultsKey)
+            }
+        }
+    }
+
     @ObservationIgnored nonisolated(unsafe) private var _enableDiarization: Bool
     var enableDiarization: Bool {
         get { access(keyPath: \.enableDiarization); return _enableDiarization }
@@ -1519,6 +1533,8 @@ final class SettingsStore {
         self._batchTranscriptionModel = TranscriptionModel(
             rawValue: defaults.string(forKey: "batchTranscriptionModel") ?? ""
         ) ?? .whisperLargeV3Turbo
+        self._retainedBatchAudioRetention = defaults.string(forKey: RetainedBatchAudioRetention.defaultsKey)
+            ?? RetainedBatchAudioRetention.default.rawValue
         self._enableDiarization = defaults.bool(forKey: "enableDiarization")
         self._diarizationVariant = defaults.string(forKey: "diarizationVariant") ?? DiarizationVariant.dihard3.rawValue
 

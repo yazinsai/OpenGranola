@@ -1559,8 +1559,17 @@ final class SessionRepositoryTests: XCTestCase {
         return sessionDir
     }
 
+    /// Backdates the retained batch artifacts (which decide expiry) and the
+    /// session directory itself (which must not).
     private func setModificationDate(_ date: Date, forSessionDirectory sessionDir: URL) throws {
-        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: sessionDir.path)
+        let fm = FileManager.default
+        let audioDir = sessionDir.appendingPathComponent("audio", isDirectory: true)
+        for fileName in ["mic.caf", "sys.caf", "batch-meta.json"] {
+            let path = audioDir.appendingPathComponent(fileName).path
+            guard fm.fileExists(atPath: path) else { continue }
+            try fm.setAttributes([.modificationDate: date], ofItemAtPath: path)
+        }
+        try fm.setAttributes([.modificationDate: date], ofItemAtPath: sessionDir.path)
     }
 
     // MARK: - End session clears state

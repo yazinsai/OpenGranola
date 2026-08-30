@@ -334,6 +334,25 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(reopened.enableBatchRetranscription)
     }
 
+    func testDefaultRetainedBatchAudioRetention() {
+        let store = makeStore()
+        XCTAssertEqual(store.retainedBatchAudioRetention, .sevenDays)
+    }
+
+    func testRetainedBatchAudioRetentionRoundTrip() {
+        let suiteName = "com.openoats.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = makeStore(defaults: defaults)
+        store.retainedBatchAudioRetention = .forever
+
+        XCTAssertEqual(defaults.string(forKey: "retainedBatchAudioRetention"), "forever")
+
+        let reopened = makeStore(defaults: defaults)
+        XCTAssertEqual(reopened.retainedBatchAudioRetention, .forever)
+    }
+
     func testDiagnosticLoggingRoundTrip() {
         let store = makeStore()
         XCTAssertFalse(store.diagnosticLoggingEnabled)
