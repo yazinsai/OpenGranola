@@ -41,7 +41,9 @@ final class SessionRepositoryTests: XCTestCase {
             .appendingPathComponent("OpenOatsRepoTests", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: rootDir, withIntermediateDirectories: true)
-        repo = SessionRepository(rootDirectory: rootDir)
+        // Production waits 5 minutes before retrying a failed notes-folder
+        // mirror; the retry policy itself is covered by MirrorAttemptLedgerTests.
+        repo = SessionRepository(rootDirectory: rootDir, mirrorRetryBackoff: 0.05)
     }
 
     override func tearDown() async throws {
