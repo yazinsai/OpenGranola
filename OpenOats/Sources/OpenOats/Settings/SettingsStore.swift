@@ -835,8 +835,9 @@ final class SettingsStore {
         get { access(keyPath: \.customMeetingAppBundleIDs); return _customMeetingAppBundleIDs }
         set {
             withMutation(keyPath: \.customMeetingAppBundleIDs) {
-                _customMeetingAppBundleIDs = newValue
-                defaults.set(newValue, forKey: "customMeetingAppBundleIDs")
+                let normalized = Self.normalizedIdentifierList(newValue)
+                _customMeetingAppBundleIDs = normalized
+                defaults.set(normalized, forKey: "customMeetingAppBundleIDs")
             }
         }
     }
@@ -1519,7 +1520,9 @@ final class SettingsStore {
         } else {
             self._meetingAutoDetectEnabled = defaults.bool(forKey: "meetingAutoDetectEnabled")
         }
-        self._customMeetingAppBundleIDs = defaults.stringArray(forKey: "customMeetingAppBundleIDs") ?? []
+        self._customMeetingAppBundleIDs = Self.normalizedIdentifierList(
+            defaults.stringArray(forKey: "customMeetingAppBundleIDs") ?? []
+        )
         self._ignoredAppBundleIDs = defaults.stringArray(forKey: "ignoredAppBundleIDs") ?? []
         // Canonical timeout is seconds; migrate from the legacy minutes key.
         let silenceSeconds: Int

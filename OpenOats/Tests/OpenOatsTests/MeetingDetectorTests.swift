@@ -435,4 +435,51 @@ final class MeetingDetectorTests: XCTestCase {
         audio.finish()
         camera.finish()
     }
+
+    func testKnownBundleIDsMergeDefaultsAndCustom() async {
+        let audio = MockAudioSignalSource()
+        let camera = MockCameraSignalSource()
+        let detector = MeetingDetector(
+            audioSource: audio,
+            cameraSource: camera,
+            customBundleIDs: ["com.example.custom-meeting-app"]
+        )
+
+        let known = await detector.knownBundleIDs
+        XCTAssertTrue(known.contains("us.zoom.xos"), "bundled defaults must remain detectable")
+        XCTAssertTrue(
+            known.contains("com.example.custom-meeting-app"),
+            "user additions must be detectable"
+        )
+
+        audio.finish()
+        camera.finish()
+    }
+
+    func testKnownBundleIDsDedupeCustomAgainstDefaultsAndSelf() async {
+        let audio = MockAudioSignalSource()
+        let camera = MockCameraSignalSource()
+        let selfID = Bundle.main.bundleIdentifier ?? "com.openoats.app"
+        let detector = MeetingDetector(
+            audioSource: audio,
+            cameraSource: camera,
+            customBundleIDs: [
+                "us.zoom.xos", // duplicate of a bundled default
+                "com.example.custom-meeting-app", // listed twice by the user
+                "com.example.custom-meeting-app",
+                selfID, // never detect ourselves
+            ]
+        )
+
+        let known = await detector.knownBundleIDs
+        let defaultsCount = MeetingDetector.bundledMeetingApps.count
+        XCTAssertEqual(
+            known.count, defaultsCount + 1,
+            "duplicates of defaults and repeated custom entries collapse; self is excluded"
+        )
+        XCTAssertFalse(known.contains(selfID), "the app itself must never count as a meeting app")
+
+        audio.finish()
+        camera.finish()
+    }
 }

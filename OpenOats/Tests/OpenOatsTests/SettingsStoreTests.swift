@@ -461,6 +461,35 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.customMeetingAppBundleIDs, ["com.example.app"])
     }
 
+    func testCustomMeetingAppBundleIDsNormalizeOnSet() {
+        let store = makeStore()
+        store.customMeetingAppBundleIDs = [
+            "  com.example.app  ",
+            "com.example.app",
+            "",
+            "   ",
+            "com.example.other",
+        ]
+        XCTAssertEqual(
+            store.customMeetingAppBundleIDs,
+            ["com.example.app", "com.example.other"],
+            "entries are trimmed, deduplicated, and empty entries dropped"
+        )
+    }
+
+    func testCustomMeetingAppBundleIDsNormalizeOnLoad() {
+        let name = "com.openoats.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        defaults.set(
+            ["  com.example.app ", "com.example.app", ""],
+            forKey: "customMeetingAppBundleIDs"
+        )
+
+        let store = makeStore(defaults: defaults)
+        XCTAssertEqual(store.customMeetingAppBundleIDs, ["com.example.app"])
+    }
+
     func testDefaultDetectionLogEnabled() {
         let store = makeStore()
         XCTAssertFalse(store.detectionLogEnabled)

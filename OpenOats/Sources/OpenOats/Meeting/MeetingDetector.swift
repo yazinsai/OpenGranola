@@ -157,7 +157,9 @@ actor MeetingDetector {
     private let knownApps: [MeetingAppEntry]
     private let customBundleIDs: [String]
     private let selfBundleID: String
-    private let knownBundleIDs: Set<String>
+    /// Resolved detection set: bundled defaults plus user additions, minus the
+    /// app's own bundle ID. Non-private so tests can assert the merge.
+    let knownBundleIDs: Set<String>
 
     /// Set to true once detection is confirmed.
     private(set) var isActive = false

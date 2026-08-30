@@ -361,6 +361,15 @@ struct ContentView: View {
                 container.disableDetection(coordinator: coordinator)
             }
         }
+        .onChange(of: settings.customMeetingAppBundleIDs) {
+            // MeetingDetector snapshots the custom app list at setup, so edits
+            // only apply to a fresh detector. Restart detection to pick them up,
+            // but never mid-recording — teardown would cancel the silence and
+            // app-exit monitors of the live session.
+            guard settings.meetingAutoDetectEnabled, !coordinator.isRecording else { return }
+            container.disableDetection(coordinator: coordinator)
+            container.enableDetection(settings: settings, coordinator: coordinator)
+        }
         .onChange(of: settings.calendarIntegrationEnabled) {
             container.updateCalendarIntegration(enabled: settings.calendarIntegrationEnabled)
         }
