@@ -1121,65 +1121,156 @@ final class LiveSessionController {
         )
         let scratchpad = await coordinator.sessionRepository.loadScratchpad(sessionID: sessionID)
 
+        let generatedMarkdown: String
         do {
-            let generatedMarkdown: String
-            do {
-                generatedMarkdown = try await coordinator.notesEngine.generateMarkdownDetached(
-                    transcript: sessionData.transcript,
-                    template: template,
-                    settings: settings,
-                    calendarEvent: sessionData.calendarEvent,
-                    scratchpad: scratchpad.isEmpty ? nil : scratchpad,
-                    customGuidance: customGuidance
-                )
-            } catch {
-                // One retry after a short backoff: notes calls fail transiently
-                // (local LLM server warming up, brief network drop).
-                DiagnosticsSupport.record(
-                    category: "meeting",
-                    message: "Auto-generated post-meeting notes attempt failed for \(sessionID), retrying: \(error.localizedDescription)"
-                )
-                try await Task.sleep(for: .seconds(3))
-                generatedMarkdown = try await coordinator.notesEngine.generateMarkdownDetached(
-                    transcript: sessionData.transcript,
-                    template: template,
-                    settings: settings,
-                    calendarEvent: sessionData.calendarEvent,
-                    scratchpad: scratchpad.isEmpty ? nil : scratchpad,
-                    customGuidance: customGuidance
-                )
-            }
-
-            let notes = GeneratedNotes(
-                template: coordinator.templateStore.snapshot(of: template),
-                generatedAt: Date(),
-                markdown: GeneratedNotes.normalizedMarkdown(
-                    generatedMarkdown,
-                    title: session.title,
-                    date: session.startedAt
-                )
+            generatedMarkdown = try await generateNotesMarkdownWithRetry(
+                sessionID: sessionID,
+                transcript: sessionData.transcript,
+                template: template,
+                settings: settings,
+                calendarEvent: sessionData.calendarEvent,
+                scratchpad: scratchpad.isEmpty ? nil : scratchpad,
+                customGuidance: customGuidance
             )
-
-            await coordinator.sessionRepository.saveNotes(sessionID: sessionID, notes: notes)
-            await coordinator.loadHistory()
-
-            if coordinator.lastEndedSession?.id == sessionID {
-                coordinator.lastEndedSession = await coordinator.sessionRepository.loadSession(id: sessionID).index
-            }
-
-            syncProjectedState(settings: settings)
+        } catch is CancellationError {
+            // Torn down mid-flight (app quitting, backoff interrupted). Nothing
+            // failed from the user's point of view, so stay quiet.
             DiagnosticsSupport.record(
                 category: "meeting",
-                message: "Auto-generated post-meeting notes for \(sessionID)"
+                message: "Auto-generated post-meeting notes cancelled for \(sessionID)"
             )
+            return
         } catch {
             DiagnosticsSupport.record(
                 category: "meeting",
                 message: "Auto-generated post-meeting notes failed for \(sessionID): \(error.localizedDescription)"
             )
-            if let notifService = container.notificationService {
-                await notifService.postNotesFailed(sessionID: sessionID)
+            await container.alertNotificationService().postNotesFailed(
+                sessionID: sessionID,
+                reason: error.localizedDescription
+            )
+            return
+        }
+
+        // Generation can take minutes, and a retry widens that window further.
+        // Re-read the session before writing: the user may have deleted the
+        // meeting, or written notes by hand while this was in flight.
+        guard await coordinator.sessionRepository.sessionExists(id: sessionID) else {
+            DiagnosticsSupport.record(
+                category: "meeting",
+                message: "Discarded auto-generated notes for \(sessionID): session was deleted"
+            )
+            return
+        }
+
+        let currentSession = await coordinator.sessionRepository.loadSession(id: sessionID).index
+        guard !currentSession.hasNotes else {
+            DiagnosticsSupport.record(
+                category: "meeting",
+                message: "Discarded auto-generated notes for \(sessionID): notes already exist"
+            )
+            return
+        }
+
+        let notes = GeneratedNotes(
+            template: coordinator.templateStore.snapshot(of: template),
+            generatedAt: Date(),
+            markdown: GeneratedNotes.normalizedMarkdown(
+                generatedMarkdown,
+                title: currentSession.title,
+                date: currentSession.startedAt
+            )
+        )
+
+        await coordinator.sessionRepository.saveNotes(sessionID: sessionID, notes: notes)
+        await coordinator.loadHistory()
+
+        if coordinator.lastEndedSession?.id == sessionID {
+            coordinator.lastEndedSession = await coordinator.sessionRepository.loadSession(id: sessionID).index
+        }
+
+        syncProjectedState(settings: settings)
+        DiagnosticsSupport.record(
+            category: "meeting",
+            message: "Auto-generated post-meeting notes for \(sessionID)"
+        )
+    }
+
+    /// Seconds to wait before the single notes retry.
+    ///
+    /// The streaming client already allows 300s between bytes because local
+    /// model servers routinely take more than 60s to produce a first token. A
+    /// short backoff just re-hits a server that has not finished warming up.
+    static let notesRetryBackoffSeconds = 15
+
+    /// Failures worth a second attempt: the request never reached a working
+    /// server, or the server said "not now". A missing API key, a malformed
+    /// base URL, a rejected key, or a model that returned nothing all fail the
+    /// same way on a retry, so those go straight to the notification.
+    static func isRetriableNotesFailure(_ error: Error) -> Bool {
+        if error is CancellationError { return false }
+
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut,
+                 .cannotConnectToHost,
+                 .cannotFindHost,
+                 .dnsLookupFailed,
+                 .networkConnectionLost,
+                 .notConnectedToInternet,
+                 .secureConnectionFailed,
+                 .resourceUnavailable:
+                return true
+            default:
+                return false
             }
+        }
+
+        if let routerError = error as? OpenRouterClient.OpenRouterError,
+           case .httpError(let statusCode, _) = routerError {
+            // 429 and 5xx are the server asking to be tried again;
+            // 401 / 403 / 404 are settled answers.
+            return statusCode == 429 || (500...599).contains(statusCode)
+        }
+
+        return false
+    }
+
+    /// Generates notes markdown, retrying once for transport-class failures only.
+    private func generateNotesMarkdownWithRetry(
+        sessionID: String,
+        transcript: [SessionRecord],
+        template: MeetingTemplate,
+        settings: AppSettings,
+        calendarEvent: CalendarEvent?,
+        scratchpad: String?,
+        customGuidance: String?
+    ) async throws -> String {
+        do {
+            return try await coordinator.notesEngine.generateMarkdownDetached(
+                transcript: transcript,
+                template: template,
+                settings: settings,
+                calendarEvent: calendarEvent,
+                scratchpad: scratchpad,
+                customGuidance: customGuidance
+            )
+        } catch {
+            guard Self.isRetriableNotesFailure(error) else { throw error }
+
+            DiagnosticsSupport.record(
+                category: "meeting",
+                message: "Auto-generated post-meeting notes attempt failed for \(sessionID), retrying in \(Self.notesRetryBackoffSeconds)s: \(error.localizedDescription)"
+            )
+            try await Task.sleep(for: .seconds(Self.notesRetryBackoffSeconds))
+            return try await coordinator.notesEngine.generateMarkdownDetached(
+                transcript: transcript,
+                template: template,
+                settings: settings,
+                calendarEvent: calendarEvent,
+                scratchpad: scratchpad,
+                customGuidance: customGuidance
+            )
         }
     }
 

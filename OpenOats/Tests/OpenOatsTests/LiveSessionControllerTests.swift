@@ -1597,4 +1597,72 @@ final class LiveSessionControllerTests: XCTestCase {
         XCTAssertNotNil(coordinator.lastEndedSession)
         XCTAssertEqual(coordinator.lastEndedSession?.utteranceCount, 2)
     }
+
+    // MARK: - Notes retry classification
+
+    func testTransportFailuresAreRetried() {
+        for code in [
+            URLError.timedOut,
+            .cannotConnectToHost,
+            .cannotFindHost,
+            .dnsLookupFailed,
+            .networkConnectionLost,
+            .notConnectedToInternet,
+            .secureConnectionFailed,
+            .resourceUnavailable,
+        ] {
+            XCTAssertTrue(
+                LiveSessionController.isRetriableNotesFailure(URLError(code)),
+                "Expected \(code) to be retried"
+            )
+        }
+    }
+
+    func testDeterministicFailuresAreNotRetried() {
+        // A second attempt produces the same answer, so it only delays the
+        // notification the user needs.
+        XCTAssertFalse(
+            LiveSessionController.isRetriableNotesFailure(
+                OpenRouterClient.OpenRouterError.missingAPIKey(host: "openrouter.ai")
+            )
+        )
+        XCTAssertFalse(
+            LiveSessionController.isRetriableNotesFailure(
+                OpenRouterClient.OpenRouterError.httpError(401, host: "openrouter.ai")
+            )
+        )
+        XCTAssertFalse(
+            LiveSessionController.isRetriableNotesFailure(
+                OpenRouterClient.OpenRouterError.httpError(404, host: "localhost")
+            )
+        )
+        XCTAssertFalse(
+            LiveSessionController.isRetriableNotesFailure(URLError(.badURL))
+        )
+        XCTAssertFalse(
+            LiveSessionController.isRetriableNotesFailure(
+                NotesEngine.GenerationError.failed("Invalid OpenAI Compatible URL: not a url")
+            )
+        )
+        XCTAssertFalse(LiveSessionController.isRetriableNotesFailure(CancellationError()))
+    }
+
+    func testBusyServerResponsesAreRetried() {
+        XCTAssertTrue(
+            LiveSessionController.isRetriableNotesFailure(
+                OpenRouterClient.OpenRouterError.httpError(429, host: "openrouter.ai")
+            )
+        )
+        XCTAssertTrue(
+            LiveSessionController.isRetriableNotesFailure(
+                OpenRouterClient.OpenRouterError.httpError(503, host: "localhost")
+            )
+        )
+    }
+
+    func testNotesRetryBackoffOutlastsALocalModelColdStart() {
+        // The streaming client allows 300s between bytes precisely because local
+        // servers are slow to first token; a 3s backoff re-hits a cold server.
+        XCTAssertGreaterThanOrEqual(LiveSessionController.notesRetryBackoffSeconds, 15)
+    }
 }

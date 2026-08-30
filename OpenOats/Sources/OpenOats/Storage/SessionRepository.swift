@@ -890,6 +890,19 @@ actor SessionRepository {
         return results.sorted { $0.startedAt > $1.startedAt }
     }
 
+    /// True when the session still has a record on disk.
+    ///
+    /// Writers check this before saving into a session directory: `saveNotes`
+    /// creates the directory it writes to, so a save that lands after the user
+    /// deleted the meeting would resurrect it as an empty shell.
+    func sessionExists(id: String) -> Bool {
+        let fm = FileManager.default
+        let canonical = sessionDirectory(for: id).appendingPathComponent("session.json")
+        if fm.fileExists(atPath: canonical.path) { return true }
+        // Legacy layout: <sessions>/<id>.jsonl beside an optional sidecar.
+        return fm.fileExists(atPath: sessionsDirectory.appendingPathComponent("\(id).jsonl").path)
+    }
+
     func loadSession(id: String) -> SessionDetail {
         let dir = sessionDirectory(for: id)
         let metaURL = dir.appendingPathComponent("session.json")

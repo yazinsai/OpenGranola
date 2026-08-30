@@ -40,6 +40,10 @@ final class NotesEngine {
         set { withMutation(keyPath: \.error) { _error = newValue } }
     }
 
+    /// The error behind `error`, kept so callers can classify a failure instead
+    /// of pattern-matching a localized string. `error` stays the display copy.
+    @ObservationIgnored nonisolated(unsafe) private var underlyingError: Error?
+
     private let client = OpenRouterClient()
     private var currentTask: Task<Void, Never>?
     private let mode: Mode
@@ -82,6 +86,7 @@ final class NotesEngine {
         isGenerating = true
         generatedMarkdown = ""
         error = nil
+        underlyingError = nil
 
         switch mode {
         case .scripted(let markdown):
@@ -240,6 +245,7 @@ final class NotesEngine {
             } catch {
                 if !Task.isCancelled {
                     self?.error = error.localizedDescription
+                    self?.underlyingError = error
                 }
             }
             self?.isGenerating = false
@@ -275,7 +281,12 @@ final class NotesEngine {
                     continuation.resume(throwing: GenerationError.failed("Notes generation ended unexpectedly"))
                     return
                 }
-                if let error = self.error {
+                if let underlyingError = self.underlyingError {
+                    // Rethrow the original error so callers can tell a transport
+                    // blip from a rejected key. The message is unchanged: every
+                    // error on this path is a LocalizedError.
+                    continuation.resume(throwing: underlyingError)
+                } else if let error = self.error {
                     continuation.resume(throwing: GenerationError.failed(error))
                 } else {
                     continuation.resume(returning: self.generatedMarkdown)

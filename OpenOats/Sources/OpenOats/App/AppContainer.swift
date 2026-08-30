@@ -19,6 +19,21 @@ final class AppContainer {
     /// even when detection is not enabled.
     private(set) var notificationService: NotificationService?
 
+    /// Notification service for alerts that are not tied to meeting detection,
+    /// such as a post-meeting notes failure.
+    ///
+    /// `notificationService` is only populated once detection has been enabled,
+    /// so users who record manually would otherwise get no alert at all. Reuse
+    /// the detection controller's instance when there is one and create a
+    /// standalone service otherwise; `NotificationService` no-ops on its own
+    /// when notifications are unavailable (unbundled builds).
+    func alertNotificationService() -> NotificationService {
+        if let notificationService { return notificationService }
+        let service = NotificationService()
+        notificationService = service
+        return service
+    }
+
     /// Calendar manager for looking up current events.
     /// Created when the calendar integration setting is enabled.
     private(set) var calendarManager: CalendarManager?

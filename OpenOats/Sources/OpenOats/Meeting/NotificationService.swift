@@ -31,14 +31,26 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
     private static let categoryWithAppID = "MEETING_DETECTED_WITH_APP"
     private static let categoryNoAppID = "MEETING_DETECTED_NO_APP"
-    private static let startAction = "START_TRANSCRIBING"
-    private static let notMeetingAction = "NOT_A_MEETING"
-    private static let ignoreAppAction = "IGNORE_APP"
-    private static let dismissAction = "DISMISS"
+    nonisolated static let startAction = "START_TRANSCRIBING"
+    nonisolated static let notMeetingAction = "NOT_A_MEETING"
+    nonisolated static let ignoreAppAction = "IGNORE_APP"
+    nonisolated static let dismissAction = "DISMISS"
+    /// Request identifier of the meeting-detection prompt. Only this request
+    /// carries the accept / not-a-meeting / ignore-app actions.
+    nonisolated static let detectionRequestID = "meeting-detection"
     static let batchCompletedTitle = "Re-transcription Complete"
     static let batchCompletedBody = "Re-transcription is complete. Your meeting transcript has been updated with higher-quality text."
     static let notesFailedTitle = "Notes Generation Failed"
-    static let notesFailedBody = "Meeting notes could not be generated. Open the meeting and choose Generate Notes to try again."
+    static let notesFailedFallbackReason = "Meeting notes could not be generated."
+
+    /// Body for the notes-failure notification. Leads with the specific reason —
+    /// a missing API key and an unreachable server need different responses from
+    /// the user — and ends with the manual remedy.
+    static func notesFailedBody(reason: String) -> String {
+        let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail = trimmed.isEmpty ? notesFailedFallbackReason : trimmed
+        return "\(detail) Open the meeting and choose Generate Notes to try again."
+    }
 
     override init() {
         super.init()
@@ -118,7 +130,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
         // Remove previous detection notifications
         UNUserNotificationCenter.current().removeDeliveredNotifications(
-            withIdentifiers: ["meeting-detection"]
+            withIdentifiers: [Self.detectionRequestID]
         )
 
         let content = UNMutableNotificationContent()
@@ -142,7 +154,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         content.categoryIdentifier = appName != nil ? Self.categoryWithAppID : Self.categoryNoAppID
 
         let request = UNNotificationRequest(
-            identifier: "meeting-detection",
+            identifier: Self.detectionRequestID,
             content: content,
             trigger: nil
         )
@@ -161,7 +173,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 self?.onTimeout?()
             }
             UNUserNotificationCenter.current().removeDeliveredNotifications(
-                withIdentifiers: ["meeting-detection"]
+                withIdentifiers: [Self.detectionRequestID]
             )
         }
 
@@ -188,12 +200,12 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
     /// Post a notification when automatic post-meeting notes generation fails,
     /// so the failure is visible without opening the app.
-    func postNotesFailed(sessionID: String) async {
+    func postNotesFailed(sessionID: String, reason: String) async {
         guard await ensurePermission() else { return }
 
         let content = UNMutableNotificationContent()
         content.title = Self.notesFailedTitle
-        content.body = Self.notesFailedBody
+        content.body = Self.notesFailedBody(reason: reason)
         content.sound = .default
 
         let request = UNNotificationRequest(
@@ -211,8 +223,46 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         pendingTimeoutTask = nil
         guard isAvailable else { return }
         UNUserNotificationCenter.current().removeDeliveredNotifications(
-            withIdentifiers: ["meeting-detection"]
+            withIdentifiers: [Self.detectionRequestID]
         )
+    }
+
+    // MARK: - Response Routing
+
+    /// What a notification response should do.
+    enum ResponseRoute: Equatable {
+        case accept
+        case notAMeeting
+        case ignoreApp
+        case dismiss
+        /// Not a detection response — the delegate must do nothing at all.
+        case none
+    }
+
+    /// Routes a notification response by the request that produced it.
+    ///
+    /// Only the meeting-detection prompt owns the detection callbacks. Every
+    /// other notification this app posts (notes failure, batch completion) has
+    /// no actions of its own, so a tap on its body arrives as the default
+    /// action identifier. Routing on the action alone treated that as "accept"
+    /// and started a recording the user never asked for, and cancelled the
+    /// timeout of a detection prompt that might still be on screen.
+    nonisolated static func route(actionIdentifier: String, requestIdentifier: String) -> ResponseRoute {
+        guard requestIdentifier == detectionRequestID else { return .none }
+
+        switch actionIdentifier {
+        case startAction:
+            return .accept
+        case notMeetingAction:
+            return .notAMeeting
+        case ignoreAppAction:
+            return .ignoreApp
+        case dismissAction, UNNotificationDismissActionIdentifier:
+            return .dismiss
+        default:
+            // Default action: a tap on the detection prompt's body.
+            return .accept
+        }
     }
 
     // MARK: - UNUserNotificationCenterDelegate
@@ -222,26 +272,28 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping @Sendable () -> Void
     ) {
-        let actionID = response.actionIdentifier
+        let route = Self.route(
+            actionIdentifier: response.actionIdentifier,
+            requestIdentifier: response.notification.request.identifier
+        )
 
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, route != .none else { return }
 
             self.pendingTimeoutTask?.cancel()
             self.pendingTimeoutTask = nil
 
-            switch actionID {
-            case Self.startAction:
+            switch route {
+            case .accept:
                 self.onAccept?()
-            case Self.notMeetingAction:
+            case .notAMeeting:
                 self.onNotAMeeting?()
-            case Self.ignoreAppAction:
+            case .ignoreApp:
                 self.onIgnoreApp?()
-            case Self.dismissAction, UNNotificationDismissActionIdentifier:
+            case .dismiss:
                 self.onDismiss?()
-            default:
-                // Default action (tap on notification body) -- treat as accept
-                self.onAccept?()
+            case .none:
+                break
             }
         }
 
