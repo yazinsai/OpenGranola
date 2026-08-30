@@ -185,26 +185,58 @@ final class CalendarEventMatcherTests: XCTestCase {
         }
     }
 
-    func testIntervalMatchPrefersEventCoveringTheSessionOverOneSharingItsStart() {
-        let shortBlock = makeEvent(
-            id: "short",
+    // Back-to-back meetings with the session spanning both: both events are
+    // fully covered, so their coverage buckets tie, start proximity decides,
+    // and the meeting the user pressed record for — the first — is kept. Raw
+    // overlap seconds would have flipped this to the longer second meeting.
+    func testIntervalMatchKeepsFirstOfBackToBackMeetingsWhenSessionSpansBoth() {
+        let first = makeEvent(
+            id: "first",
             title: "Standup",
             start: noon,
-            durationMinutes: 15,
+            durationMinutes: 30,
             isOnlineMeeting: true
         )
-        let fullMeeting = makeEvent(
-            id: "full",
-            title: "Design Review",
-            start: noon,
-            durationMinutes: 50,
+        let second = makeEvent(
+            id: "second",
+            title: "Planning",
+            start: noon.addingTimeInterval(30 * 60),
+            durationMinutes: 60,
             isOnlineMeeting: true
         )
-        let session = DateInterval(start: noon, end: noon.addingTimeInterval(50 * 60))
+        let session = DateInterval(start: noon, end: noon.addingTimeInterval(90 * 60))
 
-        for candidates in [[shortBlock, fullMeeting], [fullMeeting, shortBlock]] {
+        for candidates in [[first, second], [second, first]] {
             let best = CalendarEventMatcher.bestMatch(among: candidates, overlapping: session)
-            XCTAssertEqual(best?.id, "full")
+            XCTAssertEqual(best?.id, "first")
+        }
+    }
+
+    // A 30-minute meeting the recording fully covers must not lose to a
+    // three-hour meeting-like workshop the moment the session overruns by
+    // five minutes: coverage is a fraction of each event's own duration
+    // (meeting 1800/1800 → bucket 4, workshop 2100/10800 → bucket 1), not raw
+    // overlap seconds (2100 > 1800 would pick the workshop).
+    func testIntervalMatchPrefersContainedMeetingOverLongWorkshopOnOverrun() {
+        let workshop = makeEvent(
+            id: "workshop",
+            title: "All-hands workshop",
+            start: noon,
+            durationMinutes: 180,
+            isOnlineMeeting: true
+        )
+        let meeting = makeEvent(
+            id: "meeting",
+            title: "Weekly sync",
+            start: noon,
+            durationMinutes: 30,
+            participants: [Participant(name: "Ada", email: "ada@example.com")]
+        )
+        let session = DateInterval(start: noon, end: noon.addingTimeInterval(35 * 60))
+
+        for candidates in [[workshop, meeting], [meeting, workshop]] {
+            let best = CalendarEventMatcher.bestMatch(among: candidates, overlapping: session)
+            XCTAssertEqual(best?.id, "meeting")
         }
     }
 
@@ -233,38 +265,10 @@ final class CalendarEventMatcherTests: XCTestCase {
         }
     }
 
-    func testIntervalMatchFallsBackToStartProximityWhenOverlapsTie() {
-        let outer = makeEvent(
-            id: "outer",
-            title: "Team block",
-            start: noon,
-            durationMinutes: 60,
-            isOnlineMeeting: true
-        )
-        let inner = makeEvent(
-            id: "inner",
-            title: "Check-in",
-            start: noon.addingTimeInterval(5 * 60),
-            durationMinutes: 40,
-            isOnlineMeeting: true
-        )
-        // Both events cover the whole recording, so overlaps tie and the
-        // closer start wins.
-        let session = DateInterval(
-            start: noon.addingTimeInterval(10 * 60),
-            end: noon.addingTimeInterval(40 * 60)
-        )
-
-        for candidates in [[outer, inner], [inner, outer]] {
-            let best = CalendarEventMatcher.bestMatch(among: candidates, overlapping: session)
-            XCTAssertEqual(best?.id, "inner")
-        }
-    }
-
     // Recording an in-person meeting nobody was invited to is still supported:
-    // with no meeting-like candidate, the block that contains most of the
-    // recording wins.
-    func testIntervalMatchRanksPersonalBlocksByOverlapWhenNoCandidateLooksLikeAMeeting() {
+    // with no meeting-like candidate, the block the recording covers most
+    // fully wins.
+    func testIntervalMatchRanksPersonalBlocksByCoverageWhenNoCandidateLooksLikeAMeeting() {
         let errand = makeEvent(
             id: "errand",
             title: "Errand",
@@ -293,5 +297,189 @@ final class CalendarEventMatcherTests: XCTestCase {
             among: [],
             overlapping: DateInterval(start: noon, duration: 30 * 60)
         ))
+    }
+
+    // MARK: - Final binding (finalize-time decision)
+
+    func testFinalBindingRespectsUserChosenEvent() {
+        let chosen = makeEvent(
+            id: "chosen",
+            title: "1:1",
+            start: noon,
+            durationMinutes: 15,
+            isOnlineMeeting: true
+        )
+        let better = makeEvent(
+            id: "better",
+            title: "Quarterly Review",
+            start: noon,
+            durationMinutes: 60,
+            participants: [Participant(name: "Ada", email: "ada@example.com")]
+        )
+        let session = DateInterval(start: noon, end: noon.addingTimeInterval(60 * 60))
+
+        let result = CalendarEventMatcher.finalBinding(
+            startBinding: chosen,
+            isUserChosen: true,
+            candidates: [better],
+            interval: session
+        )
+
+        XCTAssertEqual(result?.id, "chosen")
+    }
+
+    // The incumbent competes under the same ranking instead of being replaced
+    // by any challenger: a session recorded just before its standup overlaps
+    // only a personal block, and the meeting-like binding from start must win.
+    func testFinalBindingKeepsMeetingIncumbentOverNonMeetingChallenger() {
+        let standup = makeEvent(
+            id: "standup",
+            title: "Standup",
+            start: noon,
+            durationMinutes: 15,
+            isOnlineMeeting: true
+        )
+        let focus = makeEvent(
+            id: "focus",
+            title: "Focus time",
+            start: noon.addingTimeInterval(-60 * 60),
+            durationMinutes: 60
+        )
+        // Recorded from ten to two minutes before the hour: zero overlap with
+        // the standup, full overlap with the personal block.
+        let session = DateInterval(
+            start: noon.addingTimeInterval(-10 * 60),
+            end: noon.addingTimeInterval(-2 * 60)
+        )
+
+        let result = CalendarEventMatcher.finalBinding(
+            startBinding: standup,
+            isUserChosen: false,
+            candidates: [focus],
+            interval: session
+        )
+
+        XCTAssertEqual(result?.id, "standup")
+    }
+
+    func testFinalBindingRebindsToBetterOverlappingMeeting() {
+        let previous = makeEvent(
+            id: "previous",
+            title: "1:1",
+            start: noon.addingTimeInterval(-15 * 60),
+            durationMinutes: 15,
+            isOnlineMeeting: true
+        )
+        let actual = makeEvent(
+            id: "actual",
+            title: "Quarterly Review",
+            start: noon,
+            durationMinutes: 60,
+            participants: [Participant(name: "Ada", email: "ada@example.com")]
+        )
+        let session = DateInterval(
+            start: noon.addingTimeInterval(-10 * 60),
+            end: noon.addingTimeInterval(55 * 60)
+        )
+
+        let result = CalendarEventMatcher.finalBinding(
+            startBinding: previous,
+            isUserChosen: false,
+            candidates: [previous, actual],
+            interval: session
+        )
+
+        XCTAssertEqual(result?.id, "actual")
+    }
+
+    // A binding must not be lost to a meeting-like neighbour that only
+    // touches the recording at its boundary — EventKit's inclusive predicate
+    // bounds can admit zero-overlap events.
+    func testFinalBindingIgnoresZeroOverlapChallengers() {
+        let block = makeEvent(
+            id: "block",
+            title: "Working session",
+            start: noon,
+            durationMinutes: 60
+        )
+        let previous = makeEvent(
+            id: "previous",
+            title: "1:1",
+            start: noon.addingTimeInterval(-15 * 60),
+            durationMinutes: 15,
+            isOnlineMeeting: true
+        )
+        let session = DateInterval(start: noon, end: noon.addingTimeInterval(40 * 60))
+
+        let result = CalendarEventMatcher.finalBinding(
+            startBinding: block,
+            isUserChosen: false,
+            candidates: [previous, block],
+            interval: session
+        )
+
+        XCTAssertEqual(result?.id, "block")
+    }
+
+    func testFinalBindingDoesNotAttachNonMeetingEventToAdHocRecording() {
+        let lunch = makeEvent(
+            id: "lunch",
+            title: "Lunch",
+            start: noon,
+            durationMinutes: 60
+        )
+        let session = DateInterval(start: noon, end: noon.addingTimeInterval(30 * 60))
+
+        let result = CalendarEventMatcher.finalBinding(
+            startBinding: nil,
+            isUserChosen: false,
+            candidates: [lunch],
+            interval: session
+        )
+
+        XCTAssertNil(result)
+    }
+
+    func testFinalBindingAttachesMeetingEventToAdHocRecording() {
+        let meeting = makeEvent(
+            id: "meeting",
+            title: "Standup",
+            start: noon,
+            durationMinutes: 30,
+            isOnlineMeeting: true
+        )
+        let session = DateInterval(start: noon, end: noon.addingTimeInterval(30 * 60))
+
+        let result = CalendarEventMatcher.finalBinding(
+            startBinding: nil,
+            isUserChosen: false,
+            candidates: [meeting],
+            interval: session
+        )
+
+        XCTAssertEqual(result?.id, "meeting")
+    }
+
+    func testFinalBindingKeepsIncumbentWhenNothingOverlaps() {
+        let standup = makeEvent(
+            id: "standup",
+            title: "Standup",
+            start: noon,
+            durationMinutes: 15,
+            isOnlineMeeting: true
+        )
+        let session = DateInterval(
+            start: noon.addingTimeInterval(-10 * 60),
+            end: noon.addingTimeInterval(-2 * 60)
+        )
+
+        let result = CalendarEventMatcher.finalBinding(
+            startBinding: standup,
+            isUserChosen: false,
+            candidates: [],
+            interval: session
+        )
+
+        XCTAssertEqual(result?.id, "standup")
     }
 }

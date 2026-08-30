@@ -317,3 +317,37 @@ struct MeetingMetadata: Sendable, Equatable, Codable {
         )
     }
 }
+
+extension MeetingMetadata {
+    private enum CodingKeys: String, CodingKey {
+        case detectionContext
+        case calendarEvent
+        case calendarEventIsUserChosen
+        case title
+        case startedAt
+        case endedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            detectionContext: try container.decodeIfPresent(DetectionContext.self, forKey: .detectionContext),
+            calendarEvent: try container.decodeIfPresent(CalendarEvent.self, forKey: .calendarEvent),
+            // Payloads written before this field existed decode as false.
+            calendarEventIsUserChosen: try container.decodeIfPresent(Bool.self, forKey: .calendarEventIsUserChosen) ?? false,
+            title: try container.decodeIfPresent(String.self, forKey: .title),
+            startedAt: try container.decode(Date.self, forKey: .startedAt),
+            endedAt: try container.decodeIfPresent(Date.self, forKey: .endedAt)
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(detectionContext, forKey: .detectionContext)
+        try container.encodeIfPresent(calendarEvent, forKey: .calendarEvent)
+        try container.encode(calendarEventIsUserChosen, forKey: .calendarEventIsUserChosen)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encodeIfPresent(endedAt, forKey: .endedAt)
+    }
+}
