@@ -269,9 +269,14 @@ final class MeetingDetectionControllerTests: XCTestCase {
         var autoResult = true
         private(set) var autoPosts = 0
         private(set) var promptPosts = 0
+        private(set) var autoClears = 0
 
         init() {
             super.init(isAvailable: false)
+        }
+
+        override func clearAutoRecordingStarted() {
+            autoClears += 1
         }
 
         override func postAutoRecordingStarted(appName: String?) async -> Bool {
@@ -346,6 +351,37 @@ final class MeetingDetectionControllerTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(500))
         consumeTask.cancel()
         return receivedEvent
+    }
+
+    func testTeardownClearsDeliveredAutoRecordNotification() async throws {
+        let settings = makeSettings()
+        settings.autoRecordDetectedMeetings = true
+
+        let (controller, service, audio, camera) = makeDetectionHarness(settings: settings)
+        defer {
+            audio.finish()
+            camera.finish()
+        }
+
+        let event = try await collectFirstEvent(from: controller) { camera.emit(true) }
+        guard case .accepted = event else {
+            XCTFail("Expected an auto-record accept, got \(String(describing: event))")
+            return
+        }
+        XCTAssertEqual(service.autoPosts, 1)
+        XCTAssertEqual(service.autoClears, 0)
+
+        // Detection switched off while the auto-recorded meeting is still
+        // running. Teardown cancels the detection event loop, so `.ended` never
+        // arrives and handleMeetingEnded() never runs — teardown is the only
+        // thing left that can take the delivered notification down.
+        controller.teardown()
+
+        XCTAssertEqual(
+            service.autoClears,
+            1,
+            "teardown left the 'Recording Started' notification in Notification Center"
+        )
     }
 
     func testAutoRecordAcceptsDetectionWithoutNotificationTap() async throws {

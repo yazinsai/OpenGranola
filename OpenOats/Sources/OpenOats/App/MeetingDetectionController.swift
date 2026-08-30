@@ -221,6 +221,12 @@ final class MeetingDetectionController {
         }
 
         notificationService?.cancelPending()
+        // Detection can be switched off mid-meeting. The detection event loop
+        // is already cancelled above, so `.ended` will never arrive and
+        // handleMeetingEnded() will never run — without this, a delivered
+        // "Recording Started" notification would sit in Notification Center
+        // for good.
+        notificationService?.clearAutoRecordingStarted()
         notificationService = nil
 
         if let observer = sleepObserver {
