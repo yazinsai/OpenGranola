@@ -159,6 +159,9 @@ struct SessionMetadata: Codable, Sendable {
     var customNotesGuidance: String?
     /// Per-session custom speaker display names. Keys are Speaker.storageKey values.
     var speakerNames: [String: String]?
+    /// Set when the most recent notes-folder mirror failed (e.g. the folder is
+    /// on an unreachable network mount) so the export can be retried later.
+    var mirrorPending: Bool? = nil
 }
 
 // MARK: - SessionRepository
@@ -205,6 +208,10 @@ actor SessionRepository {
     /// `startAccessingSecurityScopedResource()` before file I/O.
     private var notesFolderIsSecurityScoped = false
 
+    /// Sessions whose most recent notes-folder mirror failed and should be retried.
+    /// Mirrors the durable `SessionMetadata.mirrorPending` flags.
+    private var pendingMirrorSessionIDs: Set<String> = []
+
     init(rootDirectory: URL? = nil) {
         let baseDirectory: URL
         if let rootDirectory {
@@ -228,6 +235,8 @@ actor SessionRepository {
         Self.dropMetadataNeverIndex(in: sessionsDirectory)
 
         Self.cleanupExpiredRetainedBatchAudio(in: sessionsDirectory)
+
+        Task { await self.restorePendingMirrors() }
     }
 
     // MARK: - Configuration
@@ -244,6 +253,7 @@ actor SessionRepository {
         notesFolderPath = url
         notesFolderIsSecurityScoped = securityScoped
         meetingTranscriptDateFolderFormat = dateSubfolderFormat
+        retryPendingMirrors()
     }
 
     /// Register a callback invoked once per session when a write error occurs.
@@ -1921,13 +1931,46 @@ actor SessionRepository {
     /// - Parameter notesMarkdown: Pass the markdown when already in memory (e.g. from saveNotes)
     ///   to avoid a redundant disk read; nil causes the background task to read it from disk.
     private func scheduleMirror(sessionID: String, notesMarkdown: String? = nil) {
+        scheduleMirrorCore(sessionID: sessionID, notesMarkdown: notesMarkdown)
+        retryPendingMirrors(excluding: sessionID)
+    }
+
+    /// Scan session metadata for mirrors that failed in a previous run and
+    /// retry them. Called once from init.
+    private func restorePendingMirrors() {
+        let fm = FileManager.default
+        guard let contents = try? fm.contentsOfDirectory(
+            at: sessionsDirectory,
+            includingPropertiesForKeys: nil
+        ) else { return }
+        for entry in contents {
+            let sessionID = entry.lastPathComponent
+            if loadSessionMetadataFile(sessionID: sessionID)?.mirrorPending == true {
+                pendingMirrorSessionIDs.insert(sessionID)
+            }
+        }
+        retryPendingMirrors()
+    }
+
+    /// Re-schedule mirrors that previously failed (e.g. the notes folder lives
+    /// on a network mount that was unreachable). Runs whenever the notes folder
+    /// is (re)configured and piggybacks on every scheduled mirror, so pending
+    /// exports heal as soon as the folder is reachable again.
+    private func retryPendingMirrors(excluding excludedSessionID: String? = nil) {
+        guard notesFolderPath != nil else { return }
+        for sessionID in pendingMirrorSessionIDs where sessionID != excludedSessionID {
+            scheduleMirrorCore(sessionID: sessionID)
+        }
+    }
+
+    private func scheduleMirrorCore(sessionID: String, notesMarkdown: String? = nil) {
         guard let outputDir = notesFolderPath else { return }
         let sessDir = sessionsDirectory
         let isSecurityScoped = notesFolderIsSecurityScoped
         let dateSubfolderFormat = meetingTranscriptDateFolderFormat
         let meta = loadSessionMetadataFile(sessionID: sessionID)
-        Task.detached(priority: .background) {
-            SessionRepository.performMirror(
+        Task.detached(priority: .background) { [weak self] in
+            let succeeded = SessionRepository.performMirror(
                 sessionID: sessionID,
                 meta: meta,
                 notesMarkdown: notesMarkdown,
@@ -1936,9 +1979,27 @@ actor SessionRepository {
                 dateSubfolderFormat: dateSubfolderFormat,
                 sessionsDirectory: sessDir
             )
+            await self?.mirrorDidFinish(sessionID: sessionID, succeeded: succeeded)
         }
     }
 
+    /// Record the outcome of a mirror attempt, persisting a pending flag in the
+    /// session metadata so a failed export survives an app relaunch.
+    private func mirrorDidFinish(sessionID: String, succeeded: Bool) {
+        if succeeded {
+            pendingMirrorSessionIDs.remove(sessionID)
+        } else {
+            pendingMirrorSessionIDs.insert(sessionID)
+        }
+        let shouldFlag = !succeeded
+        guard var meta = loadSessionMetadataFile(sessionID: sessionID),
+              (meta.mirrorPending == true) != shouldFlag else { return }
+        meta.mirrorPending = shouldFlag ? true : nil
+        writeSessionMetadata(meta, sessionID: sessionID)
+    }
+
+    /// Returns `true` when the mirror was written (or there was nothing to
+    /// mirror), `false` when the export failed and should be retried.
     private nonisolated static func performMirror(
         sessionID: String,
         meta: SessionMetadata?,
@@ -1947,7 +2008,7 @@ actor SessionRepository {
         isSecurityScoped: Bool,
         dateSubfolderFormat: MeetingTranscriptDateFolderFormat?,
         sessionsDirectory: URL
-    ) {
+    ) -> Bool {
         // Acquire security-scoped access if the URL was resolved from a bookmark
         let didStartAccess = isSecurityScoped && outputDir.startAccessingSecurityScopedResource()
         defer {
@@ -1956,7 +2017,7 @@ actor SessionRepository {
 
         let dir = sessionsDirectory.appendingPathComponent(sessionID, isDirectory: true)
         let records = readTranscript(sessionID: sessionID, dir: dir, sessionsDirectory: sessionsDirectory)
-        guard !records.isEmpty else { return }
+        guard !records.isEmpty else { return true }
 
         let resolvedMarkdown = notesMarkdown
             ?? readNotes(sessionID: sessionID, dir: dir, sessionsDirectory: sessionsDirectory)?.markdown
@@ -1990,7 +2051,7 @@ actor SessionRepository {
             preferPackage: !referencedAssetPaths.isEmpty
         )
 
-        guard let outputTarget else { return }
+        guard let outputTarget else { return false }
 
         if let packageDirectoryURL = outputTarget.packageDirectoryURL {
             synchronizeMirroredAssets(
@@ -1999,6 +2060,7 @@ actor SessionRepository {
                 into: packageDirectoryURL
             )
         }
+        return true
     }
 
     private nonisolated static func mirrorDirectory(
