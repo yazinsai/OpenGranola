@@ -13,13 +13,21 @@ final class SettingsStore {
     private static let enableBatchRetranscriptionLegacyKey = "enableBatchRefinement"
     @ObservationIgnored private var loadedSecretKeys: Set<String> = []
 
-    private static func normalizedIdentifierList(_ values: [String]) -> [String] {
+    /// Trim, drop empties, and deduplicate an identifier list, preserving order.
+    /// Pass `caseInsensitive: true` for identifiers that are matched without
+    /// regard to case (bundle identifiers); calendar identifiers are opaque and
+    /// stay case-sensitive. The first-seen spelling is the one kept.
+    private static func normalizedIdentifierList(
+        _ values: [String],
+        caseInsensitive: Bool = false
+    ) -> [String] {
         var result: [String] = []
         var seen: Set<String> = []
         for rawValue in values {
             let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
-            guard seen.insert(trimmed).inserted else { continue }
+            let key = caseInsensitive ? trimmed.lowercased() : trimmed
+            guard seen.insert(key).inserted else { continue }
             result.append(trimmed)
         }
         return result
@@ -835,7 +843,7 @@ final class SettingsStore {
         get { access(keyPath: \.customMeetingAppBundleIDs); return _customMeetingAppBundleIDs }
         set {
             withMutation(keyPath: \.customMeetingAppBundleIDs) {
-                let normalized = Self.normalizedIdentifierList(newValue)
+                let normalized = Self.normalizedIdentifierList(newValue, caseInsensitive: true)
                 _customMeetingAppBundleIDs = normalized
                 defaults.set(normalized, forKey: "customMeetingAppBundleIDs")
             }
@@ -1521,7 +1529,8 @@ final class SettingsStore {
             self._meetingAutoDetectEnabled = defaults.bool(forKey: "meetingAutoDetectEnabled")
         }
         self._customMeetingAppBundleIDs = Self.normalizedIdentifierList(
-            defaults.stringArray(forKey: "customMeetingAppBundleIDs") ?? []
+            defaults.stringArray(forKey: "customMeetingAppBundleIDs") ?? [],
+            caseInsensitive: true
         )
         self._ignoredAppBundleIDs = defaults.stringArray(forKey: "ignoredAppBundleIDs") ?? []
         // Canonical timeout is seconds; migrate from the legacy minutes key.

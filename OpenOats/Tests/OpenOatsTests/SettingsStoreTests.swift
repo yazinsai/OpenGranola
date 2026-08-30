@@ -477,6 +477,26 @@ final class SettingsStoreTests: XCTestCase {
         )
     }
 
+    func testCustomMeetingAppBundleIDsDedupeCaseVariants() {
+        let store = makeStore()
+        store.customMeetingAppBundleIDs = ["us.Zoom.xos", "us.zoom.xos", "US.ZOOM.XOS"]
+        XCTAssertEqual(
+            store.customMeetingAppBundleIDs,
+            ["us.Zoom.xos"],
+            "bundle IDs match case-insensitively, so variants collapse to the first-seen form"
+        )
+    }
+
+    func testExcludedCalendarIDsKeepCaseVariants() {
+        let store = makeStore()
+        store.excludedCalendarIDs = ["ABC-123", "abc-123"]
+        XCTAssertEqual(
+            store.excludedCalendarIDs,
+            ["ABC-123", "abc-123"],
+            "calendar identifiers are opaque and stay case-sensitive"
+        )
+    }
+
     func testCustomMeetingAppBundleIDsNormalizeOnLoad() {
         let name = "com.openoats.test.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!

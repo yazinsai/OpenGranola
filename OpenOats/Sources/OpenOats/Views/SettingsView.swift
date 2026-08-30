@@ -69,6 +69,7 @@ private struct GeneralSettingsTab: View {
     @State private var launchAtLoginEnabled = false
     @State private var showAdvancedDetection = false
     @State private var newCustomMeetingAppBundleID = ""
+    @State private var customMeetingAppNotice: String?
     @State private var showWizard = false
     @State private var diagnosticsExportMessage: String?
     @State private var diagnosticsExportHadError = false
@@ -288,11 +289,19 @@ private struct GeneralSettingsTab: View {
                                 .font(.system(size: 12, design: .monospaced))
                                 .textFieldStyle(.roundedBorder)
                                 .onSubmit { addCustomMeetingApp() }
+                                .onChange(of: newCustomMeetingAppBundleID) {
+                                    customMeetingAppNotice = nil
+                                }
                             Button("Add") { addCustomMeetingApp() }
                                 .disabled(
                                     newCustomMeetingAppBundleID
                                         .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                 )
+                        }
+                        if let customMeetingAppNotice {
+                            Text(customMeetingAppNotice)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -371,9 +380,17 @@ private struct GeneralSettingsTab: View {
     private func addCustomMeetingApp() {
         let trimmed = newCustomMeetingAppBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        // The settings setter normalizes the stored list (trims, dedupes).
+        // A built-in app would appear in this list with a remove button that
+        // cannot actually stop detecting it. Refuse the addition and say so.
+        guard !MeetingDetector.isBundledMeetingApp(trimmed) else {
+            customMeetingAppNotice = "\(trimmed) is already built in."
+            return
+        }
+        // The settings setter normalizes the stored list (trims, dedupes,
+        // case-insensitively).
         settings.customMeetingAppBundleIDs = settings.customMeetingAppBundleIDs + [trimmed]
         newCustomMeetingAppBundleID = ""
+        customMeetingAppNotice = nil
     }
 
     private func chooseNotesFolder() {

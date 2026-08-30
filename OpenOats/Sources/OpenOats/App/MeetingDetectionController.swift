@@ -231,6 +231,14 @@ final class MeetingDetectionController {
         Log.meetingDetection.info("Detection system stopped")
     }
 
+    /// Re-seed dismissals carried across a detector rebuild. Editing the custom
+    /// meeting-app list rebuilds the detector, but that is not a new session:
+    /// the "Not a Meeting" choices the user already made must survive it.
+    /// Turning auto-detect off is a real stop, and `teardown` still clears them.
+    func restoreDismissedEvents(_ events: Set<DismissKey>) {
+        dismissedEvents.formUnion(events)
+    }
+
     // MARK: - Sleep Observer
 
     private func installSleepObserver() {
