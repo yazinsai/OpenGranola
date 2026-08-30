@@ -285,4 +285,110 @@ final class MeetingDetectionControllerTests: XCTestCase {
         }
         return await condition()
     }
+
+    // MARK: - Auto-Record (accept without notification round-trip)
+
+    /// Build a controller wired to a detector with controllable signal sources.
+    private func makeDetectionHarness(
+        settings: AppSettings
+    ) -> (MeetingDetectionController, MockAudioSignalSource, MockCameraSignalSource) {
+        let audio = MockAudioSignalSource()
+        let camera = MockCameraSignalSource()
+        let detector = MeetingDetector(audioSource: audio, cameraSource: camera)
+        let controller = MeetingDetectionController()
+        controller.setup(settings: settings, detector: detector)
+        return (controller, audio, camera)
+    }
+
+    func testAutoRecordAcceptsDetectionWithoutNotificationTap() async throws {
+        let settings = makeSettings()
+        settings.autoRecordDetectedMeetings = true
+
+        let (controller, audio, camera) = makeDetectionHarness(settings: settings)
+        defer {
+            controller.teardown()
+            audio.finish()
+            camera.finish()
+        }
+
+        var receivedEvent: DetectionEvent?
+        let consumeTask = Task { @MainActor in
+            for await event in controller.events {
+                receivedEvent = event
+                break
+            }
+        }
+
+        // Give setup's detection task time to start the detector.
+        try await Task.sleep(for: .milliseconds(200))
+        camera.emit(true) // camera-triggered detection is immediate (no debounce)
+        try await Task.sleep(for: .milliseconds(500))
+
+        if case .accepted(let metadata) = receivedEvent,
+           let signal = metadata.detectionContext?.signal,
+           case .cameraActivated = signal {
+            // correct — accepted with the camera signal, no user tap involved
+        } else {
+            XCTFail("Expected .accepted without a notification tap, got \(String(describing: receivedEvent))")
+        }
+
+        consumeTask.cancel()
+    }
+
+    func testAutoRecordOffRequiresNotificationRoundTrip() async throws {
+        let settings = makeSettings()
+        XCTAssertFalse(settings.autoRecordDetectedMeetings, "auto-record must default to off")
+
+        let (controller, audio, camera) = makeDetectionHarness(settings: settings)
+        defer {
+            controller.teardown()
+            audio.finish()
+            camera.finish()
+        }
+
+        var receivedEvent: DetectionEvent?
+        let consumeTask = Task { @MainActor in
+            for await event in controller.events {
+                receivedEvent = event
+                break
+            }
+        }
+
+        try await Task.sleep(for: .milliseconds(200))
+        camera.emit(true)
+        try await Task.sleep(for: .milliseconds(500))
+
+        XCTAssertNil(receivedEvent, "Without auto-record, detection must wait for the user to accept")
+
+        consumeTask.cancel()
+    }
+
+    func testAutoRecordRespectsAlreadyRecordingGuard() async throws {
+        let settings = makeSettings()
+        settings.autoRecordDetectedMeetings = true
+
+        let (controller, audio, camera) = makeDetectionHarness(settings: settings)
+        controller.isSessionActive = { true }
+        defer {
+            controller.teardown()
+            audio.finish()
+            camera.finish()
+        }
+
+        var receivedEvent: DetectionEvent?
+        let consumeTask = Task { @MainActor in
+            for await event in controller.events {
+                receivedEvent = event
+                break
+            }
+        }
+
+        try await Task.sleep(for: .milliseconds(200))
+        camera.emit(true)
+        try await Task.sleep(for: .milliseconds(500))
+
+        XCTAssertNil(receivedEvent, "No auto-accept while a session is already recording")
+
+        consumeTask.cancel()
+    }
 }

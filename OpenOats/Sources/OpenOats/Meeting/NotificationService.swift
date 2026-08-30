@@ -40,6 +40,10 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     /// Request identifier of the meeting-detection prompt. Only this request
     /// carries the accept / not-a-meeting / ignore-app actions.
     nonisolated static let detectionRequestID = "meeting-detection"
+    /// Identifier for the informational "recording started" notification posted
+    /// when auto-record is enabled. Distinct from `detectionRequestID`, so
+    /// `route` returns `.none` for taps on it.
+    static let autoRecordNotificationIdentifier = "meeting-detection-auto-record"
     static let batchCompletedTitle = "Re-transcription Complete"
     static let batchCompletedBody = "Re-transcription is complete. Your meeting transcript has been updated with higher-quality text."
     static let notesFailedTitle = "Notes Generation Failed"
@@ -180,6 +184,30 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         }
 
         return true
+    }
+
+    /// Post an informational notification that a detected meeting is now being
+    /// recorded automatically. Unlike `postMeetingDetected` this carries no
+    /// actions, no accept round-trip, and no 60-second timeout/auto-removal —
+    /// it only tells the user that recording has started.
+    func postAutoRecordingStarted(appName: String?) async {
+        guard await ensurePermission() else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Recording Started"
+        if let appName {
+            content.body = "Meeting detected (\(appName)). OpenOats is transcribing."
+        } else {
+            content.body = "Meeting detected. OpenOats is transcribing."
+        }
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: Self.autoRecordNotificationIdentifier,
+            content: content,
+            trigger: nil
+        )
+        try? await UNUserNotificationCenter.current().add(request)
     }
 
     /// Post a notification when batch transcription completes.

@@ -151,6 +151,14 @@ private struct GeneralSettingsTab: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
 
+                    Toggle("Automatically record detected meetings", isOn: $settings.autoRecordDetectedMeetings)
+                        .font(.system(size: 12))
+                        .disabled(!settings.meetingAutoDetectEnabled)
+
+                    Text("Skips the confirmation prompt and starts transcribing as soon as a meeting is detected. A notification still lets you know that recording has started.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+
                     Toggle("Launch at login", isOn: $launchAtLoginEnabled)
                         .font(.system(size: 12))
                         .onChange(of: launchAtLoginEnabled) { _, newValue in

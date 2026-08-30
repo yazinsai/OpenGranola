@@ -394,6 +394,20 @@ final class MeetingDetectionController {
             Log.meetingDetection.info("Detected: \(app?.name ?? "unknown", privacy: .public) (trigger: \(isCameraTrigger ? "camera" : "mic+app", privacy: .public))")
         }
 
+        // Auto-record: skip the notification round-trip and invoke the accept
+        // path directly. All pre-checks above (already recording, dismissed,
+        // permanently ignored) have passed at this point.
+        if activeSettings?.autoRecordDetectedMeetings == true {
+            if activeSettings?.detectionLogEnabled == true {
+                Log.meetingDetection.info("Auto-record enabled, accepting detection without prompt")
+            }
+            handleDetectionAccepted()
+            await notificationService?.postAutoRecordingStarted(
+                appName: isCameraTrigger ? nil : app?.name
+            )
+            return
+        }
+
         // Don't attribute camera-triggered detections to a background meeting app —
         // the camera could have been activated by a different app (e.g. browser for Google Meet).
         let posted = await notificationService?.postMeetingDetected(
