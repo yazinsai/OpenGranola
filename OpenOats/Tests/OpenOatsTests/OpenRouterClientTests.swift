@@ -56,4 +56,58 @@ final class OpenRouterClientTests: XCTestCase {
     func testAnthropicMessagesURLRejectsInvalidBaseURL() {
         XCTAssertNil(OpenRouterClient.anthropicMessagesURL(from: "not a url"))
     }
+
+    // MARK: - Non-streaming completion decoding
+
+    private func completionData(message: String) -> Data {
+        Data(#"{"choices": [{"message": \#(message)}]}"#.utf8)
+    }
+
+    func testCompletionTextReturnsContentForNormalResponse() throws {
+        let data = completionData(message: #"{"role": "assistant", "content": "Meeting notes"}"#)
+
+        XCTAssertEqual(try OpenRouterClient.completionText(from: data), "Meeting notes")
+    }
+
+    func testCompletionTextPrefersContentWhenReasoningAlsoPresent() throws {
+        let data = completionData(
+            message: #"{"role": "assistant", "content": "Final notes", "reasoning": "thinking..."}"#
+        )
+
+        XCTAssertEqual(try OpenRouterClient.completionText(from: data), "Final notes")
+    }
+
+    func testCompletionTextThrowsForNullContentWithReasoning() {
+        // mlx_lm.server + Qwen3 with thinking enabled: content is null and the
+        // whole response lands in `reasoning`. This used to fail JSON decoding.
+        let data = completionData(
+            message: #"{"role": "assistant", "content": null, "reasoning": "Okay, the user wants..."}"#
+        )
+
+        XCTAssertThrowsError(try OpenRouterClient.completionText(from: data)) { error in
+            guard case OpenRouterClient.OpenRouterError.reasoningOnlyResponse = error else {
+                return XCTFail("Expected reasoningOnlyResponse, got \(error)")
+            }
+            let description = (error as? LocalizedError)?.errorDescription ?? ""
+            XCTAssertTrue(description.contains("reasoning-only"), "Unhelpful description: \(description)")
+        }
+    }
+
+    func testCompletionTextThrowsForEmptyContentWithReasoning() {
+        let data = completionData(
+            message: #"{"role": "assistant", "content": "", "reasoning": "Okay, the user wants..."}"#
+        )
+
+        XCTAssertThrowsError(try OpenRouterClient.completionText(from: data)) { error in
+            guard case OpenRouterClient.OpenRouterError.reasoningOnlyResponse = error else {
+                return XCTFail("Expected reasoningOnlyResponse, got \(error)")
+            }
+        }
+    }
+
+    func testCompletionTextReturnsEmptyStringForNullContentWithoutReasoning() throws {
+        let data = completionData(message: #"{"role": "assistant", "content": null}"#)
+
+        XCTAssertEqual(try OpenRouterClient.completionText(from: data), "")
+    }
 }

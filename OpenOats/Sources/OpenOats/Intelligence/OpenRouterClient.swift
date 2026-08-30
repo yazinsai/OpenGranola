@@ -270,8 +270,22 @@ actor OpenRouterClient {
             throw OpenRouterError.httpError(statusCode, host: targetURL.host)
         }
 
+        return try Self.completionText(from: data)
+    }
+
+    /// Decodes a non-streaming chat completion, tolerating reasoning models
+    /// (e.g. Qwen3 served by mlx_lm.server) that return `"content": null` with
+    /// their output in a sibling `reasoning` field instead.
+    static func completionText(from data: Data) throws -> String {
         let completionResponse = try JSONDecoder().decode(CompletionResponse.self, from: data)
-        return completionResponse.choices.first?.message.content ?? ""
+        let message = completionResponse.choices.first?.message
+        let content = message?.content ?? ""
+        if content.isEmpty,
+           let reasoning = message?.reasoning,
+           !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw OpenRouterError.reasoningOnlyResponse
+        }
+        return content
     }
 
     private func streamAnthropicCompletion(
@@ -404,6 +418,7 @@ actor OpenRouterClient {
     enum OpenRouterError: Error, LocalizedError {
         case httpError(Int, host: String?)
         case missingAPIKey(host: String?)
+        case reasoningOnlyResponse
 
         var errorDescription: String? {
             switch self {
@@ -422,6 +437,10 @@ actor OpenRouterClient {
                 case nil: "LLM"
                 }
                 return "\(provider) API key required"
+            case .reasoningOnlyResponse:
+                return "LLM returned a reasoning-only response with no final content. "
+                    + "The server likely has thinking mode enabled (common with reasoning models "
+                    + "such as Qwen3 on mlx_lm.server); disable thinking so the model emits final content."
             }
         }
     }
@@ -449,7 +468,8 @@ actor OpenRouterClient {
         }
 
         struct CompletionMessage: Codable {
-            let content: String
+            let content: String?
+            let reasoning: String?
         }
     }
 
