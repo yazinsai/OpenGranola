@@ -370,11 +370,17 @@ enum RetainedBatchAudioRetention: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Reads the persisted value directly; safe off the main actor, so the
-    /// repository's sweep always sees the current setting.
+    /// Decodes the persisted value. Only a genuinely-unset key gets the 7-day
+    /// default; an unknown or non-string value (downgrade path, corruption)
+    /// fails CLOSED to keep-forever — deletion is destructive, so unknown
+    /// state must mean keep, never delete.
     static func stored(in defaults: UserDefaults) -> RetainedBatchAudioRetention {
-        guard let raw = defaults.string(forKey: defaultsKey) else { return .default }
-        return RetainedBatchAudioRetention(rawValue: raw) ?? .default
+        guard let object = defaults.object(forKey: defaultsKey) else { return .default }
+        guard let raw = object as? String,
+              let value = RetainedBatchAudioRetention(rawValue: raw) else {
+            return .forever
+        }
+        return value
     }
 }
 

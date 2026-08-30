@@ -1453,7 +1453,10 @@ final class SessionRepositoryTests: XCTestCase {
             forSessionDirectory: sessionDir
         )
 
-        let freshRepo = SessionRepository(rootDirectory: rootDir)
+        let freshRepo = SessionRepository(
+            rootDirectory: rootDir,
+            batchAudioRetention: { SessionRepository.retainedBatchAudioLifetime }
+        )
         let urls = await freshRepo.batchAudioURLs(sessionID: sessionID)
         let meta = await freshRepo.loadBatchMeta(sessionID: sessionID)
 
@@ -1470,13 +1473,35 @@ final class SessionRepositoryTests: XCTestCase {
             forSessionDirectory: sessionDir
         )
 
-        let freshRepo = SessionRepository(rootDirectory: rootDir)
+        let freshRepo = SessionRepository(
+            rootDirectory: rootDir,
+            batchAudioRetention: { SessionRepository.retainedBatchAudioLifetime }
+        )
         let urls = await freshRepo.batchAudioURLs(sessionID: sessionID)
         let meta = await freshRepo.loadBatchMeta(sessionID: sessionID)
 
         XCTAssertNil(urls.mic)
         XCTAssertNil(urls.sys)
         XCTAssertNil(meta)
+    }
+
+    func testInitWithoutRetentionWiringNeverDeletes() async throws {
+        // Fail closed: a constructor path that does not wire the retention
+        // setting must keep audio forever, not inherit a 7-day deleter.
+        let sessionID = "session_unwired_retention"
+        let sessionDir = try makeSessionWithBatchAudio(sessionID: sessionID)
+        try setModificationDate(
+            Date().addingTimeInterval(-(30 * 24 * 3600)),
+            forSessionDirectory: sessionDir
+        )
+
+        let freshRepo = SessionRepository(rootDirectory: rootDir)
+        let urls = await freshRepo.batchAudioURLs(sessionID: sessionID)
+        let meta = await freshRepo.loadBatchMeta(sessionID: sessionID)
+
+        XCTAssertNotNil(urls.mic)
+        XCTAssertNotNil(urls.sys)
+        XCTAssertNotNil(meta)
     }
 
     func testAudioSourcesExposeRawBatchAudioFiles() async throws {

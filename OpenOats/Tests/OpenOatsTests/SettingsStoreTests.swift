@@ -339,6 +339,22 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.retainedBatchAudioRetention, .sevenDays)
     }
 
+    func testRetainedBatchAudioRetentionDecodeFallbacks() {
+        // Genuinely unset key → the shipped 7-day default.
+        XCTAssertEqual(makeStore().retainedBatchAudioRetention, .sevenDays)
+
+        // Unknown raw value (e.g. written by a newer version) → fail closed
+        // to keep-forever; deletion must never come from unknown state.
+        let garbage = UserDefaults(suiteName: "com.openoats.test.\(UUID().uuidString)")!
+        garbage.set("everyFortnight", forKey: "retainedBatchAudioRetention")
+        XCTAssertEqual(makeStore(defaults: garbage).retainedBatchAudioRetention, .forever)
+
+        // Non-string value → fail closed to keep-forever.
+        let corrupt = UserDefaults(suiteName: "com.openoats.test.\(UUID().uuidString)")!
+        corrupt.set(42, forKey: "retainedBatchAudioRetention")
+        XCTAssertEqual(makeStore(defaults: corrupt).retainedBatchAudioRetention, .forever)
+    }
+
     func testRetainedBatchAudioRetentionRoundTrip() {
         let suiteName = "com.openoats.test.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

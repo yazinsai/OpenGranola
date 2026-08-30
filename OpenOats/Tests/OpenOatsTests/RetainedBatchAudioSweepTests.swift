@@ -171,6 +171,108 @@ final class RetainedBatchAudioSweepTests: XCTestCase {
         XCTAssertTrue(exists(sessionDir.appendingPathComponent("session.json")))
     }
 
+    func testSweepRemovesLoneExpiredBatchMeta() throws {
+        // With no stems left, a lone batch-meta.json must not live forever;
+        // its own modification date governs.
+        let sessionDir = try makeSession(
+            canonicalFiles: ["batch-meta.json": Date(timeIntervalSinceNow: -days(8))]
+        )
+
+        let removed = SessionRepository.cleanupExpiredRetainedBatchAudio(
+            in: sessionsDir,
+            olderThan: days(7)
+        )
+
+        XCTAssertEqual(removed, ["session_test"])
+        XCTAssertFalse(
+            exists(sessionDir.appendingPathComponent("audio").appendingPathComponent("batch-meta.json"))
+        )
+        XCTAssertTrue(exists(sessionDir.appendingPathComponent("session.json")))
+    }
+
+    func testSweepKeepsLoneFreshBatchMeta() throws {
+        let sessionDir = try makeSession(
+            canonicalFiles: ["batch-meta.json": Date(timeIntervalSinceNow: -days(1))]
+        )
+
+        SessionRepository.cleanupExpiredRetainedBatchAudio(in: sessionsDir, olderThan: days(7))
+
+        XCTAssertTrue(
+            exists(sessionDir.appendingPathComponent("audio").appendingPathComponent("batch-meta.json"))
+        )
+    }
+
+    func testSweepSkipsSessionsWithActiveBatchAccess() throws {
+        let sessionDir = try makeSession(
+            named: "session_active",
+            canonicalFiles: ["mic.caf": Date(timeIntervalSinceNow: -days(8))]
+        )
+
+        let removed = SessionRepository.cleanupExpiredRetainedBatchAudio(
+            in: sessionsDir,
+            olderThan: days(7),
+            excluding: ["session_active"]
+        )
+
+        XCTAssertTrue(removed.isEmpty)
+        XCTAssertTrue(
+            exists(sessionDir.appendingPathComponent("audio").appendingPathComponent("mic.caf"))
+        )
+    }
+
+    func testSweepDoesNotFollowSymlinkedSessionDirectories() throws {
+        // resourceValues follows symlinks: a symlink named session_* must not
+        // delete its target's stems.
+        let target = try makeSession(
+            named: "target_dir",
+            canonicalFiles: ["mic.caf": Date(timeIntervalSinceNow: -days(8))]
+        )
+        let link = sessionsDir.appendingPathComponent("session_link", isDirectory: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+
+        SessionRepository.cleanupExpiredRetainedBatchAudio(in: sessionsDir, olderThan: days(7))
+
+        XCTAssertTrue(
+            exists(target.appendingPathComponent("audio").appendingPathComponent("mic.caf"))
+        )
+    }
+
+    func testBatchAccessGuardBlocksSweepAndUserDeleteUntilEnded() async throws {
+        let fm = FileManager.default
+        let root = sessionsDir!
+
+        // Construct the repository first so the init-time sweep runs on an
+        // empty directory; then lay down the expired stems.
+        let retention = days(7)
+        let repo = SessionRepository(rootDirectory: root, batchAudioRetention: { retention })
+
+        let sessionID = "session_guarded"
+        let audioDir = root
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(sessionID, isDirectory: true)
+            .appendingPathComponent("audio", isDirectory: true)
+        try fm.createDirectory(at: audioDir, withIntermediateDirectories: true)
+        let micURL = audioDir.appendingPathComponent("mic.caf")
+        fm.createFile(atPath: micURL.path, contents: Data("audio".utf8))
+        try fm.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: -days(8))],
+            ofItemAtPath: micURL.path
+        )
+
+        await repo.beginBatchAudioAccess(sessionID: sessionID)
+
+        await repo.sweepExpiredRetainedBatchAudio()
+        XCTAssertTrue(fm.fileExists(atPath: micURL.path), "sweep must skip an active batch session")
+
+        let removedWhileActive = await repo.cleanupBatchAudio(sessionID: sessionID)
+        XCTAssertFalse(removedWhileActive, "user delete must refuse while a batch run holds the stems")
+        XCTAssertTrue(fm.fileExists(atPath: micURL.path))
+
+        await repo.endBatchAudioAccess(sessionID: sessionID)
+        await repo.sweepExpiredRetainedBatchAudio()
+        XCTAssertFalse(fm.fileExists(atPath: micURL.path), "sweep must apply once the batch run ends")
+    }
+
     func testSweepIgnoresNonSessionDirectories() throws {
         let stemDate = Date(timeIntervalSinceNow: -days(8))
         let sessionDir = try makeSession(

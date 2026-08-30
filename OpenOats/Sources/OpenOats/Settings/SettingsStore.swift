@@ -807,7 +807,8 @@ final class SettingsStore {
     var retainedBatchAudioRetention: RetainedBatchAudioRetention {
         get {
             access(keyPath: \.retainedBatchAudioRetention)
-            return RetainedBatchAudioRetention(rawValue: _retainedBatchAudioRetention) ?? .default
+            // Unknown raw values fail closed to keep-forever (see `stored(in:)`).
+            return RetainedBatchAudioRetention(rawValue: _retainedBatchAudioRetention) ?? .forever
         }
         set {
             withMutation(keyPath: \.retainedBatchAudioRetention) {
@@ -815,6 +816,12 @@ final class SettingsStore {
                 defaults.set(newValue.rawValue, forKey: RetainedBatchAudioRetention.defaultsKey)
             }
         }
+    }
+
+    /// Nonisolated snapshot for the repository's off-main retention sweep.
+    /// Unknown values fail closed to keep-forever.
+    nonisolated var retainedBatchAudioRetentionInterval: TimeInterval? {
+        (RetainedBatchAudioRetention(rawValue: _retainedBatchAudioRetention) ?? .forever).timeInterval
     }
 
     @ObservationIgnored nonisolated(unsafe) private var _enableDiarization: Bool
@@ -1533,8 +1540,7 @@ final class SettingsStore {
         self._batchTranscriptionModel = TranscriptionModel(
             rawValue: defaults.string(forKey: "batchTranscriptionModel") ?? ""
         ) ?? .whisperLargeV3Turbo
-        self._retainedBatchAudioRetention = defaults.string(forKey: RetainedBatchAudioRetention.defaultsKey)
-            ?? RetainedBatchAudioRetention.default.rawValue
+        self._retainedBatchAudioRetention = RetainedBatchAudioRetention.stored(in: defaults).rawValue
         self._enableDiarization = defaults.bool(forKey: "enableDiarization")
         self._diarizationVariant = defaults.string(forKey: "diarizationVariant") ?? DiarizationVariant.dihard3.rawValue
 

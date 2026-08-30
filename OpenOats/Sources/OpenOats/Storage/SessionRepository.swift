@@ -193,6 +193,13 @@ actor SessionRepository {
     /// Repeating background sweep started in `init`, cancelled in `deinit`.
     private var retainedAudioSweepTask: Task<Void, Never>?
 
+    /// Sessions whose retained audio is currently being read by a batch run,
+    /// with a count so overlapping runs for the same session keep the guard up.
+    private var activeBatchAudioAccessCounts: [String: Int] = [:]
+
+    /// Invoked with the affected session IDs after a sweep removes retained audio.
+    private var onRetainedAudioSwept: (@Sendable ([String]) -> Void)?
+
     private let sessionsDirectory: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -235,7 +242,10 @@ actor SessionRepository {
     init(
         rootDirectory: URL? = nil,
         mirrorRetryBackoff: TimeInterval = SessionRepository.defaultMirrorRetryBackoff,
-        batchAudioRetention: @escaping @Sendable () -> TimeInterval? = { SessionRepository.retainedBatchAudioLifetime }
+        // Fail closed: deleting audio is destructive, so a constructor path that
+        // does not wire the retention setting (tests, UI-test bootstrap, future
+        // call sites) must keep forever, never silently become a deleter.
+        batchAudioRetention: @escaping @Sendable () -> TimeInterval? = { nil }
     ) {
         self.batchAudioRetention = batchAudioRetention
 
@@ -313,6 +323,12 @@ actor SessionRepository {
     /// Register a callback invoked once per session when a write error occurs.
     func setWriteErrorHandler(_ handler: @escaping @Sendable (String) -> Void) {
         onWriteError = handler
+    }
+
+    /// Register a callback invoked with the affected session IDs after a sweep
+    /// removes retained batch audio, so dependent UI state can re-derive.
+    func setRetainedAudioSweepHandler(_ handler: @escaping @Sendable ([String]) -> Void) {
+        onRetainedAudioSwept = handler
     }
 
     // MARK: - Session Lifecycle
@@ -1594,8 +1610,29 @@ actor SessionRepository {
         return true
     }
 
-    func cleanupBatchAudio(sessionID: String) {
+    /// Marks a session's retained audio as in use by a batch transcription run,
+    /// which blocks the retention sweep and user deletion for that session.
+    /// Balanced by `endBatchAudioAccess`.
+    func beginBatchAudioAccess(sessionID: String) {
+        activeBatchAudioAccessCounts[sessionID, default: 0] += 1
+    }
+
+    func endBatchAudioAccess(sessionID: String) {
+        guard let count = activeBatchAudioAccessCounts[sessionID] else { return }
+        if count <= 1 {
+            activeBatchAudioAccessCounts.removeValue(forKey: sessionID)
+        } else {
+            activeBatchAudioAccessCounts[sessionID] = count - 1
+        }
+    }
+
+    /// Removes retained batch audio for one session. Refuses (returns `false`)
+    /// while a batch run is reading the stems.
+    @discardableResult
+    func cleanupBatchAudio(sessionID: String) -> Bool {
+        guard activeBatchAudioAccessCounts[sessionID] == nil else { return false }
         Self.removeRetainedBatchAudio(inSessionDirectory: sessionDirectory(for: sessionID))
+        return true
     }
 
     func loadBatchMeta(sessionID: String) -> BatchMeta? {
@@ -2354,40 +2391,65 @@ actor SessionRepository {
     // MARK: - Orphan Cleanup
 
     /// Re-evaluates retained batch audio against the current retention setting.
+    /// Sessions with an in-flight batch run are skipped.
     func sweepExpiredRetainedBatchAudio() {
-        Self.cleanupExpiredRetainedBatchAudio(in: sessionsDirectory, olderThan: batchAudioRetention())
+        let removed = Self.cleanupExpiredRetainedBatchAudio(
+            in: sessionsDirectory,
+            olderThan: batchAudioRetention(),
+            excluding: Set(activeBatchAudioAccessCounts.keys)
+        )
+        if !removed.isEmpty {
+            onRetainedAudioSwept?(removed)
+        }
     }
 
     /// Deletes retained batch audio whose newest artifact is older than `retention`.
-    /// A `nil` retention means keep forever.
+    /// A `nil` retention means keep forever. Returns the affected session IDs.
+    @discardableResult
     static func cleanupExpiredRetainedBatchAudio(
         in sessionsDirectory: URL,
         olderThan retention: TimeInterval?,
+        excluding activeSessionIDs: Set<String> = [],
         now: Date = Date()
-    ) {
-        guard let retention else { return }
+    ) -> [String] {
+        guard let retention else { return [] }
 
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(
             at: sessionsDirectory,
-            includingPropertiesForKeys: [.isDirectoryKey]
-        ) else { return }
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        ) else { return [] }
 
         let cutoff = now.addingTimeInterval(-retention)
+        var removed: [String] = []
 
         for item in contents {
-            guard let values = try? item.resourceValues(forKeys: [.isDirectoryKey]),
-                  values.isDirectory == true else { continue }
+            // Skip symlinks: resource values follow links, so a symlink named
+            // session_* would otherwise delete its target's stems.
+            guard let values = try? item.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
+                  values.isDirectory == true,
+                  values.isSymbolicLink != true else { continue }
 
             let name = item.lastPathComponent
             guard name.hasPrefix("session_") else { continue }
+            guard !activeSessionIDs.contains(name) else { continue }
 
-            guard let newest = newestRetainedBatchAudioModificationDate(inSessionDirectory: item),
-                  newest < cutoff else { continue }
+            let dates = retainedBatchAudioDates(inSessionDirectory: item)
+            if let stems = dates.stems {
+                let newest = max(stems, dates.metadata ?? stems)
+                guard newest < cutoff else { continue }
+            } else if let metadata = dates.metadata {
+                // No stems left: a lone batch-meta.json would otherwise live forever.
+                guard metadata < cutoff else { continue }
+            } else {
+                continue
+            }
 
             removeRetainedBatchAudio(inSessionDirectory: item)
+            removed.append(name)
             Log.sessionRepository.info("Cleaned up expired retained batch audio in \(name, privacy: .public)")
         }
+        return removed
     }
 
     /// The date that decides retained-audio expiry: the newest modification date
@@ -2397,6 +2459,14 @@ actor SessionRepository {
     /// would reset the TTL indefinitely. Returns `nil` when the session has no
     /// retained audio stems.
     static func newestRetainedBatchAudioModificationDate(inSessionDirectory sessionDirectory: URL) -> Date? {
+        let dates = retainedBatchAudioDates(inSessionDirectory: sessionDirectory)
+        guard let stems = dates.stems else { return nil }
+        return max(stems, dates.metadata ?? stems)
+    }
+
+    private static func retainedBatchAudioDates(
+        inSessionDirectory sessionDirectory: URL
+    ) -> (stems: Date?, metadata: Date?) {
         let audioDir = sessionDirectory.appendingPathComponent("audio", isDirectory: true)
         let audioStems = [
             audioDir.appendingPathComponent("mic.caf"),
@@ -2404,23 +2474,22 @@ actor SessionRepository {
             sessionDirectory.appendingPathComponent("mic.caf"),
             sessionDirectory.appendingPathComponent("sys.caf"),
         ]
-        let metadata = [
+        let metadataFiles = [
             audioDir.appendingPathComponent("batch-meta.json"),
             sessionDirectory.appendingPathComponent("batch-meta.json"),
         ]
 
-        var newest: Date?
+        var stems: Date?
         for url in audioStems {
             guard let date = modificationDate(of: url) else { continue }
-            newest = max(newest ?? date, date)
+            stems = max(stems ?? date, date)
         }
-        // Metadata alone does not make a session sweepable.
-        guard newest != nil else { return nil }
-        for url in metadata {
+        var metadata: Date?
+        for url in metadataFiles {
             guard let date = modificationDate(of: url) else { continue }
-            newest = max(newest ?? date, date)
+            metadata = max(metadata ?? date, date)
         }
-        return newest
+        return (stems, metadata)
     }
 
     private static func modificationDate(of url: URL) -> Date? {

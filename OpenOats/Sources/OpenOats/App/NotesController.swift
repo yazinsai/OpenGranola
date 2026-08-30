@@ -188,16 +188,32 @@ final class NotesController {
     @ObservationIgnored private var audioPlayer: AVPlayer?
     @ObservationIgnored private var playerObservation: Any?
 
+    /// Observer for retention-sweep removals, so open UI re-derives its state.
+    @ObservationIgnored nonisolated(unsafe) private var sweepObservation: (any NSObjectProtocol)?
+
     init(coordinator: AppCoordinator, settings: AppSettings? = nil) {
         self.coordinator = coordinator
         self.settings = settings
         startEngineObservation()
+        sweepObservation = NotificationCenter.default.addObserver(
+            forName: .retainedBatchAudioSwept,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let sessionIDs = notification.userInfo?["sessionIDs"] as? [String] else { return }
+            Task { @MainActor [weak self] in
+                self?.handleRetainedAudioSwept(sessionIDs: sessionIDs)
+            }
+        }
     }
 
     deinit {
         engineObservationTask?.cancel()
         meetingHistoryPreviewTask?.cancel()
         meetingFamilyKnowledgeBaseTask?.cancel()
+        if let sweepObservation {
+            NotificationCenter.default.removeObserver(sweepObservation)
+        }
     }
 
     // MARK: - Lifecycle
@@ -899,22 +915,47 @@ final class NotesController {
 
     func deleteRetainedBatchAudio() {
         guard let sessionID = state.selectedSessionID,
-              state.canRetranscribeSelectedSession else { return }
+              state.canRetranscribeSelectedSession,
+              // Re-check at action time: the menu's `.disabled(isBatchBusy)` is
+              // render-time only and the confirmation dialog is never re-gated.
+              coordinator.batchStatus == .idle else { return }
 
         Task {
-            await coordinator.sessionRepository.cleanupBatchAudio(sessionID: sessionID)
-            guard state.selectedSessionID == sessionID else { return }
-
-            // The deleted stems may back the playback sources currently shown.
-            let sources = await coordinator.sessionRepository.audioSources(for: sessionID)
-            if let playingURL = state.audioFileURL, !sources.contains(where: { $0.url == playingURL }) {
+            // Stop playback of a stem we are about to unlink, before unlinking.
+            let doomed = await coordinator.sessionRepository.batchAudioURLs(sessionID: sessionID)
+            if let current = state.audioFileURL, current == doomed.mic || current == doomed.sys {
                 stopAudio()
             }
-            state.availableAudioSources = sources
-            state.audioFileURL = sources.first?.url
-            state.canRetranscribeSelectedSession =
-                await coordinator.sessionRepository.hasRetainedBatchAudio(sessionID: sessionID)
+
+            // The repository refuses while a batch run holds the stems.
+            let removed = await coordinator.sessionRepository.cleanupBatchAudio(sessionID: sessionID)
+            guard removed else { return }
+
+            coordinator.liveSessionController?.retainedBatchAudioWasDeleted(sessionID: sessionID)
+            await refreshRetainedAudioDependentState(sessionID: sessionID)
         }
+    }
+
+    /// Re-derives audio-source and re-transcribe state after retained audio was
+    /// removed (user delete or retention sweep).
+    private func refreshRetainedAudioDependentState(sessionID: String) async {
+        guard state.selectedSessionID == sessionID else { return }
+
+        let sources = await coordinator.sessionRepository.audioSources(for: sessionID)
+        if let current = state.audioFileURL, !sources.contains(where: { $0.url == current }) {
+            stopAudio()
+            state.audioFileURL = sources.first?.url
+        } else if state.audioFileURL == nil {
+            state.audioFileURL = sources.first?.url
+        }
+        state.availableAudioSources = sources
+        state.canRetranscribeSelectedSession =
+            await coordinator.sessionRepository.hasRetainedBatchAudio(sessionID: sessionID)
+    }
+
+    private func handleRetainedAudioSwept(sessionIDs: [String]) {
+        guard let sessionID = state.selectedSessionID, sessionIDs.contains(sessionID) else { return }
+        Task { await refreshRetainedAudioDependentState(sessionID: sessionID) }
     }
 
     // MARK: - Session Management
