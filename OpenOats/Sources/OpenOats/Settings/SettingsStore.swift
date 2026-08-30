@@ -3,6 +3,7 @@ import CoreAudio
 import Foundation
 import Observation
 import Security
+import os
 
 @Observable
 @MainActor
@@ -803,16 +804,22 @@ final class SettingsStore {
         }
     }
 
-    @ObservationIgnored nonisolated(unsafe) private var _retainedBatchAudioRetention: String
+    /// Lock-backed rather than `nonisolated(unsafe)`: the repository's retention
+    /// sweep reads this off the main actor through
+    /// `retainedBatchAudioRetentionInterval` while the settings picker writes it
+    /// on the main actor. Unsynchronised, that is a data race on the string's
+    /// storage, not merely a stale read.
+    @ObservationIgnored private let _retainedBatchAudioRetention: OSAllocatedUnfairLock<String>
     var retainedBatchAudioRetention: RetainedBatchAudioRetention {
         get {
             access(keyPath: \.retainedBatchAudioRetention)
             // Unknown raw values fail closed to keep-forever (see `stored(in:)`).
-            return RetainedBatchAudioRetention(rawValue: _retainedBatchAudioRetention) ?? .forever
+            let raw = _retainedBatchAudioRetention.withLock { $0 }
+            return RetainedBatchAudioRetention(rawValue: raw) ?? .forever
         }
         set {
             withMutation(keyPath: \.retainedBatchAudioRetention) {
-                _retainedBatchAudioRetention = newValue.rawValue
+                _retainedBatchAudioRetention.withLock { $0 = newValue.rawValue }
                 defaults.set(newValue.rawValue, forKey: RetainedBatchAudioRetention.defaultsKey)
             }
         }
@@ -821,7 +828,8 @@ final class SettingsStore {
     /// Nonisolated snapshot for the repository's off-main retention sweep.
     /// Unknown values fail closed to keep-forever.
     nonisolated var retainedBatchAudioRetentionInterval: TimeInterval? {
-        (RetainedBatchAudioRetention(rawValue: _retainedBatchAudioRetention) ?? .forever).timeInterval
+        let raw = _retainedBatchAudioRetention.withLock { $0 }
+        return (RetainedBatchAudioRetention(rawValue: raw) ?? .forever).timeInterval
     }
 
     @ObservationIgnored nonisolated(unsafe) private var _enableDiarization: Bool
@@ -1540,7 +1548,9 @@ final class SettingsStore {
         self._batchTranscriptionModel = TranscriptionModel(
             rawValue: defaults.string(forKey: "batchTranscriptionModel") ?? ""
         ) ?? .whisperLargeV3Turbo
-        self._retainedBatchAudioRetention = RetainedBatchAudioRetention.stored(in: defaults).rawValue
+        self._retainedBatchAudioRetention = OSAllocatedUnfairLock(
+            initialState: RetainedBatchAudioRetention.stored(in: defaults).rawValue
+        )
         self._enableDiarization = defaults.bool(forKey: "enableDiarization")
         self._diarizationVariant = defaults.string(forKey: "diarizationVariant") ?? DiarizationVariant.dihard3.rawValue
 

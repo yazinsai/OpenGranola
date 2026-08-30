@@ -942,6 +942,12 @@ final class NotesController {
         guard state.selectedSessionID == sessionID else { return }
 
         let sources = await coordinator.sessionRepository.audioSources(for: sessionID)
+        // Every await here yields the main actor, and the sweep fires while the
+        // user is working, so the selection can move on before we resume.
+        // Applying this session's audio state to whatever is selected now is
+        // worse than skipping the refresh, so re-check after each hop.
+        guard state.selectedSessionID == sessionID else { return }
+
         if let current = state.audioFileURL, !sources.contains(where: { $0.url == current }) {
             stopAudio()
             state.audioFileURL = sources.first?.url
@@ -949,11 +955,15 @@ final class NotesController {
             state.audioFileURL = sources.first?.url
         }
         state.availableAudioSources = sources
-        state.canRetranscribeSelectedSession =
-            await coordinator.sessionRepository.hasRetainedBatchAudio(sessionID: sessionID)
+
+        let canRetranscribe = await coordinator.sessionRepository.hasRetainedBatchAudio(sessionID: sessionID)
+        guard state.selectedSessionID == sessionID else { return }
+        state.canRetranscribeSelectedSession = canRetranscribe
     }
 
-    private func handleRetainedAudioSwept(sessionIDs: [String]) {
+    /// Entry point for the `.retainedBatchAudioSwept` notification.
+    /// Not private so tests can drive the sweep path directly.
+    func handleRetainedAudioSwept(sessionIDs: [String]) {
         guard let sessionID = state.selectedSessionID, sessionIDs.contains(sessionID) else { return }
         Task { await refreshRetainedAudioDependentState(sessionID: sessionID) }
     }

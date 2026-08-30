@@ -369,6 +369,57 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(reopened.retainedBatchAudioRetention, .forever)
     }
 
+    func testRetainedBatchAudioRetentionIntervalTracksTheSetting() {
+        let store = makeStore()
+        XCTAssertEqual(store.retainedBatchAudioRetentionInterval, 7 * 24 * 3600)
+
+        store.retainedBatchAudioRetention = .thirtyDays
+        XCTAssertEqual(store.retainedBatchAudioRetentionInterval, 30 * 24 * 3600)
+
+        store.retainedBatchAudioRetention = .threeDays
+        XCTAssertEqual(store.retainedBatchAudioRetentionInterval, 3 * 24 * 3600)
+
+        // Keep-forever must reach the sweep as "no retention window".
+        store.retainedBatchAudioRetention = .forever
+        XCTAssertNil(store.retainedBatchAudioRetentionInterval)
+    }
+
+    func testRetainedBatchAudioRetentionIntervalFailsClosedOnUnknownStoredValue() {
+        let garbage = UserDefaults(suiteName: "com.openoats.test.\(UUID().uuidString)")!
+        garbage.set("everyFortnight", forKey: "retainedBatchAudioRetention")
+        XCTAssertNil(makeStore(defaults: garbage).retainedBatchAudioRetentionInterval)
+    }
+
+    /// The repository's sweep reads this off the main actor while the settings
+    /// picker writes it on the main actor. Reading the backing storage without
+    /// synchronisation is a data race on the value, not just a stale read, so
+    /// hammer both sides together. Under `--sanitize=thread` this test is the
+    /// one that reports the race.
+    func testRetainedBatchAudioRetentionIntervalIsSafeToReadOffTheMainActor() async {
+        let store = makeStore()
+        let legalIntervals: Set<TimeInterval> = Set(
+            RetainedBatchAudioRetention.allCases.compactMap(\.timeInterval)
+        )
+
+        let reader = Task.detached {
+            var observed: [TimeInterval?] = []
+            for _ in 0..<2_000 {
+                observed.append(store.retainedBatchAudioRetentionInterval)
+            }
+            return observed
+        }
+
+        let cases = RetainedBatchAudioRetention.allCases
+        for index in 0..<2_000 {
+            store.retainedBatchAudioRetention = cases[index % cases.count]
+        }
+
+        for value in await reader.value {
+            guard let value else { continue }
+            XCTAssertTrue(legalIntervals.contains(value), "Observed a torn retention value: \(value)")
+        }
+    }
+
     func testDiagnosticLoggingRoundTrip() {
         let store = makeStore()
         XCTAssertFalse(store.diagnosticLoggingEnabled)
