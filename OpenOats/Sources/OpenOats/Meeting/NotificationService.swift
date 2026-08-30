@@ -37,6 +37,8 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     private static let dismissAction = "DISMISS"
     static let batchCompletedTitle = "Re-transcription Complete"
     static let batchCompletedBody = "Re-transcription is complete. Your meeting transcript has been updated with higher-quality text."
+    static let notesFailedTitle = "Notes Generation Failed"
+    static let notesFailedBody = "Meeting notes could not be generated. Open the meeting and choose Generate Notes to try again."
 
     override init() {
         super.init()
@@ -177,6 +179,25 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
         let request = UNNotificationRequest(
             identifier: "batch-completed-\(sessionID)",
+            content: content,
+            trigger: nil
+        )
+
+        try? await UNUserNotificationCenter.current().add(request)
+    }
+
+    /// Post a notification when automatic post-meeting notes generation fails,
+    /// so the failure is visible without opening the app.
+    func postNotesFailed(sessionID: String) async {
+        guard await ensurePermission() else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = Self.notesFailedTitle
+        content.body = Self.notesFailedBody
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "notes-failed-\(sessionID)",
             content: content,
             trigger: nil
         )

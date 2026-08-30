@@ -1122,14 +1122,33 @@ final class LiveSessionController {
         let scratchpad = await coordinator.sessionRepository.loadScratchpad(sessionID: sessionID)
 
         do {
-            let generatedMarkdown = try await coordinator.notesEngine.generateMarkdownDetached(
-                transcript: sessionData.transcript,
-                template: template,
-                settings: settings,
-                calendarEvent: sessionData.calendarEvent,
-                scratchpad: scratchpad.isEmpty ? nil : scratchpad,
-                customGuidance: customGuidance
-            )
+            let generatedMarkdown: String
+            do {
+                generatedMarkdown = try await coordinator.notesEngine.generateMarkdownDetached(
+                    transcript: sessionData.transcript,
+                    template: template,
+                    settings: settings,
+                    calendarEvent: sessionData.calendarEvent,
+                    scratchpad: scratchpad.isEmpty ? nil : scratchpad,
+                    customGuidance: customGuidance
+                )
+            } catch {
+                // One retry after a short backoff: notes calls fail transiently
+                // (local LLM server warming up, brief network drop).
+                DiagnosticsSupport.record(
+                    category: "meeting",
+                    message: "Auto-generated post-meeting notes attempt failed for \(sessionID), retrying: \(error.localizedDescription)"
+                )
+                try await Task.sleep(for: .seconds(3))
+                generatedMarkdown = try await coordinator.notesEngine.generateMarkdownDetached(
+                    transcript: sessionData.transcript,
+                    template: template,
+                    settings: settings,
+                    calendarEvent: sessionData.calendarEvent,
+                    scratchpad: scratchpad.isEmpty ? nil : scratchpad,
+                    customGuidance: customGuidance
+                )
+            }
 
             let notes = GeneratedNotes(
                 template: coordinator.templateStore.snapshot(of: template),
@@ -1158,6 +1177,9 @@ final class LiveSessionController {
                 category: "meeting",
                 message: "Auto-generated post-meeting notes failed for \(sessionID): \(error.localizedDescription)"
             )
+            if let notifService = container.notificationService {
+                await notifService.postNotesFailed(sessionID: sessionID)
+            }
         }
     }
 
