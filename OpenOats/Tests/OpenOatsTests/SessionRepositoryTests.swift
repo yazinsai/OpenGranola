@@ -1486,4 +1486,127 @@ final class SessionRepositoryTests: XCTestCase {
         XCTAssertEqual(decoded.kbHits, ["doc.md"])
         XCTAssertEqual(decoded.cleanedText, "Hello there.")
     }
+
+    // MARK: - saveGeneratedNotesIfAbsent
+
+    private func makeTemplateSnapshot(name: String = "Auto") -> TemplateSnapshot {
+        TemplateSnapshot(id: UUID(), name: name, icon: "star", systemPrompt: "Be helpful")
+    }
+
+    private func sessionDirectory(for sessionID: String) -> URL {
+        rootDir
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(sessionID, isDirectory: true)
+    }
+
+    func testSaveGeneratedNotesIfAbsentWritesAndHeadsWithCurrentTitle() async {
+        let sessionID = "auto_notes_write"
+        await repo.seedSession(
+            id: sessionID,
+            records: [SessionRecord(speaker: .you, text: "Hello", timestamp: Date())],
+            startedAt: Date(),
+            title: "Customer Sync"
+        )
+
+        let outcome = await repo.saveGeneratedNotesIfAbsent(
+            sessionID: sessionID,
+            template: makeTemplateSnapshot(),
+            markdown: "Body without a heading.",
+            generatedAt: Date()
+        )
+
+        XCTAssertEqual(outcome, .written)
+        let loaded = await repo.loadNotes(sessionID: sessionID)
+        XCTAssertEqual(loaded?.markdown, "# Meeting Notes: Customer Sync\n\nBody without a heading.")
+
+        let sessions = await repo.listSessions()
+        XCTAssertEqual(sessions.first(where: { $0.id == sessionID })?.hasNotes, true)
+    }
+
+    func testSaveGeneratedNotesIfAbsentDoesNotResurrectDeletedSession() async {
+        let sessionID = "auto_notes_deleted"
+        await repo.seedSession(
+            id: sessionID,
+            records: [SessionRecord(speaker: .you, text: "Hello", timestamp: Date())],
+            startedAt: Date()
+        )
+        await repo.deleteSession(sessionID: sessionID)
+
+        let outcome = await repo.saveGeneratedNotesIfAbsent(
+            sessionID: sessionID,
+            template: makeTemplateSnapshot(),
+            markdown: "# Late Notes\n\nToo late.",
+            generatedAt: Date()
+        )
+
+        XCTAssertEqual(outcome, .sessionMissing)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sessionDirectory(for: sessionID).path))
+    }
+
+    func testSaveGeneratedNotesIfAbsentKeepsNotesWrittenByHand() async {
+        let sessionID = "auto_notes_manual"
+        await repo.seedSession(
+            id: sessionID,
+            records: [SessionRecord(speaker: .you, text: "Hello", timestamp: Date())],
+            startedAt: Date()
+        )
+        await repo.saveNotes(
+            sessionID: sessionID,
+            notes: GeneratedNotes(
+                template: makeTemplateSnapshot(name: "Manual"),
+                generatedAt: Date(),
+                markdown: "# Handwritten\n\nMine."
+            )
+        )
+
+        let outcome = await repo.saveGeneratedNotesIfAbsent(
+            sessionID: sessionID,
+            template: makeTemplateSnapshot(),
+            markdown: "# Generated\n\nOverwrite attempt.",
+            generatedAt: Date()
+        )
+
+        XCTAssertEqual(outcome, .notesAlreadyExist)
+        let loaded = await repo.loadNotes(sessionID: sessionID)
+        XCTAssertEqual(loaded?.markdown, "# Handwritten\n\nMine.")
+        XCTAssertEqual(loaded?.template.name, "Manual")
+    }
+
+    /// The check and the write are one actor operation, so a concurrent delete
+    /// runs either wholly before it (nothing is written) or wholly after it
+    /// (the notes go with the session). Neither order can leave notes behind in
+    /// a session directory that no longer has metadata.
+    func testSaveGeneratedNotesIfAbsentRacingDeleteLeavesNoOrphanNotes() async {
+        let sessionID = "auto_notes_race"
+        await repo.seedSession(
+            id: sessionID,
+            records: [SessionRecord(speaker: .you, text: "Hello", timestamp: Date())],
+            startedAt: Date()
+        )
+
+        let repo = repo!
+        let template = makeTemplateSnapshot()
+        let generatedAt = Date()
+        async let write = repo.saveGeneratedNotesIfAbsent(
+            sessionID: sessionID,
+            template: template,
+            markdown: "# Racing Notes\n\nBody.",
+            generatedAt: generatedAt
+        )
+        async let delete: Void = repo.deleteSession(sessionID: sessionID)
+        let outcome = await write
+        await delete
+
+        let dir = sessionDirectory(for: sessionID)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: dir.appendingPathComponent("notes.md").path),
+            "notes survived the delete of their session"
+        )
+        if outcome == .sessionMissing {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: dir.appendingPathComponent("session.json").path),
+                "session was resurrected by a write that had already seen it deleted"
+            )
+        }
+    }
 }

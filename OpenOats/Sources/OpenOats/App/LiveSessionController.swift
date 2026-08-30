@@ -1153,36 +1153,35 @@ final class LiveSessionController {
         }
 
         // Generation can take minutes, and a retry widens that window further.
-        // Re-read the session before writing: the user may have deleted the
-        // meeting, or written notes by hand while this was in flight.
-        guard await coordinator.sessionRepository.sessionExists(id: sessionID) else {
+        // The user may have deleted the meeting, or written notes by hand,
+        // while this was in flight. Checking that from here would be a separate
+        // call into the repository actor, and a delete or a manual save can
+        // land in the gap before the write, so the repository checks and writes
+        // in a single operation.
+        let outcome = await coordinator.sessionRepository.saveGeneratedNotesIfAbsent(
+            sessionID: sessionID,
+            template: coordinator.templateStore.snapshot(of: template),
+            markdown: generatedMarkdown,
+            generatedAt: Date()
+        )
+
+        switch outcome {
+        case .sessionMissing:
             DiagnosticsSupport.record(
                 category: "meeting",
                 message: "Discarded auto-generated notes for \(sessionID): session was deleted"
             )
             return
-        }
-
-        let currentSession = await coordinator.sessionRepository.loadSession(id: sessionID).index
-        guard !currentSession.hasNotes else {
+        case .notesAlreadyExist:
             DiagnosticsSupport.record(
                 category: "meeting",
                 message: "Discarded auto-generated notes for \(sessionID): notes already exist"
             )
             return
+        case .written:
+            break
         }
 
-        let notes = GeneratedNotes(
-            template: coordinator.templateStore.snapshot(of: template),
-            generatedAt: Date(),
-            markdown: GeneratedNotes.normalizedMarkdown(
-                generatedMarkdown,
-                title: currentSession.title,
-                date: currentSession.startedAt
-            )
-        )
-
-        await coordinator.sessionRepository.saveNotes(sessionID: sessionID, notes: notes)
         await coordinator.loadHistory()
 
         if coordinator.lastEndedSession?.id == sessionID {
