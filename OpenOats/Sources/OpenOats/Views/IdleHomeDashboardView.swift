@@ -82,28 +82,29 @@ struct IdleHomeDashboardView: View {
     }
 
     @ViewBuilder
-    private func comingUpCard(accessState: CalendarManager.AccessState) -> some View {
+    private func comingUpCard(accessState: CalendarManager.AccessState?) -> some View {
         Group {
-            if !settings.calendarIntegrationEnabled {
+            switch HomeTimelineCalendarNotice.resolve(
+                integrationEnabled: settings.calendarIntegrationEnabled,
+                accessState: accessState
+            ) {
+            case .integrationOff:
                 disabledCalendarCard
-            } else {
-                switch accessState {
-                case .authorized:
-                    if events.isEmpty && earlierTodayEvents.isEmpty {
-                        emptyStateCard(
-                            title: "No upcoming meetings",
-                            description: "OpenOats will show your next calendar meetings here."
-                        )
-                    } else {
-                        upcomingMeetingsCard
-                    }
-                case .denied:
-                    deniedCalendarCard
-                case .notDetermined:
+            case .accessDenied:
+                deniedCalendarCard
+            case .waitingForAccess:
+                emptyStateCard(
+                    title: "Waiting for calendar access",
+                    description: "OpenOats will show your upcoming meetings once Calendar access is granted."
+                )
+            case nil:
+                if events.isEmpty && earlierTodayEvents.isEmpty {
                     emptyStateCard(
-                        title: "Waiting for calendar access",
-                        description: "OpenOats will show your upcoming meetings once Calendar access is granted."
+                        title: "No upcoming meetings",
+                        description: "OpenOats will show your next calendar meetings here."
                     )
+                } else {
+                    upcomingMeetingsCard
                 }
             }
         }
@@ -251,16 +252,19 @@ struct IdleHomeDashboardView: View {
         }
     }
 
-    private var currentAccessState: CalendarManager.AccessState {
-        guard settings.calendarIntegrationEnabled else { return .notDetermined }
-        return container.calendarManager?.accessState ?? .notDetermined
+    /// The current calendar access state, or nil when the `CalendarManager` has not
+    /// been built yet. A missing manager is an internal condition, not a pending
+    /// permission decision, so it must not read as `.notDetermined`.
+    private var currentAccessState: CalendarManager.AccessState? {
+        guard settings.calendarIntegrationEnabled else { return nil }
+        return container.calendarManager?.accessState
     }
 
-    private func refreshTaskID(for accessState: CalendarManager.AccessState) -> String {
+    private func refreshTaskID(for accessState: CalendarManager.AccessState?) -> String {
         "\(settings.calendarIntegrationEnabled)-\(accessStateTag(for: accessState))-\(refreshTick)"
     }
 
-    private func accessStateTag(for accessState: CalendarManager.AccessState) -> String {
+    private func accessStateTag(for accessState: CalendarManager.AccessState?) -> String {
         switch accessState {
         case .authorized:
             return "authorized"
@@ -268,16 +272,18 @@ struct IdleHomeDashboardView: View {
             return "denied"
         case .notDetermined:
             return "not-determined"
+        case nil:
+            return "unavailable"
         }
     }
 
-    private func refreshInterval(for accessState: CalendarManager.AccessState) -> Duration {
+    private func refreshInterval(for accessState: CalendarManager.AccessState?) -> Duration {
         switch accessState {
         case .authorized:
             return .seconds(60)
         case .denied:
             return .seconds(300)
-        case .notDetermined:
+        case .notDetermined, nil:
             return .seconds(1)
         }
     }

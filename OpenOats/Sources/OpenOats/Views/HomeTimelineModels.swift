@@ -145,4 +145,30 @@ enum HomeTimelineCalendarNotice: Equatable {
             return nil
         }
     }
+
+    /// Empty-state copy for the timeline, derived from the same resolution as the
+    /// notice so the two cannot drift apart. A `nil` notice — access granted, or no
+    /// manager built yet — gets neutral copy, never permission-flavoured copy.
+    static func emptyTimelineCopy(
+        integrationEnabled: Bool,
+        accessState: CalendarManager.AccessState?
+    ) -> (title: String, description: String) {
+        switch resolve(integrationEnabled: integrationEnabled, accessState: accessState) {
+        case .integrationOff:
+            return (
+                "No saved meetings yet",
+                "Recorded meetings will appear here even while Calendar integration is off."
+            )
+        case .accessDenied, .waitingForAccess:
+            return (
+                "No saved meetings yet",
+                "Saved meetings will appear here even before Calendar access is available."
+            )
+        case nil:
+            return (
+                "No meetings yet",
+                "Upcoming calendar meetings and saved history will appear here."
+            )
+        }
+    }
 }

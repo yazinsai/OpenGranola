@@ -230,36 +230,41 @@ struct HomeTimelineWorkspaceView: View {
         accessState: CalendarManager.AccessState?,
         hasCalendarEntries: Bool
     ) -> some View {
-        switch HomeTimelineCalendarNotice.resolve(
+        // `if let` rather than a `switch` with an `EmptyView` default. The
+        // original if/else-if chain yielded an optional view when no notice
+        // applied, and this sits as the first child of a spaced VStack, so
+        // keeping the optional shape leaves the no-notice layout exactly as it
+        // was instead of relying on EmptyView collapsing the same way.
+        if let notice = HomeTimelineCalendarNotice.resolve(
             integrationEnabled: settings.calendarIntegrationEnabled,
             accessState: accessState
         ) {
-        case .integrationOff:
-            HomeTimelineNotice(
-                icon: "calendar.badge.exclamationmark",
-                title: "Calendar integration is off",
-                message: "Saved meetings are still available here.",
-                actionTitle: "Open Settings",
-                action: nil
-            )
-        case .accessDenied:
-            HomeTimelineNotice(
-                icon: "exclamationmark.triangle.fill",
-                title: "Calendar access denied",
-                message: hasCalendarEntries ? "" : "Grant Calendar access to include upcoming meetings.",
-                actionTitle: "Open Privacy Settings",
-                action: openCalendarPrivacySettings
-            )
-        case .waitingForAccess:
-            HomeTimelineNotice(
-                icon: "calendar",
-                title: "Waiting for calendar access",
-                message: "Saved meetings are still available while OpenOats waits for Calendar access.",
-                actionTitle: nil,
-                action: nil
-            )
-        case nil:
-            EmptyView()
+            switch notice {
+            case .integrationOff:
+                HomeTimelineNotice(
+                    icon: "calendar.badge.exclamationmark",
+                    title: "Calendar integration is off",
+                    message: "Saved meetings are still available here.",
+                    actionTitle: "Open Settings",
+                    action: nil
+                )
+            case .accessDenied:
+                HomeTimelineNotice(
+                    icon: "exclamationmark.triangle.fill",
+                    title: "Calendar access denied",
+                    message: hasCalendarEntries ? "" : "Grant Calendar access to include upcoming meetings.",
+                    actionTitle: "Open Privacy Settings",
+                    action: openCalendarPrivacySettings
+                )
+            case .waitingForAccess:
+                HomeTimelineNotice(
+                    icon: "calendar",
+                    title: "Waiting for calendar access",
+                    message: "Saved meetings are still available while OpenOats waits for Calendar access.",
+                    actionTitle: nil,
+                    action: nil
+                )
+            }
         }
     }
 
@@ -276,21 +281,9 @@ struct HomeTimelineWorkspaceView: View {
     }
 
     private func emptyTimelineCopy(accessState: CalendarManager.AccessState?) -> (title: String, description: String) {
-        if !settings.calendarIntegrationEnabled {
-            return (
-                "No saved meetings yet",
-                "Recorded meetings will appear here even while Calendar integration is off."
-            )
-        }
-        if accessState == .authorized {
-            return (
-                "No meetings yet",
-                "Upcoming calendar meetings and saved history will appear here."
-            )
-        }
-        return (
-            "No saved meetings yet",
-            "Saved meetings will appear here even before Calendar access is available."
+        HomeTimelineCalendarNotice.emptyTimelineCopy(
+            integrationEnabled: settings.calendarIntegrationEnabled,
+            accessState: accessState
         )
     }
 
@@ -373,19 +366,17 @@ struct HomeTimelineWorkspaceView: View {
             return
         }
 
-        if container.calendarManager == nil {
-            // Reopening the hidden main window (makeKeyAndOrderFront) fires no
-            // onAppear, so the manager may not exist yet. Mirror the Settings-tab
-            // repair (CalendarSettingsView.refresh) and build it from the refresh loop.
-            container.updateCalendarIntegration(enabled: true)
-        }
+        // Reopening the hidden main window (makeKeyAndOrderFront) fires no onAppear,
+        // so nothing on this surface rebuilds a missing manager. Repair from the
+        // refresh loop instead. This entry point builds the manager and re-reads TCC
+        // but never requests authorization, so a poller tick in a windowless app can
+        // never raise a permission dialog.
+        container.ensureCalendarIntegrationReady(enabled: settings.calendarIntegrationEnabled)
 
         guard let manager = container.calendarManager else {
             calendarEvents = []
             return
         }
-
-        manager.refreshFromSystem()
 
         guard manager.accessState == .authorized else {
             calendarEvents = []

@@ -335,10 +335,12 @@ struct ContentView: View {
             overlayManager.defaults = container.defaults
             miniBarManager.defaults = container.defaults
 
-            // Setup calendar integration before the first await so the home timeline
-            // never transiently shows "Waiting for calendar access" on users who already
-            // granted permission. updateCalendarIntegration is synchronous and safe to
-            // call here.
+            // Set up calendar integration before the first await. A missing manager no
+            // longer reads as "waiting for access" — HomeTimelineCalendarNotice.resolve
+            // treats it as no notice at all — so this is no longer needed to suppress a
+            // flicker. It stays because it is the one call that may request Calendar
+            // authorization, and doing that here keeps the request tied to the window
+            // appearing rather than to a background refresh tick.
             container.updateCalendarIntegration(enabled: settings.calendarIntegrationEnabled)
 
             await container.seedIfNeeded(coordinator: coordinator)
