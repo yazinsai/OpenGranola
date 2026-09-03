@@ -277,6 +277,14 @@ final class NotesEngine {
                 }
                 if let error = self.error {
                     continuation.resume(throwing: GenerationError.failed(error))
+                } else if self.generatedMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    // The stream finished without producing notes. Thinking mode and an
+                    // exhausted token budget both land here, and there is nothing worth
+                    // saving either way, so fail instead of storing an empty note.
+                    continuation.resume(throwing: GenerationError.failed(
+                        "The model returned empty notes. Thinking mode may be enabled on the "
+                        + "server, or the token budget was exhausted before the notes were written."
+                    ))
                 } else {
                     continuation.resume(returning: self.generatedMarkdown)
                 }
