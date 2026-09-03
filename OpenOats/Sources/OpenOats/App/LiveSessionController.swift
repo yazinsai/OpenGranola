@@ -359,7 +359,10 @@ final class LiveSessionController {
             message: "Start requested (calendarEvent=\(calEvent == nil ? "no" : "yes"))"
         )
         pendingInitialScratchpad = initialScratchpad?.trimmingCharacters(in: .newlines)
-        let metadata = MeetingMetadata.manual(calendarEvent: calEvent)
+        let metadata = MeetingMetadata.manual(
+            calendarEvent: calEvent,
+            calendarEventIsUserChosen: calendarEventOverride != nil
+        )
 
         if settings.transcriptionModel.isCloud {
             state.errorMessage = nil
@@ -778,7 +781,22 @@ final class LiveSessionController {
         } else {
             endingMetadata = nil
         }
-        let metadataTitle = endingMetadata?.title ?? endingMetadata?.calendarEvent?.title
+        // 3b. Re-resolve the calendar binding now that the session's real
+        // interval is known. The binding made at start came from a window
+        // around minute zero and can point at the wrong event once the actual
+        // span is visible.
+        let endedAt = Date()
+        let calendarEvent = resolvedFinalizeCalendarEvent(
+            endingMetadata: endingMetadata,
+            endedAt: endedAt,
+            settings: settings
+        )
+        // Titles derive from the final binding, not the start-time one, so a
+        // rebound session is not persisted under the old event's name.
+        // `endingMetadata?.title` covers sessions with no calendar event
+        // (e.g. titled by the detected meeting app); an explicit live topic
+        // still wins below.
+        let metadataTitle = calendarEvent?.title ?? endingMetadata?.title
         let title = coordinator.transcriptStore.conversationState.currentTopic.isEmpty
             ? metadataTitle : coordinator.transcriptStore.conversationState.currentTopic
         let meetingAppName = endingMetadata?.detectionContext?.meetingApp?.name
@@ -807,7 +825,7 @@ final class LiveSessionController {
         await coordinator.sessionRepository.finalizeSession(
             sessionID: sessionID,
             metadata: SessionFinalizeMetadata(
-                endedAt: Date(),
+                endedAt: endedAt,
                 utteranceCount: utteranceCount,
                 title: title,
                 language: transcriptionLanguage,
@@ -815,13 +833,13 @@ final class LiveSessionController {
                 engine: engineName,
                 templateSnapshot: coordinator.sessionTemplateSnapshot,
                 utterances: utterancesSnapshot,
-                calendarEvent: endingMetadata?.calendarEvent,
+                calendarEvent: calendarEvent,
                 transcriptIssue: transcriptIssue
             )
         )
 
         if let settings,
-           let event = endingMetadata?.calendarEvent,
+           let event = calendarEvent,
            let folderPath = settings.meetingFamilyPreferences(for: event)?.folderPath {
             await coordinator.sessionRepository.updateSessionFolder(sessionID: sessionID, folderPath: folderPath)
         }
@@ -830,7 +848,7 @@ final class LiveSessionController {
         let index = SessionIndex(
             id: sessionID,
             startedAt: utterancesSnapshot.first?.timestamp ?? endingMetadata?.startedAt ?? Date(),
-            endedAt: Date(),
+            endedAt: endedAt,
             templateSnapshot: coordinator.sessionTemplateSnapshot,
             title: title,
             utteranceCount: utteranceCount,
@@ -1049,6 +1067,39 @@ final class LiveSessionController {
                 )
             }
         }
+    }
+
+    /// The calendar event the finished session should be bound to.
+    ///
+    /// The binding made at start is chosen from a window around minute zero
+    /// (`CalendarManager.currentEvent`), so a recording that started early can
+    /// bind to the preceding event, and a meeting that ran long may look
+    /// nothing like the event picked at start. Once the real interval is
+    /// known, that binding competes against the events overlapping the
+    /// interval under one ranking — see `CalendarEventMatcher.finalBinding`.
+    /// An event the user picked explicitly is never second-guessed.
+    private func resolvedFinalizeCalendarEvent(
+        endingMetadata: MeetingMetadata?,
+        endedAt: Date,
+        settings: AppSettings?
+    ) -> CalendarEvent? {
+        let startBinding = endingMetadata?.calendarEvent
+        guard let endingMetadata, !endingMetadata.calendarEventIsUserChosen else {
+            return startBinding
+        }
+        guard let settings, settings.calendarIntegrationEnabled else { return startBinding }
+        guard endedAt > endingMetadata.startedAt else { return startBinding }
+
+        let interval = DateInterval(start: endingMetadata.startedAt, end: endedAt)
+        return CalendarEventMatcher.finalBinding(
+            startBinding: startBinding,
+            isUserChosen: endingMetadata.calendarEventIsUserChosen,
+            candidates: container.calendarManager?.events(
+                overlapping: interval,
+                excludingCalendarIDs: settings.excludedCalendarIDs
+            ) ?? [],
+            interval: interval
+        )
     }
 
     private func scheduleAutoNotesIfNeeded(

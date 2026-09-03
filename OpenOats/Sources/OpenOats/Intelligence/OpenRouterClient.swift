@@ -183,6 +183,7 @@ actor OpenRouterClient {
                         return
                     }
 
+                    var outcome = StreamOutcome()
                     for try await line in bytes.lines {
                         guard line.hasPrefix("data: ") else { continue }
                         let payload = String(line.dropFirst(6))
@@ -190,14 +191,23 @@ actor OpenRouterClient {
 
                         guard let data = payload.data(using: .utf8) else { continue }
                         if let chunk = try? JSONDecoder().decode(SSEChunk.self, from: data) {
-                            if let content = chunk.choices.first?.delta.content {
+                            let choice = chunk.choices.first
+                            outcome.record(content: choice?.delta.content, reasoning: choice?.delta.reasoning)
+                            if let content = choice?.delta.content {
                                 continuation.yield(content)
-                            } else if chunk.choices.first?.finish_reason == "length" {
+                            } else if choice?.finish_reason == "length" {
                                 continuation.yield("…")
                             }
                         }
                     }
 
+                    // A stream that only ever carried reasoning tokens produced no
+                    // answer. Ending normally here would hand the caller an empty
+                    // string, so report it as a failure instead.
+                    if outcome.isReasoningOnly {
+                        continuation.finish(throwing: OpenRouterError.reasoningOnlyResponse)
+                        return
+                    }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -270,8 +280,44 @@ actor OpenRouterClient {
             throw OpenRouterError.httpError(statusCode, host: targetURL.host)
         }
 
+        return try Self.completionText(from: data)
+    }
+
+    /// Decodes a non-streaming chat completion, tolerating reasoning models
+    /// (e.g. Qwen3 served by mlx_lm.server) that return `"content": null` with
+    /// their output in a sibling `reasoning` field instead.
+    /// A response carrying no usable content never resolves to an empty string:
+    /// callers get a described error rather than a silently blank answer.
+    static func completionText(from data: Data) throws -> String {
         let completionResponse = try JSONDecoder().decode(CompletionResponse.self, from: data)
-        return completionResponse.choices.first?.message.content ?? ""
+        let message = completionResponse.choices.first?.message
+        let content = message?.content ?? ""
+        // Test emptiness on the trimmed text but return the original, so a
+        // response of "\n" plus a full `reasoning` block is not mistaken for an answer.
+        guard content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return content
+        }
+
+        let reasoning = message?.reasoning?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        throw reasoning.isEmpty ? OpenRouterError.emptyResponse : OpenRouterError.reasoningOnlyResponse
+    }
+
+    /// Tracks what a streamed chat completion actually delivered.
+    ///
+    /// Reasoning models served locally can emit an entire answer as `reasoning`
+    /// deltas and never send a content delta. The stream then ends normally and
+    /// the caller silently receives nothing, so record both kinds of delta.
+    struct StreamOutcome {
+        private(set) var sawContent = false
+        private(set) var sawReasoning = false
+
+        mutating func record(content: String?, reasoning: String?) {
+            if let content, !content.isEmpty { sawContent = true }
+            if let reasoning, !reasoning.isEmpty { sawReasoning = true }
+        }
+
+        /// True when the stream carried reasoning tokens but no final content.
+        var isReasoningOnly: Bool { sawReasoning && !sawContent }
     }
 
     private func streamAnthropicCompletion(
@@ -404,6 +450,8 @@ actor OpenRouterClient {
     enum OpenRouterError: Error, LocalizedError {
         case httpError(Int, host: String?)
         case missingAPIKey(host: String?)
+        case reasoningOnlyResponse
+        case emptyResponse
 
         var errorDescription: String? {
             switch self {
@@ -422,6 +470,12 @@ actor OpenRouterClient {
                 case nil: "LLM"
                 }
                 return "\(provider) API key required"
+            case .reasoningOnlyResponse:
+                return "The response contained only reasoning output and no final answer. "
+                    + "Thinking mode may be enabled on the server, or the token budget was "
+                    + "exhausted before the answer was written."
+            case .emptyResponse:
+                return "Empty response from server — the model returned no content."
             }
         }
     }
@@ -438,6 +492,7 @@ actor OpenRouterClient {
 
         struct Delta: Codable {
             let content: String?
+            let reasoning: String?
         }
     }
 
@@ -449,7 +504,8 @@ actor OpenRouterClient {
         }
 
         struct CompletionMessage: Codable {
-            let content: String
+            let content: String?
+            let reasoning: String?
         }
     }
 
