@@ -41,7 +41,9 @@ final class SessionRepositoryTests: XCTestCase {
             .appendingPathComponent("OpenOatsRepoTests", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: rootDir, withIntermediateDirectories: true)
-        repo = SessionRepository(rootDirectory: rootDir)
+        // Production waits 5 minutes before retrying a failed notes-folder
+        // mirror; the retry policy itself is covered by MirrorAttemptLedgerTests.
+        repo = SessionRepository(rootDirectory: rootDir, mirrorRetryBackoff: 0.05)
     }
 
     override func tearDown() async throws {
@@ -388,6 +390,133 @@ final class SessionRepositoryTests: XCTestCase {
         XCTAssertTrue(didMirror, "Background mirror task did not complete in time")
 
         await repo.deleteSession(sessionID: sessionID)
+    }
+
+    private func sessionMetadataOnDisk(sessionID: String) -> SessionMetadata? {
+        let url = rootDir
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(sessionID, isDirectory: true)
+            .appendingPathComponent("session.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(SessionMetadata.self, from: data)
+    }
+
+    private func makeMirrorNotes() -> GeneratedNotes {
+        GeneratedNotes(
+            template: TemplateSnapshot(
+                id: UUID(), name: "Mirror", icon: "star", systemPrompt: "Be helpful"
+            ),
+            generatedAt: Date(),
+            markdown: "# Mirror Notes\n\nContent here."
+        )
+    }
+
+    private func pollForMirrorFile(named slug: String, in directory: URL) async -> Bool {
+        for _ in 0..<40 {
+            try? await Task.sleep(for: .milliseconds(100))
+            let contents = try? FileManager.default.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: nil
+            )
+            if contents?.contains(where: { $0.lastPathComponent.contains(slug) && $0.pathExtension == "md" }) ?? false {
+                return true
+            }
+        }
+        return false
+    }
+
+    func testFailedMirrorSetsPendingFlagAndRetriesWhenFolderRecovers() async throws {
+        // A regular file occupies the notes-folder path, so every mirror write fails.
+        let blockedPath = rootDir.appendingPathComponent("blocked_notes")
+        try Data().write(to: blockedPath)
+        await repo.setNotesFolderPath(blockedPath)
+
+        let sessionID = "test_mirror_pending_session"
+        await repo.seedSession(
+            id: sessionID,
+            records: [SessionRecord(speaker: .you, text: "Hello", timestamp: Date())],
+            startedAt: Date(),
+            title: "Pending Meeting"
+        )
+        await repo.saveNotes(sessionID: sessionID, notes: makeMirrorNotes())
+
+        var pendingObserved = false
+        for _ in 0..<40 {
+            try? await Task.sleep(for: .milliseconds(100))
+            if sessionMetadataOnDisk(sessionID: sessionID)?.mirrorPending == true {
+                pendingObserved = true
+                break
+            }
+        }
+        XCTAssertTrue(pendingObserved, "Failed mirror did not persist mirrorPending in session.json")
+
+        // The folder becomes reachable: reconfiguring the path re-drives the pending mirror.
+        let exportDir = rootDir.appendingPathComponent("recovered_notes", isDirectory: true)
+        try FileManager.default.createDirectory(at: exportDir, withIntermediateDirectories: true)
+        await repo.setNotesFolderPath(exportDir)
+
+        let didMirror = await pollForMirrorFile(named: "pending-meeting", in: exportDir)
+        XCTAssertTrue(didMirror, "Pending mirror was not re-driven after the folder recovered")
+
+        var pendingCleared = false
+        for _ in 0..<40 {
+            if sessionMetadataOnDisk(sessionID: sessionID)?.mirrorPending != true {
+                pendingCleared = true
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertTrue(pendingCleared, "mirrorPending was not cleared after a successful mirror")
+
+        await repo.deleteSession(sessionID: sessionID)
+    }
+
+    func testPendingMirrorPiggybacksOnNextScheduledMirror() async throws {
+        // Same failure mode, but the path later recovers in place (like a mount
+        // coming back): no reconfiguration, so only a scheduled mirror re-drives it.
+        let exportPath = rootDir.appendingPathComponent("piggyback_notes")
+        try Data().write(to: exportPath)
+        await repo.setNotesFolderPath(exportPath)
+
+        let stuckID = "test_mirror_stuck_session"
+        await repo.seedSession(
+            id: stuckID,
+            records: [SessionRecord(speaker: .you, text: "Hello", timestamp: Date())],
+            startedAt: Date(),
+            title: "Stuck Meeting"
+        )
+        await repo.saveNotes(sessionID: stuckID, notes: makeMirrorNotes())
+
+        var pendingObserved = false
+        for _ in 0..<40 {
+            try? await Task.sleep(for: .milliseconds(100))
+            if sessionMetadataOnDisk(sessionID: stuckID)?.mirrorPending == true {
+                pendingObserved = true
+                break
+            }
+        }
+        XCTAssertTrue(pendingObserved, "Failed mirror did not persist mirrorPending in session.json")
+
+        try FileManager.default.removeItem(at: exportPath)
+        try FileManager.default.createDirectory(at: exportPath, withIntermediateDirectories: true)
+
+        let freshID = "test_mirror_fresh_session"
+        await repo.seedSession(
+            id: freshID,
+            records: [SessionRecord(speaker: .you, text: "Hi", timestamp: Date())],
+            startedAt: Date(),
+            title: "Fresh Meeting"
+        )
+        await repo.saveNotes(sessionID: freshID, notes: makeMirrorNotes())
+
+        let freshMirrored = await pollForMirrorFile(named: "fresh-meeting", in: exportPath)
+        XCTAssertTrue(freshMirrored, "New mirror did not write after the folder recovered")
+        let stuckMirrored = await pollForMirrorFile(named: "stuck-meeting", in: exportPath)
+        XCTAssertTrue(stuckMirrored, "Pending mirror was not re-driven by the next scheduled mirror")
+
+        await repo.deleteSession(sessionID: stuckID)
+        await repo.deleteSession(sessionID: freshID)
     }
 
     func testSaveNotesMirrorsIntoISODateSubfolder() async throws {

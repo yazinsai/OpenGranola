@@ -130,4 +130,66 @@ final class NotesEngineTests: XCTestCase {
             )
         )
     }
+
+    // MARK: - Empty generation
+
+    @MainActor
+    private func makeSettings() -> AppSettings {
+        let notesDirectory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("OpenOatsNotesEngineTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: notesDirectory, withIntermediateDirectories: true)
+
+        let suiteName = "com.openoats.tests.notesengine.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set(notesDirectory.path, forKey: "notesFolderPath")
+        let storage = AppSettingsStorage(
+            defaults: defaults,
+            secretStore: .ephemeral,
+            defaultNotesDirectory: notesDirectory,
+            runMigrations: false
+        )
+        return AppSettings(storage: storage)
+    }
+
+    @MainActor
+    func testGenerateMarkdownDetachedFailsWhenTheModelProducesNothing() async {
+        // A stream that ends after emitting only whitespace must not be saved as
+        // notes: the caller has to see a failure so it can retry or report.
+        let engine = NotesEngine(mode: .scripted(markdown: "   \n  "))
+        let transcript = [
+            SessionRecord(speaker: .you, text: "Hello.", timestamp: Date())
+        ]
+
+        do {
+            let markdown = try await engine.generateMarkdownDetached(
+                transcript: transcript,
+                template: TemplateStore.builtInTemplates.first!,
+                settings: makeSettings()
+            )
+            XCTFail("Expected empty generation to throw, got \(markdown.debugDescription)")
+        } catch {
+            XCTAssertTrue(
+                error.localizedDescription.contains("empty notes"),
+                "Unhelpful description: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    @MainActor
+    func testGenerateMarkdownDetachedReturnsNonEmptyMarkdown() async throws {
+        let engine = NotesEngine(mode: .scripted(markdown: "# Notes"))
+        let transcript = [
+            SessionRecord(speaker: .you, text: "Hello.", timestamp: Date())
+        ]
+
+        let markdown = try await engine.generateMarkdownDetached(
+            transcript: transcript,
+            template: TemplateStore.builtInTemplates.first!,
+            settings: makeSettings()
+        )
+
+        XCTAssertEqual(markdown, "# Notes")
+    }
 }

@@ -208,10 +208,17 @@ final class MeetingDetectionController {
         appExitMonitorTask?.cancel()
         appExitMonitorTask = nil
 
-        Task {
-            await meetingDetector?.stop()
-        }
+        // Capture the detector first: the task body reads its captures when it
+        // runs, which is after this method returns, so reading the property
+        // there would find the nil below and stop nothing. The abandoned
+        // detector would keep its mic and camera monitors alive for the life of
+        // the process — once per detection restart, and editing the custom
+        // meeting-app list restarts detection.
+        let detector = meetingDetector
         meetingDetector = nil
+        Task {
+            await detector?.stop()
+        }
 
         notificationService?.cancelPending()
         notificationService = nil
@@ -229,6 +236,14 @@ final class MeetingDetectionController {
         lastUtteranceAt = nil
 
         Log.meetingDetection.info("Detection system stopped")
+    }
+
+    /// Re-seed dismissals carried across a detector rebuild. Editing the custom
+    /// meeting-app list rebuilds the detector, but that is not a new session:
+    /// the "Not a Meeting" choices the user already made must survive it.
+    /// Turning auto-detect off is a real stop, and `teardown` still clears them.
+    func restoreDismissedEvents(_ events: Set<DismissKey>) {
+        dismissedEvents.formUnion(events)
     }
 
     // MARK: - Sleep Observer

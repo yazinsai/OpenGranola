@@ -435,4 +435,62 @@ final class MeetingDetectorTests: XCTestCase {
         audio.finish()
         camera.finish()
     }
+
+    func testResolveKnownBundleIDsMergesDefaultsAndCustom() {
+        let known = MeetingDetector.resolveKnownBundleIDs(
+            custom: ["com.example.custom-meeting-app"],
+            selfID: "com.openoats.app"
+        )
+
+        XCTAssertTrue(known.contains("us.zoom.xos"), "bundled defaults must remain detectable")
+        XCTAssertTrue(
+            known.contains("com.example.custom-meeting-app"),
+            "user additions must be detectable"
+        )
+    }
+
+    func testResolveKnownBundleIDsDedupesAgainstDefaultsAndSelf() {
+        let selfID = "com.openoats.app"
+        let known = MeetingDetector.resolveKnownBundleIDs(
+            custom: [
+                "us.zoom.xos", // duplicate of a bundled default
+                "com.example.custom-meeting-app", // listed twice by the user
+                "com.example.custom-meeting-app",
+                selfID, // never detect ourselves
+            ],
+            selfID: selfID
+        )
+
+        XCTAssertEqual(
+            known.count, MeetingDetector.bundledMeetingApps.count + 1,
+            "duplicates of defaults and repeated custom entries collapse; self is excluded"
+        )
+        XCTAssertFalse(known.contains(selfID), "the app itself must never count as a meeting app")
+    }
+
+    func testResolveKnownBundleIDsFoldsCase() {
+        let known = MeetingDetector.resolveKnownBundleIDs(
+            custom: ["us.Zoom.xos", "COM.EXAMPLE.App"],
+            selfID: "Com.OpenOats.App"
+        )
+
+        XCTAssertEqual(
+            known.count, MeetingDetector.bundledMeetingApps.count + 1,
+            "a case variant of a bundled default is not a second app"
+        )
+        XCTAssertTrue(
+            known.contains("com.example.app"),
+            "the set is folded so a differently-cased running app still matches"
+        )
+        XCTAssertFalse(
+            known.contains("com.openoats.app"),
+            "self-exclusion must fold too, or a cased self ID would be detectable"
+        )
+    }
+
+    func testIsBundledMeetingAppIgnoresCaseAndWhitespace() {
+        XCTAssertTrue(MeetingDetector.isBundledMeetingApp("us.zoom.xos"))
+        XCTAssertTrue(MeetingDetector.isBundledMeetingApp("  us.Zoom.xos "))
+        XCTAssertFalse(MeetingDetector.isBundledMeetingApp("com.example.custom-meeting-app"))
+    }
 }

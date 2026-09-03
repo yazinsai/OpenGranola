@@ -68,6 +68,8 @@ private struct GeneralSettingsTab: View {
     @State private var showAutoDetectExplanation = false
     @State private var launchAtLoginEnabled = false
     @State private var showAdvancedDetection = false
+    @State private var newCustomMeetingAppBundleID = ""
+    @State private var customMeetingAppNotice: String?
     @State private var showWizard = false
     @State private var diagnosticsExportMessage: String?
     @State private var diagnosticsExportHadError = false
@@ -262,6 +264,48 @@ private struct GeneralSettingsTab: View {
                     }
                 }
 
+                if settings.meetingAutoDetectEnabled {
+                    Section("Custom Meeting Apps") {
+                        Text("Bundle identifiers treated as meeting apps for microphone-based detection, in addition to the built-in list — e.g. the browser you use for Google Meet or Teams. Browsers are not built in because any website using the microphone would trigger detection.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        ForEach(settings.customMeetingAppBundleIDs, id: \.self) { bundleID in
+                            HStack {
+                                Text(bundleID)
+                                    .font(.system(size: 12, design: .monospaced))
+                                Spacer()
+                                Button {
+                                    settings.customMeetingAppBundleIDs.removeAll { $0 == bundleID }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Remove this app")
+                            }
+                        }
+                        HStack {
+                            TextField("com.example.app", text: $newCustomMeetingAppBundleID)
+                                .font(.system(size: 12, design: .monospaced))
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit { addCustomMeetingApp() }
+                                .onChange(of: newCustomMeetingAppBundleID) {
+                                    customMeetingAppNotice = nil
+                                }
+                            Button("Add") { addCustomMeetingApp() }
+                                .disabled(
+                                    newCustomMeetingAppBundleID
+                                        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                )
+                        }
+                        if let customMeetingAppNotice {
+                            Text(customMeetingAppNotice)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 Section("Privacy") {
                     Toggle("Hide from screen sharing", isOn: $settings.hideFromScreenShare)
                         .font(.system(size: 12))
@@ -331,6 +375,22 @@ private struct GeneralSettingsTab: View {
             )
             .frame(width: 500, height: 550)
         }
+    }
+
+    private func addCustomMeetingApp() {
+        let trimmed = newCustomMeetingAppBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        // A built-in app would appear in this list with a remove button that
+        // cannot actually stop detecting it. Refuse the addition and say so.
+        guard !MeetingDetector.isBundledMeetingApp(trimmed) else {
+            customMeetingAppNotice = "\(trimmed) is already built in."
+            return
+        }
+        // The settings setter normalizes the stored list (trims, dedupes,
+        // case-insensitively).
+        settings.customMeetingAppBundleIDs = settings.customMeetingAppBundleIDs + [trimmed]
+        newCustomMeetingAppBundleID = ""
+        customMeetingAppNotice = nil
     }
 
     private func chooseNotesFolder() {

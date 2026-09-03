@@ -461,6 +461,55 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.customMeetingAppBundleIDs, ["com.example.app"])
     }
 
+    func testCustomMeetingAppBundleIDsNormalizeOnSet() {
+        let store = makeStore()
+        store.customMeetingAppBundleIDs = [
+            "  com.example.app  ",
+            "com.example.app",
+            "",
+            "   ",
+            "com.example.other",
+        ]
+        XCTAssertEqual(
+            store.customMeetingAppBundleIDs,
+            ["com.example.app", "com.example.other"],
+            "entries are trimmed, deduplicated, and empty entries dropped"
+        )
+    }
+
+    func testCustomMeetingAppBundleIDsDedupeCaseVariants() {
+        let store = makeStore()
+        store.customMeetingAppBundleIDs = ["us.Zoom.xos", "us.zoom.xos", "US.ZOOM.XOS"]
+        XCTAssertEqual(
+            store.customMeetingAppBundleIDs,
+            ["us.Zoom.xos"],
+            "bundle IDs match case-insensitively, so variants collapse to the first-seen form"
+        )
+    }
+
+    func testExcludedCalendarIDsKeepCaseVariants() {
+        let store = makeStore()
+        store.excludedCalendarIDs = ["ABC-123", "abc-123"]
+        XCTAssertEqual(
+            store.excludedCalendarIDs,
+            ["ABC-123", "abc-123"],
+            "calendar identifiers are opaque and stay case-sensitive"
+        )
+    }
+
+    func testCustomMeetingAppBundleIDsNormalizeOnLoad() {
+        let name = "com.openoats.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        defaults.set(
+            ["  com.example.app ", "com.example.app", ""],
+            forKey: "customMeetingAppBundleIDs"
+        )
+
+        let store = makeStore(defaults: defaults)
+        XCTAssertEqual(store.customMeetingAppBundleIDs, ["com.example.app"])
+    }
+
     func testDefaultDetectionLogEnabled() {
         let store = makeStore()
         XCTAssertFalse(store.detectionLogEnabled)

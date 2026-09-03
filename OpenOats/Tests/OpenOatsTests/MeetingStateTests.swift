@@ -448,6 +448,26 @@ final class MeetingStateTests: XCTestCase {
         XCTAssertEqual(decoded.detectionContext?.meetingApp?.bundleID, "us.zoom.xos")
     }
 
+    // Payloads written before `calendarEventIsUserChosen` existed must keep
+    // decoding: the missing key defaults to false.
+    func testMeetingMetadataDecodesPayloadWithoutUserChosenFlag() throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(makeMetadataWithApp())
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        object.removeValue(forKey: "calendarEventIsUserChosen")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(MeetingMetadata.self, from: legacyData)
+
+        XCTAssertFalse(decoded.calendarEventIsUserChosen)
+        XCTAssertEqual(decoded.detectionContext?.meetingApp?.bundleID, "us.zoom.xos")
+    }
+
     // -------------------------------------------------------------------------
     // MARK: - Edge Cases
     // -------------------------------------------------------------------------

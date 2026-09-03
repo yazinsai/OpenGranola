@@ -157,6 +157,7 @@ actor MeetingDetector {
     private let knownApps: [MeetingAppEntry]
     private let customBundleIDs: [String]
     private let selfBundleID: String
+    /// Resolved detection set, case-folded. Built by `resolveKnownBundleIDs`.
     private let knownBundleIDs: Set<String>
 
     /// Set to true once detection is confirmed.
@@ -198,8 +199,10 @@ actor MeetingDetector {
         self.selfBundleID = Bundle.main.bundleIdentifier ?? "com.openoats.app"
 
         self.knownApps = Self.defaultMeetingApps
-        self.knownBundleIDs = Set(Self.defaultMeetingApps.map(\.bundleID) + customBundleIDs)
-            .subtracting([selfBundleID])
+        self.knownBundleIDs = Self.resolveKnownBundleIDs(
+            custom: customBundleIDs,
+            selfID: selfBundleID
+        )
 
         var capturedContinuation: AsyncStream<MeetingDetectionEvent>.Continuation!
         self.events = AsyncStream { continuation in
@@ -360,9 +363,10 @@ actor MeetingDetector {
 
         for app in runningApps {
             guard let bundleID = app.bundleIdentifier else { continue }
-            if knownBundleIDs.contains(bundleID) {
+            let folded = bundleID.lowercased()
+            if knownBundleIDs.contains(folded) {
                 let name = app.localizedName
-                    ?? knownApps.first(where: { $0.bundleID == bundleID })?.displayName
+                    ?? knownApps.first(where: { $0.bundleID.lowercased() == folded })?.displayName
                     ?? bundleID
                 return MeetingApp(bundleID: bundleID, name: name)
             }
@@ -374,6 +378,28 @@ actor MeetingDetector {
 
     static var bundledMeetingApps: [MeetingAppEntry] {
         defaultMeetingApps
+    }
+
+    /// Merge the bundled defaults with the user's custom bundle identifiers and
+    /// drop the app's own identifier. Bundle identifiers are compared without
+    /// regard to case — "us.Zoom.xos" is the same app as "us.zoom.xos" — so the
+    /// result is case-folded, and every lookup folds the incoming identifier too.
+    /// Pure, so the merge can be tested without standing up a detector.
+    static func resolveKnownBundleIDs(
+        defaults: [MeetingAppEntry] = bundledMeetingApps,
+        custom: [String],
+        selfID: String
+    ) -> Set<String> {
+        let merged = defaults.map(\.bundleID) + custom
+        return Set(merged.map { $0.lowercased() }).subtracting([selfID.lowercased()])
+    }
+
+    /// True when the identifier is already one of the bundled defaults, so the
+    /// UI can refuse an addition that would look removable but never be removed
+    /// from detection. Case- and whitespace-insensitive.
+    static func isBundledMeetingApp(_ bundleID: String) -> Bool {
+        let folded = bundleID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return bundledMeetingApps.contains { $0.bundleID.lowercased() == folded }
     }
 
     private static let defaultMeetingApps: [MeetingAppEntry] = [

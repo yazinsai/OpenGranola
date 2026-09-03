@@ -4,11 +4,13 @@ import UserNotifications
 /// Manages macOS notification delivery for meeting detection prompts.
 @MainActor
 final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
-    /// UNUserNotificationCenter requires a valid bundle identifier and will
-    /// assert (SIGABRT) on every API call when one isn't present. This is the
-    /// case when the app is built and run unbundled (e.g. `swift run`).
-    /// When false, all notification methods become no-ops.
+    /// UNUserNotificationCenter requires the process to be a registered app
+    /// bundle and raises (SIGABRT) on every API call when it isn't. That covers
+    /// unbundled runs (`swift run`, which has no bundle identifier) and hosts
+    /// that carry an identifier without being an app, such as the `xctest`
+    /// runner. When false, all notification methods become no-ops.
     private let isAvailable: Bool = Bundle.main.bundleIdentifier != nil
+        && Bundle.main.bundleURL.pathExtension == "app"
     private var hasRequestedPermission = false
     private var pendingTimeoutTask: Task<Void, Never>?
 
