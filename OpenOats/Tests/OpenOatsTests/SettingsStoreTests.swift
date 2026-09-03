@@ -510,6 +510,17 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.customMeetingAppBundleIDs, ["com.example.app"])
     }
 
+    func testDefaultAutoRecordDetectedMeetings() {
+        let store = makeStore()
+        XCTAssertFalse(store.autoRecordDetectedMeetings, "auto-record must default to off")
+    }
+
+    func testAutoRecordDetectedMeetingsRoundTrip() {
+        let store = makeStore()
+        store.autoRecordDetectedMeetings = true
+        XCTAssertTrue(store.autoRecordDetectedMeetings)
+    }
+
     func testDefaultDetectionLogEnabled() {
         let store = makeStore()
         XCTAssertFalse(store.detectionLogEnabled)

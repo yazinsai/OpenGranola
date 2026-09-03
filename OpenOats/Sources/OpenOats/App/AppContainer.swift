@@ -230,7 +230,12 @@ final class AppContainer {
         let controller = MeetingDetectionController()
         controller.isSessionActive = { [weak coordinator] in
             guard let coordinator else { return false }
-            return coordinator.isRecording
+            // Any non-idle state counts: prompting (or auto-starting) while a
+            // previous session is still finalizing (.ending) must be suppressed,
+            // as must a start while a cloud-model preflight is in flight (the
+            // coordinator is still .idle then, but the start is committed).
+            return coordinator.state != .idle
+                || coordinator.liveSessionController?.isStartInFlight == true
         }
         detectionController = controller
         controller.setup(settings: settings)

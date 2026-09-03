@@ -221,6 +221,12 @@ final class MeetingDetectionController {
         }
 
         notificationService?.cancelPending()
+        // Detection can be switched off mid-meeting. The detection event loop
+        // is already cancelled above, so `.ended` will never arrive and
+        // handleMeetingEnded() will never run — without this, a delivered
+        // "Recording Started" notification would sit in Notification Center
+        // for good.
+        notificationService?.clearAutoRecordingStarted()
         notificationService = nil
 
         if let observer = sleepObserver {
@@ -394,6 +400,33 @@ final class MeetingDetectionController {
             Log.meetingDetection.info("Detected: \(app?.name ?? "unknown", privacy: .public) (trigger: \(isCameraTrigger ? "camera" : "mic+app", privacy: .public))")
         }
 
+        // Auto-record: skip the tap-to-confirm round-trip and invoke the accept
+        // path directly. All pre-checks above (already recording, dismissed,
+        // permanently ignored) have passed at this point. Two extra gates:
+        // recording consent must have been acknowledged (every manual start
+        // checks it), and the informational notification must actually post —
+        // silent capture is never acceptable, so on failure this falls through
+        // to the standard tap-to-confirm prompt below.
+        if activeSettings?.autoRecordDetectedMeetings == true,
+           activeSettings?.hasAcknowledgedRecordingConsent == true {
+            // A previously delivered, stale detection banner would otherwise
+            // stay tappable and re-enter the accept path mid-session.
+            notificationService?.cancelPending()
+            let informed = await notificationService?.postAutoRecordingStarted(
+                appName: isCameraTrigger ? nil : app?.name
+            ) ?? false
+            if informed {
+                if activeSettings?.detectionLogEnabled == true {
+                    Log.meetingDetection.info("Auto-record: accepted detection without prompt")
+                }
+                handleDetectionAccepted()
+                return
+            }
+            if activeSettings?.detectionLogEnabled == true {
+                Log.meetingDetection.info("Auto-record: notification failed, falling back to prompt")
+            }
+        }
+
         // Don't attribute camera-triggered detections to a background meeting app —
         // the camera could have been activated by a different app (e.g. browser for Google Meet).
         let posted = await notificationService?.postMeetingDetected(
@@ -410,6 +443,7 @@ final class MeetingDetectionController {
     private func handleMeetingEnded() {
         detectedApp = nil
         notificationService?.cancelPending()
+        notificationService?.clearAutoRecordingStarted()
         pendingSnapshot = nil
         eventContinuation.yield(.meetingAppExited)
     }

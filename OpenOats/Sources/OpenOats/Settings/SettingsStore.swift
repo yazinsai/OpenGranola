@@ -838,6 +838,20 @@ final class SettingsStore {
         }
     }
 
+    @ObservationIgnored nonisolated(unsafe) private var _autoRecordDetectedMeetings: Bool
+    /// When enabled, a detected meeting starts recording immediately instead of
+    /// waiting for the user to accept the detection notification. Defaults to
+    /// off: auto-recording on a false-positive detection captures real audio.
+    var autoRecordDetectedMeetings: Bool {
+        get { access(keyPath: \.autoRecordDetectedMeetings); return _autoRecordDetectedMeetings }
+        set {
+            withMutation(keyPath: \.autoRecordDetectedMeetings) {
+                _autoRecordDetectedMeetings = newValue
+                defaults.set(newValue, forKey: "autoRecordDetectedMeetings")
+            }
+        }
+    }
+
     @ObservationIgnored nonisolated(unsafe) private var _customMeetingAppBundleIDs: [String]
     var customMeetingAppBundleIDs: [String] {
         get { access(keyPath: \.customMeetingAppBundleIDs); return _customMeetingAppBundleIDs }
@@ -1528,6 +1542,7 @@ final class SettingsStore {
         } else {
             self._meetingAutoDetectEnabled = defaults.bool(forKey: "meetingAutoDetectEnabled")
         }
+        self._autoRecordDetectedMeetings = defaults.bool(forKey: "autoRecordDetectedMeetings")
         self._customMeetingAppBundleIDs = Self.normalizedIdentifierList(
             defaults.stringArray(forKey: "customMeetingAppBundleIDs") ?? [],
             caseInsensitive: true

@@ -263,7 +263,34 @@ final class MeetingDetectionControllerTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeSettings() -> AppSettings {
+    /// Notification stub: never touches UserNotifications, records post calls,
+    /// and lets each test script whether the informational post "succeeds".
+    private final class StubNotificationService: NotificationService {
+        var autoResult = true
+        private(set) var autoPosts = 0
+        private(set) var promptPosts = 0
+        private(set) var autoClears = 0
+
+        init() {
+            super.init(isAvailable: false)
+        }
+
+        override func clearAutoRecordingStarted() {
+            autoClears += 1
+        }
+
+        override func postAutoRecordingStarted(appName: String?) async -> Bool {
+            autoPosts += 1
+            return autoResult
+        }
+
+        override func postMeetingDetected(appName: String?, isCameraTrigger: Bool) async -> Bool {
+            promptPosts += 1
+            return true
+        }
+    }
+
+    private func makeSettings(consentAcknowledged: Bool = true) -> AppSettings {
         let suiteName = "com.openoats.test.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
@@ -274,7 +301,9 @@ final class MeetingDetectionControllerTests: XCTestCase {
                 .appendingPathComponent("MeetingDetectionControllerTests"),
             runMigrations: false
         )
-        return AppSettings(storage: storage)
+        let settings = AppSettings(storage: storage)
+        settings.hasAcknowledgedRecordingConsent = consentAcknowledged
+        return settings
     }
 
     /// Wait up to a second for an asynchronous condition to hold.
@@ -284,5 +313,172 @@ final class MeetingDetectionControllerTests: XCTestCase {
             try? await Task.sleep(for: .milliseconds(10))
         }
         return await condition()
+    }
+
+    // MARK: - Auto-Record (accept without notification round-trip)
+
+    /// Build a controller wired to a detector with controllable signal sources
+    /// and a stubbed notification service.
+    private func makeDetectionHarness(
+        settings: AppSettings
+    ) -> (MeetingDetectionController, StubNotificationService, MockAudioSignalSource, MockCameraSignalSource) {
+        let audio = MockAudioSignalSource()
+        let camera = MockCameraSignalSource()
+        let detector = MeetingDetector(audioSource: audio, cameraSource: camera)
+        let service = StubNotificationService()
+        let controller = MeetingDetectionController()
+        controller.setup(settings: settings, detector: detector, notificationService: service)
+        return (controller, service, audio, camera)
+    }
+
+    /// Start consuming the controller's event stream, fire `emit` once the
+    /// detector is running, and return the first event (or nil after a grace
+    /// period). Camera-triggered detection is immediate (no debounce).
+    private func collectFirstEvent(
+        from controller: MeetingDetectionController,
+        after emit: () -> Void
+    ) async throws -> DetectionEvent? {
+        var receivedEvent: DetectionEvent?
+        let consumeTask = Task { @MainActor in
+            for await event in controller.events {
+                receivedEvent = event
+                break
+            }
+        }
+        // Give setup's detection task time to start the detector.
+        try await Task.sleep(for: .milliseconds(200))
+        emit()
+        try await Task.sleep(for: .milliseconds(500))
+        consumeTask.cancel()
+        return receivedEvent
+    }
+
+    func testTeardownClearsDeliveredAutoRecordNotification() async throws {
+        let settings = makeSettings()
+        settings.autoRecordDetectedMeetings = true
+
+        let (controller, service, audio, camera) = makeDetectionHarness(settings: settings)
+        defer {
+            audio.finish()
+            camera.finish()
+        }
+
+        let event = try await collectFirstEvent(from: controller) { camera.emit(true) }
+        guard case .accepted = event else {
+            XCTFail("Expected an auto-record accept, got \(String(describing: event))")
+            return
+        }
+        XCTAssertEqual(service.autoPosts, 1)
+        XCTAssertEqual(service.autoClears, 0)
+
+        // Detection switched off while the auto-recorded meeting is still
+        // running. Teardown cancels the detection event loop, so `.ended` never
+        // arrives and handleMeetingEnded() never runs — teardown is the only
+        // thing left that can take the delivered notification down.
+        controller.teardown()
+
+        XCTAssertEqual(
+            service.autoClears,
+            1,
+            "teardown left the 'Recording Started' notification in Notification Center"
+        )
+    }
+
+    func testAutoRecordAcceptsDetectionWithoutNotificationTap() async throws {
+        let settings = makeSettings()
+        settings.autoRecordDetectedMeetings = true
+
+        let (controller, service, audio, camera) = makeDetectionHarness(settings: settings)
+        defer {
+            controller.teardown()
+            audio.finish()
+            camera.finish()
+        }
+
+        let event = try await collectFirstEvent(from: controller) { camera.emit(true) }
+
+        if case .accepted(let metadata) = event,
+           let signal = metadata.detectionContext?.signal,
+           case .cameraActivated = signal {
+            // correct — accepted with the camera signal, no user tap involved
+        } else {
+            XCTFail("Expected .accepted without a notification tap, got \(String(describing: event))")
+        }
+        XCTAssertEqual(service.autoPosts, 1, "the informational notification must be posted")
+        XCTAssertEqual(service.promptPosts, 0, "no tap-to-confirm prompt on the auto path")
+    }
+
+    func testAutoRecordFallsBackToPromptWhenNotificationFails() async throws {
+        let settings = makeSettings()
+        settings.autoRecordDetectedMeetings = true
+
+        let (controller, service, audio, camera) = makeDetectionHarness(settings: settings)
+        service.autoResult = false // delivery fails (permission denied / unavailable)
+        defer {
+            controller.teardown()
+            audio.finish()
+            camera.finish()
+        }
+
+        let event = try await collectFirstEvent(from: controller) { camera.emit(true) }
+
+        XCTAssertNil(event, "recording must never start silently — fall back to the prompt")
+        XCTAssertEqual(service.autoPosts, 1)
+        XCTAssertEqual(service.promptPosts, 1, "the tap-to-confirm prompt is the fallback")
+    }
+
+    func testAutoRecordRequiresRecordingConsent() async throws {
+        let settings = makeSettings(consentAcknowledged: false)
+        settings.autoRecordDetectedMeetings = true
+
+        let (controller, service, audio, camera) = makeDetectionHarness(settings: settings)
+        defer {
+            controller.teardown()
+            audio.finish()
+            camera.finish()
+        }
+
+        let event = try await collectFirstEvent(from: controller) { camera.emit(true) }
+
+        XCTAssertNil(event, "no auto-start before recording consent is acknowledged")
+        XCTAssertEqual(service.autoPosts, 0, "the auto path must not even be attempted")
+        XCTAssertEqual(service.promptPosts, 1, "falls back to the tap-to-confirm prompt")
+    }
+
+    func testAutoRecordOffRequiresNotificationRoundTrip() async throws {
+        let settings = makeSettings()
+        XCTAssertFalse(settings.autoRecordDetectedMeetings, "auto-record must default to off")
+
+        let (controller, service, audio, camera) = makeDetectionHarness(settings: settings)
+        defer {
+            controller.teardown()
+            audio.finish()
+            camera.finish()
+        }
+
+        let event = try await collectFirstEvent(from: controller) { camera.emit(true) }
+
+        XCTAssertNil(event, "Without auto-record, detection must wait for the user to accept")
+        XCTAssertEqual(service.autoPosts, 0)
+        XCTAssertEqual(service.promptPosts, 1)
+    }
+
+    func testAutoRecordRespectsAlreadyRecordingGuard() async throws {
+        let settings = makeSettings()
+        settings.autoRecordDetectedMeetings = true
+
+        let (controller, service, audio, camera) = makeDetectionHarness(settings: settings)
+        controller.isSessionActive = { true }
+        defer {
+            controller.teardown()
+            audio.finish()
+            camera.finish()
+        }
+
+        let event = try await collectFirstEvent(from: controller) { camera.emit(true) }
+
+        XCTAssertNil(event, "No auto-accept while a session is already recording")
+        XCTAssertEqual(service.autoPosts, 0)
+        XCTAssertEqual(service.promptPosts, 0, "no prompt either — the session is active")
     }
 }

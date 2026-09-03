@@ -182,6 +182,9 @@ final class LiveSessionController {
 
     private var downloadTask: Task<Void, Never>?
     private var startPreflightTask: Task<Void, Never>?
+    /// True while a cloud-model preflight is validating a manual start.
+    /// The coordinator is still `.idle` then, but the start is committed.
+    var isStartInFlight: Bool { startPreflightTask != nil }
     private var scratchpadSaveTask: Task<Void, Never>?
     private var pendingInitialScratchpad: String?
 
