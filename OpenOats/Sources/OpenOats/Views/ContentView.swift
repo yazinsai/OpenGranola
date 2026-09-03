@@ -70,6 +70,11 @@ struct ContentView: View {
 
             Divider()
 
+            // Storage write-error banner (live transcript writes failed)
+            if let storageError = coordinator.lastStorageError {
+                storageErrorBanner(message: storageError)
+            }
+
             // Post-session banner
             if let lastSession = controllerState.lastEndedSession {
                 PostSessionBanner(
@@ -408,6 +413,54 @@ struct ContentView: View {
 
     private func stopSession() {
         liveSessionController?.stopSession(settings: settings)
+    }
+
+    private func storageErrorBanner(message: String) -> some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange)
+                    .padding(.top, 1)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Transcript writes are failing — this recording may not be saved.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    // The underlying error is often a long localizedDescription:
+                    // cap it so it can never crowd out the Dismiss button.
+                    Text(message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .help(message)
+                        .accessibilityIdentifier("app.storageErrorBanner")
+
+                    Text("Check that the disk has free space and that OpenOats has permission to write to its folder.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button("Dismiss") {
+                    coordinator.lastStorageError = nil
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .layoutPriority(1)
+                .accessibilityIdentifier("app.storageErrorDismissButton")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial)
+
+            Divider()
+        }
     }
 
     private func openSettingsWindow() {
