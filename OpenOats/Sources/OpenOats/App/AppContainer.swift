@@ -271,6 +271,25 @@ final class AppContainer {
         }
     }
 
+    /// Passive repair for background refresh loops.
+    ///
+    /// Builds the calendar manager when it is missing and re-reads TCC when it is
+    /// not, but never calls `requestAccess()`. `updateCalendarIntegration` requests
+    /// access whenever it observes `.notDetermined`, so calling it from a poller
+    /// tick could raise a system permission dialog out of a windowless background
+    /// app. Authorization is only ever requested from an explicit user action —
+    /// the Calendar settings toggle.
+    ///
+    /// Never clears the manager: disabling the integration is the toggle's job.
+    func ensureCalendarIntegrationReady(enabled: Bool) {
+        guard enabled else { return }
+        if calendarManager == nil {
+            setCalendarManager(CalendarManager())
+        } else {
+            calendarManager?.refreshFromSystem()
+        }
+    }
+
     /// Recreates the calendar manager so EventKit state is reloaded from scratch.
     /// Use this when permission or visible calendars may have changed in System Settings
     /// and a soft status refresh is not sufficient.
