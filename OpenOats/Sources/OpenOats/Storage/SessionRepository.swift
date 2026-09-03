@@ -1627,12 +1627,12 @@ actor SessionRepository {
     }
 
     /// Removes retained batch audio for one session. Refuses (returns `false`)
-    /// while a batch run is reading the stems.
+    /// while a batch run is reading the stems, or when the session's `audio/`
+    /// is a symlink and deleting would reach through it.
     @discardableResult
     func cleanupBatchAudio(sessionID: String) -> Bool {
         guard activeBatchAudioAccessCounts[sessionID] == nil else { return false }
-        Self.removeRetainedBatchAudio(inSessionDirectory: sessionDirectory(for: sessionID))
-        return true
+        return Self.removeRetainedBatchAudio(inSessionDirectory: sessionDirectory(for: sessionID))
     }
 
     func loadBatchMeta(sessionID: String) -> BatchMeta? {
@@ -2435,17 +2435,25 @@ actor SessionRepository {
             guard !activeSessionIDs.contains(name) else { continue }
 
             let dates = retainedBatchAudioDates(inSessionDirectory: item)
-            if let stems = dates.stems {
-                let newest = max(stems, dates.metadata ?? stems)
-                guard newest < cutoff else { continue }
-            } else if let metadata = dates.metadata {
-                // No stems left: a lone batch-meta.json would otherwise live forever.
-                guard metadata < cutoff else { continue }
-            } else {
+
+            // An artifact whose date could not be read has an unknown age. This
+            // sweep unlinks user audio, so unknown state means keep: without
+            // this guard a present-but-unreadable stem looks identical to an
+            // absent one, and an expired batch-meta.json would delete stems
+            // that were never shown to be old.
+            if dates.hasUnreadable {
+                Log.sessionRepository.info(
+                    "Keeping retained batch audio in \(name, privacy: .public): modification date unreadable"
+                )
+            }
+            guard retainedBatchAudioIsExpired(dates, cutoff: cutoff) else { continue }
+
+            guard removeRetainedBatchAudio(inSessionDirectory: item) else {
+                Log.sessionRepository.info(
+                    "Keeping retained batch audio in \(name, privacy: .public): audio/ is a symlink"
+                )
                 continue
             }
-
-            removeRetainedBatchAudio(inSessionDirectory: item)
             removed.append(name)
             Log.sessionRepository.info("Cleaned up expired retained batch audio in \(name, privacy: .public)")
         }
@@ -2460,13 +2468,48 @@ actor SessionRepository {
     /// retained audio stems.
     static func newestRetainedBatchAudioModificationDate(inSessionDirectory sessionDirectory: URL) -> Date? {
         let dates = retainedBatchAudioDates(inSessionDirectory: sessionDirectory)
-        guard let stems = dates.stems else { return nil }
+        guard !dates.hasUnreadable, let stems = dates.stems else { return nil }
         return max(stems, dates.metadata ?? stems)
     }
 
-    private static func retainedBatchAudioDates(
+    /// Whether a session's retained audio has expired, given its artifact dates.
+    /// Pure, so the fail-open rules can be asserted directly rather than through
+    /// filesystem states that are hard to stage without also blocking deletion.
+    static func retainedBatchAudioIsExpired(
+        _ dates: RetainedBatchAudioDates,
+        cutoff: Date
+    ) -> Bool {
+        // An artifact whose date could not be read has an unknown age, and this
+        // sweep unlinks user audio, so unknown means keep. Without this a
+        // present-but-unreadable stem is indistinguishable from an absent one,
+        // and an expired batch-meta.json would delete stems that were never
+        // shown to be old.
+        guard !dates.hasUnreadable else { return false }
+
+        if let stems = dates.stems {
+            return max(stems, dates.metadata ?? stems) < cutoff
+        }
+        if let metadata = dates.metadata {
+            // No stems left: a lone batch-meta.json would otherwise live forever.
+            return metadata < cutoff
+        }
+        return false
+    }
+
+    /// Modification dates of a session's retained audio artifacts.
+    struct RetainedBatchAudioDates {
+        /// Newest date among the mic/sys stems, or `nil` when none are present.
+        var stems: Date?
+        /// Newest date among the batch-meta.json files, or `nil` when absent.
+        var metadata: Date?
+        /// True when an artifact is present but its date could not be read.
+        /// Callers that delete must treat this as "age unknown" and keep.
+        var hasUnreadable: Bool
+    }
+
+    static func retainedBatchAudioDates(
         inSessionDirectory sessionDirectory: URL
-    ) -> (stems: Date?, metadata: Date?) {
+    ) -> RetainedBatchAudioDates {
         let audioDir = sessionDirectory.appendingPathComponent("audio", isDirectory: true)
         let audioStems = [
             audioDir.appendingPathComponent("mic.caf"),
@@ -2479,29 +2522,63 @@ actor SessionRepository {
             sessionDirectory.appendingPathComponent("batch-meta.json"),
         ]
 
-        var stems: Date?
+        var result = RetainedBatchAudioDates(stems: nil, metadata: nil, hasUnreadable: false)
         for url in audioStems {
-            guard let date = modificationDate(of: url) else { continue }
-            stems = max(stems ?? date, date)
+            switch modificationDate(of: url) {
+            case .date(let date): result.stems = max(result.stems ?? date, date)
+            case .unreadable: result.hasUnreadable = true
+            case .absent: continue
+            }
         }
-        var metadata: Date?
         for url in metadataFiles {
-            guard let date = modificationDate(of: url) else { continue }
-            metadata = max(metadata ?? date, date)
+            switch modificationDate(of: url) {
+            case .date(let date): result.metadata = max(result.metadata ?? date, date)
+            case .unreadable: result.hasUnreadable = true
+            case .absent: continue
+            }
         }
-        return (stems, metadata)
+        return result
     }
 
-    private static func modificationDate(of url: URL) -> Date? {
-        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    /// Why a modification date is unavailable, which a plain `Date?` cannot say.
+    /// "Not there" and "there but unreadable" call for opposite decisions when
+    /// the answer drives a deletion.
+    enum ModificationDateResult: Equatable {
+        case date(Date)
+        case absent
+        case unreadable
     }
 
-    /// Removes retained batch audio artifacts in both canonical and legacy layouts.
-    static func removeRetainedBatchAudio(inSessionDirectory sessionDirectory: URL) {
+    static func modificationDate(of url: URL) -> ModificationDateResult {
+        do {
+            let values = try url.resourceValues(forKeys: [.contentModificationDateKey])
+            guard let date = values.contentModificationDate else { return .unreadable }
+            return .date(date)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile
+            || error.code == .fileNoSuchFile {
+            return .absent
+        } catch {
+            return .unreadable
+        }
+    }
+
+    /// Removes retained batch audio artifacts in both canonical and legacy
+    /// layouts. Returns `false` without deleting anything when `audio/` is a
+    /// symlink.
+    ///
+    /// `removeItem` resolves every path component but the last, so
+    /// `<session>/audio/mic.caf` deletes through a symlinked `audio/` and takes
+    /// the real file on the other volume with it. Relocating `audio/` is exactly
+    /// what a user storing gigabytes per meeting is likely to have done, so the
+    /// canonical removals are refused rather than redirected.
+    @discardableResult
+    static func removeRetainedBatchAudio(inSessionDirectory sessionDirectory: URL) -> Bool {
         let fm = FileManager.default
 
-        // Canonical audio/ layout
         let audioDir = sessionDirectory.appendingPathComponent("audio", isDirectory: true)
+        if isSymbolicLink(audioDir) { return false }
+
+        // Canonical audio/ layout
         try? fm.removeItem(at: audioDir.appendingPathComponent("mic.caf"))
         try? fm.removeItem(at: audioDir.appendingPathComponent("sys.caf"))
         try? fm.removeItem(at: audioDir.appendingPathComponent("batch-meta.json"))
@@ -2510,6 +2587,16 @@ actor SessionRepository {
         try? fm.removeItem(at: sessionDirectory.appendingPathComponent("mic.caf"))
         try? fm.removeItem(at: sessionDirectory.appendingPathComponent("sys.caf"))
         try? fm.removeItem(at: sessionDirectory.appendingPathComponent("batch-meta.json"))
+        return true
+    }
+
+    /// Whether `url` is itself a symlink. Uses the no-follow attribute lookup:
+    /// `resourceValues(forKeys: [.isSymbolicLinkKey])` answers about the link,
+    /// but only when the link resolves.
+    static func isSymbolicLink(_ url: URL) -> Bool {
+        guard let type = try? FileManager.default
+            .attributesOfItem(atPath: url.path)[.type] as? FileAttributeType else { return false }
+        return type == .typeSymbolicLink
     }
 }
 

@@ -273,6 +273,168 @@ final class RetainedBatchAudioSweepTests: XCTestCase {
         XCTAssertFalse(fm.fileExists(atPath: micURL.path), "sweep must apply once the batch run ends")
     }
 
+    // MARK: - Fail-open guards
+    //
+    // The sweep unlinks user audio on a timer, so every path that cannot
+    // establish the facts it needs must keep rather than delete.
+
+    func testUnreadableStemDateKeepsStemsDespiteExpiredMetadata() {
+        let old = Date(timeIntervalSinceNow: -days(30))
+        let cutoff = Date(timeIntervalSinceNow: -days(7))
+
+        // Stems are present on disk but their dates could not be read, so
+        // `stems` is nil for the same reason "no stems left" would be. Only the
+        // metadata date is known, and it is expired.
+        let unreadable = SessionRepository.RetainedBatchAudioDates(
+            stems: nil,
+            metadata: old,
+            hasUnreadable: true
+        )
+        XCTAssertFalse(
+            SessionRepository.retainedBatchAudioIsExpired(unreadable, cutoff: cutoff),
+            "Stems whose age was never established must be kept, not removed on the metadata's age"
+        )
+
+        // Same dates, but the stems really are gone: the lone batch-meta.json
+        // must still be collected, or it lives forever.
+        let genuinelyAbsent = SessionRepository.RetainedBatchAudioDates(
+            stems: nil,
+            metadata: old,
+            hasUnreadable: false
+        )
+        XCTAssertTrue(
+            SessionRepository.retainedBatchAudioIsExpired(genuinelyAbsent, cutoff: cutoff),
+            "An expired lone batch-meta.json is still collectable"
+        )
+    }
+
+    func testUnreadableMetadataDateKeepsExpiredStems() {
+        let old = Date(timeIntervalSinceNow: -days(30))
+        let cutoff = Date(timeIntervalSinceNow: -days(7))
+        let dates = SessionRepository.RetainedBatchAudioDates(
+            stems: old,
+            metadata: nil,
+            hasUnreadable: true
+        )
+        XCTAssertFalse(
+            SessionRepository.retainedBatchAudioIsExpired(dates, cutoff: cutoff),
+            "An unreadable artifact may be the newest one, so its session's age is unknown"
+        )
+    }
+
+    func testExpiryUsesNewestArtifactWhenEverythingIsReadable() {
+        let cutoff = Date(timeIntervalSinceNow: -days(7))
+        let expired = SessionRepository.RetainedBatchAudioDates(
+            stems: Date(timeIntervalSinceNow: -days(30)),
+            metadata: Date(timeIntervalSinceNow: -days(29)),
+            hasUnreadable: false
+        )
+        XCTAssertTrue(SessionRepository.retainedBatchAudioIsExpired(expired, cutoff: cutoff))
+
+        let freshMetadata = SessionRepository.RetainedBatchAudioDates(
+            stems: Date(timeIntervalSinceNow: -days(30)),
+            metadata: Date(timeIntervalSinceNow: -days(1)),
+            hasUnreadable: false
+        )
+        XCTAssertFalse(
+            SessionRepository.retainedBatchAudioIsExpired(freshMetadata, cutoff: cutoff),
+            "The newest artifact decides expiry"
+        )
+
+        let nothing = SessionRepository.RetainedBatchAudioDates(
+            stems: nil,
+            metadata: nil,
+            hasUnreadable: false
+        )
+        XCTAssertFalse(SessionRepository.retainedBatchAudioIsExpired(nothing, cutoff: cutoff))
+    }
+
+    /// End-to-end companion: an unreadable `audio/` must leave the stems in
+    /// place. Deliberately weaker than the cases above, because the permission
+    /// block that hides the dates also blocks the removal, so this guards the
+    /// wiring rather than the rule.
+    func testSweepKeepsSessionWhoseAudioDirectoryCannotBeRead() throws {
+        let fm = FileManager.default
+        let old = Date(timeIntervalSinceNow: -days(30))
+        let sessionDir = try makeSession(
+            named: "session_unreadable",
+            canonicalFiles: ["mic.caf": old, "sys.caf": old],
+            legacyFiles: ["batch-meta.json": old]
+        )
+        let audioDir = sessionDir.appendingPathComponent("audio", isDirectory: true)
+        try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: audioDir.path)
+        defer { try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: audioDir.path) }
+
+        let dates = SessionRepository.retainedBatchAudioDates(inSessionDirectory: sessionDir)
+        try XCTSkipUnless(dates.hasUnreadable, "Test needs an unreadable stem date; running as root defeats it")
+
+        let removed = SessionRepository.cleanupExpiredRetainedBatchAudio(in: sessionsDir, olderThan: days(7))
+        XCTAssertFalse(removed.contains("session_unreadable"))
+
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: audioDir.path)
+        XCTAssertTrue(exists(audioDir.appendingPathComponent("mic.caf")))
+    }
+
+    func testModificationDateDistinguishesAbsentFromUnreadable() throws {
+        let fm = FileManager.default
+        let sessionDir = try makeSession(named: "session_probe", canonicalFiles: ["mic.caf": Date()])
+        let audioDir = sessionDir.appendingPathComponent("audio", isDirectory: true)
+
+        XCTAssertEqual(
+            SessionRepository.modificationDate(of: audioDir.appendingPathComponent("nope.caf")),
+            .absent
+        )
+
+        try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: audioDir.path)
+        defer { try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: audioDir.path) }
+        let result = SessionRepository.modificationDate(of: audioDir.appendingPathComponent("mic.caf"))
+        try XCTSkipUnless(result == .unreadable, "Running as root defeats the permission block")
+        XCTAssertEqual(result, .unreadable)
+    }
+
+    func testSweepDoesNotDeleteThroughSymlinkedAudioDirectory() throws {
+        let fm = FileManager.default
+        let old = Date(timeIntervalSinceNow: -days(30))
+
+        // Real audio on "another volume", reached through <session>/audio.
+        let elsewhere = sessionsDir.appendingPathComponent("elsewhere", isDirectory: true)
+        try fm.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        let realMic = elsewhere.appendingPathComponent("mic.caf")
+        fm.createFile(atPath: realMic.path, contents: Data("audio".utf8))
+        try fm.setAttributes([.modificationDate: old], ofItemAtPath: realMic.path)
+
+        let sessionDir = sessionsDir.appendingPathComponent("session_symlinked", isDirectory: true)
+        try fm.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        fm.createFile(atPath: sessionDir.appendingPathComponent("session.json").path, contents: Data("{}".utf8))
+        try fm.createSymbolicLink(
+            at: sessionDir.appendingPathComponent("audio", isDirectory: true),
+            withDestinationURL: elsewhere
+        )
+
+        let removed = SessionRepository.cleanupExpiredRetainedBatchAudio(in: sessionsDir, olderThan: days(7))
+
+        XCTAssertTrue(exists(realMic), "removeItem resolves audio/, so a symlinked audio/ must be refused")
+        XCTAssertFalse(removed.contains("session_symlinked"), "A refused session must not be reported as swept")
+    }
+
+    func testPerSessionDeleteRefusesSymlinkedAudioDirectory() throws {
+        let fm = FileManager.default
+        let elsewhere = sessionsDir.appendingPathComponent("elsewhere2", isDirectory: true)
+        try fm.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        let realMic = elsewhere.appendingPathComponent("mic.caf")
+        fm.createFile(atPath: realMic.path, contents: Data("audio".utf8))
+
+        let sessionDir = sessionsDir.appendingPathComponent("session_manual", isDirectory: true)
+        try fm.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        try fm.createSymbolicLink(
+            at: sessionDir.appendingPathComponent("audio", isDirectory: true),
+            withDestinationURL: elsewhere
+        )
+
+        XCTAssertFalse(SessionRepository.removeRetainedBatchAudio(inSessionDirectory: sessionDir))
+        XCTAssertTrue(exists(realMic))
+    }
+
     func testSweepIgnoresNonSessionDirectories() throws {
         let stemDate = Date(timeIntervalSinceNow: -days(8))
         let sessionDir = try makeSession(
